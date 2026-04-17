@@ -26,7 +26,6 @@ class VehiclePayload(BaseModel):
 
 def _vehicle_card(vehicle: VehicleConfig, base_topic: str) -> dict:
     manufacturer_label = vehicle.manufacturer.upper()
-    mapped = vehicle.provider_config or {}
     return {
         "id": vehicle.id,
         "label": vehicle.label,
@@ -35,12 +34,13 @@ def _vehicle_card(vehicle: VehicleConfig, base_topic: str) -> dict:
         "topic": base_vehicle_topic(base_topic, vehicle.manufacturer, vehicle.license_plate),
         "mapped_topic": mapped_topic(base_topic, vehicle.manufacturer, vehicle.license_plate),
         "enabled": vehicle.enabled,
-        "status": "bereit" if vehicle.enabled else "deaktiviert",
+        "status": "verbunden" if vehicle.enabled else "deaktiviert",
+        "status_tone": "ok" if vehicle.enabled else "muted",
         "stats": [
             {"label": "Kennzeichen", "value": vehicle.license_plate},
             {"label": "Hersteller", "value": manufacturer_label},
             {"label": "Mapping", "value": "aktiv" if vehicle.mapping.enabled else "aus"},
-            {"label": "Topic-Basis", "value": base_topic},
+            {"label": "Topic", "value": base_vehicle_topic(base_topic, vehicle.manufacturer, vehicle.license_plate)},
         ],
     }
 
@@ -67,7 +67,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.2.0",
+                "version": "0.2.1",
                 "mqtt_settings": mqtt_settings.model_dump(mode="json"),
             },
         )
@@ -121,6 +121,6 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
-        return {"status": "ok", "version": "0.2.0"}
+        return {"status": "ok", "version": "0.2.1"}
 
     return app

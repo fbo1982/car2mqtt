@@ -1,11 +1,11 @@
 # Car2MQTT Home Assistant Add-on
 
-Version `0.2.0`
+Version `0.2.1`
 
 ## Inhalt
 Diese Version bringt das Scaffold auf den gewünschten Stil und verankert MQTT zentral in der Add-on-Konfiguration.
 
-### Neu in v0.2.0
+### Neu in v0.2.1
 - evcc-inspirierte Kacheloberfläche
 - Dialog „Fahrzeug hinzufügen" im gleichen Stil
 - MQTT-Zugangsdaten zentral in der Add-on-Konfiguration
@@ -32,4 +32,4 @@ Diese Werte gelten global für alle Fahrzeuge.
 
 ## Hinweise
 - Live-MQTT-Connect-Test und echte BMW-Auth folgen im nächsten Schritt.
-- v0.2.0 fokussiert UI-Stil, zentrale MQTT-Konfiguration und saubere Fahrzeuganlage.
+- v0.2.1 fokussiert UI-Stil, zentrale MQTT-Konfiguration und saubere Fahrzeuganlage.

@@ -1,5 +1,5 @@
 name: "Car2MQTT"
-version: "0.2.0"
+version: "0.2.1"
 slug: "car2mqtt"
 description: "Modular multi-vehicle MQTT bridge scaffold for Home Assistant"
 url: "https://github.com/tbo1982/car2mqtt"

@@ -3,7 +3,7 @@
 Dieses Repository enthält das Home-Assistant-Add-on `car2mqtt`.
 
 ## Version
-Aktueller Stand: `v0.2.0`
+Aktueller Stand: `v0.2.1`
 
 ## Änderungen
 - UI im Kachelstil überarbeitet

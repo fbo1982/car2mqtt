@@ -4,38 +4,63 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Car2MQTT</title>
-    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}" />
   </head>
   <body>
-    <main class="app-shell">
-      <div class="topbar">
+    <main class="page-shell">
+      <header class="hero">
         <div>
-          <div class="title">Car2MQTT</div>
-          <div class="subtitle">Version {{ version }} · Multi-Fahrzeug Add-on für Home Assistant</div>
+          <div class="eyebrow">Home Assistant Add-on</div>
+          <div class="hero-row">
+            <h1>Car2MQTT</h1>
+            <span class="version-badge">v{{ version }}</span>
+          </div>
+          <p class="hero-copy">Modulare Multi-Fahrzeug-Zentrale im evcc-inspirierten Kachelstil. MQTT wird zentral in der Add-on-Konfiguration verwaltet und für alle Fahrzeuge wiederverwendet.</p>
         </div>
-      </div>
+        <div class="hero-meta card-surface compact">
+          <div class="meta-label">MQTT aus Add-on-Konfiguration</div>
+          <div class="meta-value">{{ mqtt_settings.host or 'nicht gesetzt' }}:{{ mqtt_settings.port }}</div>
+          <div class="meta-foot">Topic <strong>{{ mqtt_settings.base_topic }}</strong> · QoS {{ mqtt_settings.qos }} · Retain {{ 'an' if mqtt_settings.retain else 'aus' }}</div>
+        </div>
+      </header>
 
-      <div class="section-head">
-        <h2>Fahrzeuge</h2>
-        <div class="mqtt-summary">
-          MQTT aus Add-on-Konfiguration · <strong>{{ mqtt_settings.host or 'nicht gesetzt' }}</strong>:{{ mqtt_settings.port }} · Topic <strong>{{ mqtt_settings.base_topic }}</strong>
+      <section class="section-head">
+        <div>
+          <div class="eyebrow">Übersicht</div>
+          <h2>Fahrzeuge</h2>
         </div>
-      </div>
+      </section>
 
       <section class="cards-grid">
         {% for card in cards %}
-        <article class="vehicle-card">
+        <article class="vehicle-card card-surface">
           <div class="vehicle-card-header">
-            <div class="vehicle-title">
-              <span>🚘</span>
+            <div class="vehicle-title-wrap">
+              <div class="vehicle-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 11l1.2-3.2A2 2 0 0 1 8.08 6.5h7.84a2 2 0 0 1 1.88 1.3L19 11" />
+                  <path d="M4 16v-2.5A2.5 2.5 0 0 1 6.5 11h11A2.5 2.5 0 0 1 20 13.5V16" />
+                  <path d="M7 16v1.5M17 16v1.5M4 16h16" />
+                </svg>
+              </div>
               <div>
-                {{ card.label }}
-                <small>{{ card.manufacturer }} · {{ card.status }}</small>
+                <div class="vehicle-title">{{ card.label }}</div>
+                <div class="vehicle-subtitle">{{ card.manufacturer }} · {{ card.license_plate }}</div>
               </div>
             </div>
-            <button class="icon-btn" type="button" title="Einstellungen folgen später">⚙️</button>
+            <button class="icon-btn" type="button" title="Bearbeiten folgt später">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/>
+                <line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/>
+                <line x1="4" y1="18" x2="20" y2="18"/><circle cx="11" cy="18" r="2"/>
+              </svg>
+            </button>
           </div>
           <div class="vehicle-card-body">
+            <div class="status-row">
+              <span class="status-label">Status</span>
+              <span class="status-pill {{ card.status_tone }}">{{ card.status }}</span>
+            </div>
             {% for stat in card.stats %}
             <div class="stat-row"><span>{{ stat.label }}</span><span>{{ stat.value }}</span></div>
             {% endfor %}
@@ -43,8 +68,8 @@
         </article>
         {% endfor %}
 
-        <article class="add-card">
-          <button type="button" id="openModalBtn">
+        <article class="add-card card-outline">
+          <button type="button" id="openModalBtn" class="add-card-btn">
             <span class="plus">＋</span>
             <span>Fahrzeug hinzufügen</span>
           </button>
@@ -56,13 +81,14 @@
       <form id="vehicleForm" class="modal-panel" method="dialog">
         <div class="modal-head">
           <div>
+            <div class="eyebrow">Einrichtung</div>
             <h3>Fahrzeug hinzufügen</h3>
           </div>
-          <button type="button" class="text-btn" id="closeBtn">✕</button>
+          <button type="button" class="icon-btn secondary" id="closeBtn" aria-label="Schließen">✕</button>
         </div>
 
-        <div class="modal-grid">
-          <section>
+        <div class="form-columns">
+          <section class="column-main">
             <label>
               Hersteller
               <select name="manufacturer" id="manufacturerSelect" required>
@@ -73,13 +99,13 @@
               </select>
             </label>
 
-            <div id="providerSummary" class="setup-box" hidden>
-              <h4 id="providerTitle">Hersteller</h4>
+            <div id="providerSummary" class="info-panel" hidden>
+              <div class="info-panel-title" id="providerTitle">Hersteller</div>
               <p id="providerNotes"></p>
               <ol id="providerSteps" class="setup-list"></ol>
             </div>
 
-            <div class="provider-fields">
+            <div class="field-grid two-up">
               <label>
                 Anzeigename
                 <input name="label" required placeholder="BMW iX1 xDrive30e" />
@@ -92,31 +118,32 @@
                 Kennzeichen
                 <input name="license_plate" required placeholder="GGCA501E" />
               </label>
-              <div id="providerFields"></div>
             </div>
+
+            <div id="providerFields" class="field-grid"></div>
           </section>
 
-          <aside>
-            <div class="system-box">
-              <h4>MQTT Konfiguration</h4>
-              <p>Die MQTT-Zugangsdaten sind fest in der Add-on-Konfiguration hinterlegt und gelten für alle Fahrzeuge.</p>
-              <div class="mqtt-list">
-                <div class="mqtt-item"><span>Host</span><span>{{ mqtt_settings.host or 'nicht gesetzt' }}</span></div>
-                <div class="mqtt-item"><span>Port</span><span>{{ mqtt_settings.port }}</span></div>
-                <div class="mqtt-item"><span>Benutzer</span><span>{{ mqtt_settings.username or 'nicht gesetzt' }}</span></div>
-                <div class="mqtt-item"><span>Passwort</span><span>{{ 'gesetzt' if mqtt_settings.password_set else 'nicht gesetzt' }}</span></div>
-                <div class="mqtt-item"><span>Base Topic</span><span>{{ mqtt_settings.base_topic }}</span></div>
-                <div class="mqtt-item"><span>QoS / Retain</span><span>{{ mqtt_settings.qos }} / {{ 'an' if mqtt_settings.retain else 'aus' }}</span></div>
+          <aside class="column-side">
+            <div class="info-panel compact-panel">
+              <div class="info-panel-title">MQTT Konfiguration</div>
+              <p>Die MQTT-Zugangsdaten sind global in der Add-on-Konfiguration hinterlegt und gelten für alle Fahrzeuge.</p>
+              <div class="kv-list">
+                <div class="kv-item"><span>Host</span><strong>{{ mqtt_settings.host or 'nicht gesetzt' }}</strong></div>
+                <div class="kv-item"><span>Port</span><strong>{{ mqtt_settings.port }}</strong></div>
+                <div class="kv-item"><span>Benutzer</span><strong>{{ mqtt_settings.username or 'nicht gesetzt' }}</strong></div>
+                <div class="kv-item"><span>Passwort</span><strong>{{ 'gesetzt' if mqtt_settings.password_set else 'nicht gesetzt' }}</strong></div>
+                <div class="kv-item"><span>Base Topic</span><strong>{{ mqtt_settings.base_topic }}</strong></div>
+                <div class="kv-item"><span>QoS / Retain</span><strong>{{ mqtt_settings.qos }} / {{ 'an' if mqtt_settings.retain else 'aus' }}</strong></div>
               </div>
             </div>
 
-            <div class="status-box" style="margin-top:18px;">
-              <h4>Verbindungsstatus</h4>
-              <div class="status-line">
+            <div class="info-panel compact-panel status-panel">
+              <div class="info-panel-title">Verbindungsstatus</div>
+              <div class="status-check-row">
                 <span class="status-pill ok" id="statusText">bereit zum Speichern</span>
-                <button type="button" class="ghost-btn" id="checkBtn">prüfen</button>
+                <button type="button" class="button-ghost" id="checkBtn">prüfen</button>
               </div>
-              <p class="hint">In dieser Version wird die Konfiguration validiert. Der Live-Connect-Test folgt im nächsten Schritt.</p>
+              <p class="muted" id="statusHint">In dieser Version wird die Formularlogik validiert. Live-Login und echter Verbindungscheck folgen im nächsten Schritt.</p>
             </div>
           </aside>
         </div>
@@ -124,7 +151,7 @@
         <div class="notice" id="formError"></div>
         <div class="footer-actions">
           <button type="button" class="text-btn" id="cancelBtn">Abbrechen</button>
-          <button type="submit" class="primary-btn">Überprüfen &amp; speichern</button>
+          <button type="submit" class="button-primary">Überprüfen &amp; speichern</button>
         </div>
       </form>
     </dialog>
@@ -135,63 +162,72 @@
       const openModalBtn = document.getElementById('openModalBtn');
       const closeBtn = document.getElementById('closeBtn');
       const cancelBtn = document.getElementById('cancelBtn');
+      const vehicleForm = document.getElementById('vehicleForm');
       const manufacturerSelect = document.getElementById('manufacturerSelect');
-      const providerFields = document.getElementById('providerFields');
+      const providerSummary = document.getElementById('providerSummary');
       const providerTitle = document.getElementById('providerTitle');
       const providerNotes = document.getElementById('providerNotes');
       const providerSteps = document.getElementById('providerSteps');
-      const providerSummary = document.getElementById('providerSummary');
-      const vehicleForm = document.getElementById('vehicleForm');
-      const formError = document.getElementById('formError');
+      const providerFields = document.getElementById('providerFields');
       const statusText = document.getElementById('statusText');
+      const statusHint = document.getElementById('statusHint');
       const checkBtn = document.getElementById('checkBtn');
+      const formError = document.getElementById('formError');
 
-      function clearProviderDetails() {
-        providerFields.innerHTML = '';
-        providerNotes.textContent = '';
-        providerSteps.innerHTML = '';
-        providerSummary.hidden = true;
-        providerTitle.textContent = 'Hersteller';
+      function providerById(id) {
+        return providers.find((entry) => entry.id === id);
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
       }
 
       function renderProviderFields(providerId) {
-        clearProviderDetails();
-        const provider = providers.find((p) => p.id === providerId);
-        if (!provider) return;
+        const provider = providerById(providerId);
+        providerFields.innerHTML = '';
+        providerSteps.innerHTML = '';
+
+        if (!provider) {
+          providerSummary.hidden = true;
+          return;
+        }
+
         providerSummary.hidden = false;
         providerTitle.textContent = provider.name;
         providerNotes.textContent = provider.notes || '';
-        for (const step of (provider.setup_steps || [])) {
+        (provider.setup_steps || []).forEach((step) => {
           const li = document.createElement('li');
           li.textContent = step;
           providerSteps.appendChild(li);
-        }
-        for (const field of provider.fields) {
+        });
+
+        (provider.fields || []).forEach((field) => {
           const wrapper = document.createElement('label');
-          wrapper.textContent = field.label;
-          const input = document.createElement('input');
-          input.name = `provider_${field.name}`;
-          input.type = field.type === 'password' ? 'password' : 'text';
-          input.required = Boolean(field.required);
-          input.value = field.default || '';
-          wrapper.appendChild(input);
+          wrapper.innerHTML = `
+            ${escapeHtml(field.label)}
+            <input
+              name="provider_${escapeHtml(field.name)}"
+              type="${field.type === 'password' ? 'password' : 'text'}"
+              ${field.required ? 'required' : ''}
+              value="${escapeHtml(field.default || '')}"
+              placeholder="${escapeHtml(field.label)}"
+            />`;
           providerFields.appendChild(wrapper);
-        }
+        });
       }
 
-      function openDialog() {
-        formError.textContent = '';
-        statusText.textContent = 'bereit zum Speichern';
-        dialog.showModal();
-      }
-
-      openModalBtn?.addEventListener('click', openDialog);
+      openModalBtn?.addEventListener('click', () => dialog.showModal());
       closeBtn?.addEventListener('click', () => dialog.close());
       cancelBtn?.addEventListener('click', () => dialog.close());
       manufacturerSelect?.addEventListener('change', (event) => renderProviderFields(event.target.value));
       checkBtn?.addEventListener('click', () => {
         statusText.textContent = 'lokale Validierung aktiv';
-        formError.textContent = 'Kein Live-Verbindungstest in V0.2.0 – gespeichert wird nach Formularvalidierung.';
+        statusHint.textContent = 'Noch kein echter Online-Check in V0.2.1 – geprüft wird aktuell die Formularstruktur.';
       });
 
       vehicleForm.addEventListener('submit', async (event) => {
@@ -212,7 +248,7 @@
           enabled: true,
           provider_config,
         };
-        const response = await fetch('/api/vehicles', {
+        const response = await fetch('api/vehicles', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
