@@ -6,4 +6,4 @@ Home Assistant add-on repository for Car2MQTT.
 - `car2mqtt`: modular multi-vehicle MQTT bridge scaffold
 
 ## Version
-- `v0.1.2`
+- `v0.1.3`

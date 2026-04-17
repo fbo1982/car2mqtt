@@ -1,6 +1,6 @@
 # Car2MQTT Home Assistant Add-on
 
-Version `0.1.2`
+Version `0.1.3`
 
 ## Inhalt
 Diese Version ist ein lauffähiges Grundgerüst für ein Home-Assistant-Add-on mit:
@@ -29,5 +29,5 @@ car2mqtt/
 - Mapped: `car/<hersteller>/<kennzeichen>/mapped/...`
 
 ## Hinweise
-- BMW- und GWM-Anbindung sind in `v0.1.2` noch als Scaffold vorbereitet.
+- BMW- und GWM-Anbindung sind in `v0.1.3` noch als Scaffold vorbereitet.
 - Diese Version behebt primär die fehlende Home-Assistant-Repository-Struktur.

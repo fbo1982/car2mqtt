@@ -37,7 +37,7 @@ def create_app() -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request):
         config = store.load()
-        providers = registry.all()
+        providers = [provider.model_dump(mode="json") for provider in registry.all()]
         cards = []
         for vehicle in config.vehicles:
             cards.append(
@@ -54,12 +54,12 @@ def create_app() -> FastAPI:
         return templates.TemplateResponse(
             request,
             "index.html",
-            {"cards": cards, "providers": providers, "version": "0.1.2"},
+            {"cards": cards, "providers": providers, "version": "0.1.3"},
         )
 
     @app.get("/api/providers")
     async def get_providers():
-        return registry.all()
+        return [provider.model_dump(mode="json") for provider in registry.all()]
 
     @app.get("/api/vehicles")
     async def get_vehicles():
@@ -94,6 +94,6 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
-        return {"status": "ok", "version": "0.1.2"}
+        return {"status": "ok", "version": "0.1.3"}
 
     return app
