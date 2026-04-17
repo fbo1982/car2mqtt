@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import threading
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
@@ -15,104 +16,81 @@ logger = logging.getLogger(__name__)
 
 
 class BMWCarDataClient:
-    def __init__(
-        self,
-        client_id: str,
-        vin: str,
-        token_file: str,
-        mqtt_host: str = "customer.streaming-cardata.bmwgroup.com",
-        mqtt_port: int = 9000,
-        subscribe_wildcard: bool = True,
-    ):
+    def __init__(self, client_id: str, vin: str, mqtt_username: str, token_file: str, mqtt_host: str = "customer.streaming-cardata.bmwgroup.com", mqtt_port: int = 9000, subscribe_wildcard: bool = True):
         self.client_id = client_id
         self.vin = vin
+        self.mqtt_username = mqtt_username
         self.mqtt_host = mqtt_host
         self.mqtt_port = mqtt_port
         self.token_file = token_file
         self.subscribe_wildcard = subscribe_wildcard
         self.token_url = "https://customer.bmwgroup.com/gcdm/oauth/token"
         self.tokens: Dict[str, Any] = {}
-        self.mqtt_client = None
+        self.mqtt_client: Optional[mqtt.Client] = None
         self.message_callback: Optional[Callable[[str, Any], None]] = None
         self.connect_callback: Optional[Callable[[], None]] = None
         self.disconnect_callback: Optional[Callable[[int], None]] = None
+        self._connected = threading.Event()
 
-    @property
-    def mqtt_username(self) -> str:
-        gcid = self.tokens.get("gcid", "")
-        if gcid:
-            return gcid
-        raise ValueError("GCID nicht verfügbar")
-
-    def set_message_callback(self, callback: Callable[[str, Any], None]):
-        self.message_callback = callback
-
-    def set_connect_callback(self, callback: Callable[[], None]):
-        self.connect_callback = callback
-
-    def set_disconnect_callback(self, callback: Callable[[int], None]):
-        self.disconnect_callback = callback
+    def set_message_callback(self, callback): self.message_callback = callback
+    def set_connect_callback(self, callback): self.connect_callback = callback
+    def set_disconnect_callback(self, callback): self.disconnect_callback = callback
 
     def _load_tokens(self) -> bool:
-        path = Path(self.token_file)
-        if not path.exists():
-            return False
-        self.tokens = json.loads(path.read_text(encoding="utf-8"))
-        return True
-
-    def _is_token_expired(self, token_key: str) -> bool:
-        token_info = self.tokens.get(token_key, {})
-        expires_at = token_info.get("expires_at")
-        if not expires_at:
-            return True
         try:
-            expires_dt = datetime.fromisoformat(expires_at)
-        except ValueError:
+            self.tokens = json.loads(Path(self.token_file).read_text(encoding="utf-8"))
             return True
-        return datetime.utcnow() >= expires_dt
+        except Exception:
+            return False
+
+    def _save_tokens(self) -> None:
+        Path(self.token_file).write_text(json.dumps(self.tokens, indent=2), encoding="utf-8")
+
+    def _expiry(self, token_key: str) -> Optional[datetime]:
+        token = self.tokens.get(token_key, {})
+        expires_at = token.get("expires_at")
+        if not expires_at:
+            return None
+        return datetime.fromisoformat(expires_at.replace('Z','+00:00')).replace(tzinfo=None)
+
+    def _is_token_expiring(self, token_key: str, minutes: int = 5) -> bool:
+        expiry = self._expiry(token_key)
+        if not expiry:
+            return True
+        return datetime.utcnow() + timedelta(minutes=minutes) >= expiry
 
     def refresh_tokens(self) -> bool:
-        if not self._load_tokens() or "refresh_token" not in self.tokens:
+        if not self._load_tokens():
             return False
-        payload = {
-            "grant_type": "refresh_token",
-            "refresh_token": self.tokens["refresh_token"]["token"],
-            "client_id": self.client_id,
-        }
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        response = requests.post(self.token_url, data=payload, headers=headers, timeout=30)
+        refresh_token = self.tokens.get("refresh_token", {}).get("token")
+        if not refresh_token:
+            return False
+        response = requests.post(self.token_url, data={"grant_type": "refresh_token", "refresh_token": refresh_token, "client_id": self.client_id}, headers={"Content-Type": "application/x-www-form-urlencoded"}, timeout=30)
         response.raise_for_status()
-        new_tokens = response.json()
+        data = response.json()
         now = datetime.utcnow()
-        self.tokens["refresh_token"] = {
-            "token": new_tokens.get("refresh_token", self.tokens["refresh_token"]["token"]),
-            "expires_at": self.tokens["refresh_token"].get("expires_at", (now + timedelta(days=14)).isoformat()),
-        }
-        self.tokens["id_token"] = {
-            "token": new_tokens["id_token"],
-            "expires_at": (now + timedelta(seconds=int(new_tokens.get("expires_in", 3600)))).replace(microsecond=0).isoformat(),
-        }
-        self.tokens["access_token"] = {
-            "token": new_tokens.get("access_token", ""),
-            "expires_at": (now + timedelta(seconds=int(new_tokens.get("expires_in", 3600)))).replace(microsecond=0).isoformat(),
-        }
-        self.tokens["gcid"] = new_tokens.get("gcid", self.tokens.get("gcid", ""))
-        Path(self.token_file).write_text(json.dumps(self.tokens, indent=2), encoding="utf-8")
+        self.tokens["access_token"] = {"token": data.get("access_token", ""), "expires_at": (now + timedelta(seconds=int(data.get("expires_in", 3600)))).replace(microsecond=0).isoformat()}
+        self.tokens["id_token"] = {"token": data.get("id_token", ""), "expires_at": (now + timedelta(seconds=int(data.get("expires_in", 3600)))).replace(microsecond=0).isoformat()}
+        if data.get("refresh_token"):
+            self.tokens["refresh_token"] = {"token": data.get("refresh_token"), "expires_at": (now + timedelta(days=14)).replace(microsecond=0).isoformat()}
+        self.tokens["gcid"] = data.get("gcid", self.tokens.get("gcid", ""))
+        self._save_tokens()
         return True
 
     def ensure_tokens(self) -> bool:
         if not self._load_tokens():
             return False
-        if self._is_token_expired("id_token"):
+        if self._is_token_expiring("id_token"):
             return self.refresh_tokens()
         return True
 
-    def _on_connect(self, client, userdata, flags, rc, properties=None):
+    def _on_connect(self, client, userdata, flags, reason_code, properties=None):
+        rc = int(reason_code) if not isinstance(reason_code, int) else reason_code
         if rc == 0:
-            topic = f"{self.mqtt_username}/{self.vin}"
-            client.subscribe(topic, qos=1)
+            client.subscribe(f"{self.mqtt_username}/{self.vin}", qos=1)
             if self.subscribe_wildcard:
                 client.subscribe(f"{self.mqtt_username}/+", qos=1)
+            self._connected.set()
             if self.connect_callback:
                 self.connect_callback()
         else:
@@ -126,14 +104,19 @@ class BMWCarDataClient:
         except Exception as exc:
             logger.exception("BMW Nachricht konnte nicht verarbeitet werden: %s", exc)
 
-    def _on_disconnect(self, client, userdata, rc, properties=None):
+    def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties=None):
+        rc = int(reason_code) if not isinstance(reason_code, int) else reason_code
+        self._connected.clear()
         if self.disconnect_callback:
             self.disconnect_callback(rc)
 
     def connect_mqtt(self) -> bool:
         if not self.ensure_tokens():
             return False
-        token = self.tokens["id_token"]["token"]
+        token = self.tokens.get("id_token", {}).get("token", "")
+        if not token:
+            return False
+        self.disconnect_mqtt()
         self.mqtt_client = mqtt.Client(protocol=mqtt.MQTTv5, callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
         self.mqtt_client.tls_set()
         self.mqtt_client.username_pw_set(self.mqtt_username, token)
@@ -142,28 +125,25 @@ class BMWCarDataClient:
         self.mqtt_client.on_disconnect = self._on_disconnect
         self.mqtt_client.connect(self.mqtt_host, self.mqtt_port, 30)
         self.mqtt_client.loop_start()
-        return True
+        return self._connected.wait(15)
+
+    def is_connected(self) -> bool:
+        return self._connected.is_set()
 
     def disconnect_mqtt(self):
         if self.mqtt_client:
             try:
                 self.mqtt_client.disconnect()
+            except Exception:
+                pass
             finally:
                 self.mqtt_client.loop_stop()
+                self.mqtt_client = None
+                self._connected.clear()
 
 
 class BMWStreamWorker:
-    def __init__(
-        self,
-        vehicle,
-        mqtt_settings,
-        state_store,
-        local_mqtt_client_factory,
-        on_payload: Callable[[str, Dict[str, Any]], None],
-        on_connect: Optional[Callable[[], None]] = None,
-        on_disconnect: Optional[Callable[[int], None]] = None,
-        on_error: Optional[Callable[[str], None]] = None,
-    ):
+    def __init__(self, vehicle, mqtt_settings, state_store, local_mqtt_client_factory, on_payload: Callable[[str, Dict[str, Any]], None], on_connect=None, on_disconnect=None, on_error=None, on_detail=None):
         self.vehicle = vehicle
         self.mqtt_settings = mqtt_settings
         self.state_store = state_store
@@ -172,9 +152,11 @@ class BMWStreamWorker:
         self.on_connect_cb = on_connect
         self.on_disconnect_cb = on_disconnect
         self.on_error_cb = on_error
+        self.on_detail_cb = on_detail
         self.thread = None
         self.stop_event = threading.Event()
         self.client: Optional[BMWCarDataClient] = None
+        self.last_message_at = 0.0
 
     def start(self):
         if self.thread and self.thread.is_alive():
@@ -188,6 +170,10 @@ class BMWStreamWorker:
         if self.client:
             self.client.disconnect_mqtt()
 
+    def _detail(self, message: str):
+        if self.on_detail_cb:
+            self.on_detail_cb(message)
+
     def _run(self):
         token_file = Path(os.getenv("APP_DATA_DIR", "/config/car2mqtt")) / "providers" / self.vehicle.id / "bmw_tokens.json"
         if not token_file.exists():
@@ -198,16 +184,31 @@ class BMWStreamWorker:
             self.client = BMWCarDataClient(
                 client_id=self.vehicle.provider_config["client_id"],
                 vin=self.vehicle.provider_config["vin"],
+                mqtt_username=self.vehicle.provider_config["mqtt_username"],
                 token_file=str(token_file),
             )
             self.client.set_message_callback(self._handle_message)
             self.client.set_connect_callback(self._handle_connect)
             self.client.set_disconnect_callback(self._handle_disconnect)
-            if not self.client.connect_mqtt() and self.on_error_cb:
-                self.on_error_cb("BMW MQTT Verbindung konnte nicht aufgebaut werden")
+            self._detail("BMW Verbindung wird aufgebaut")
+            if not self.client.connect_mqtt():
+                if self.on_error_cb:
+                    self.on_error_cb("BMW MQTT Verbindung konnte nicht aufgebaut werden")
                 return
-            while not self.stop_event.wait(5):
-                pass
+            while not self.stop_event.wait(30):
+                if self.client and self.client._is_token_expiring("id_token", minutes=10):
+                    self._detail("Token-Refresh läuft")
+                    if self.client.refresh_tokens():
+                        self._detail("Token erneuert, BMW Verbindung wird neu aufgebaut")
+                        self.client.connect_mqtt()
+                    else:
+                        if self.on_error_cb: self.on_error_cb("Token-Refresh fehlgeschlagen")
+                if self.client and not self.client.is_connected():
+                    self._detail("BMW Verbindung wird erneut aufgebaut")
+                    self.client.connect_mqtt()
+                if self.last_message_at and time.time() - self.last_message_at > 10800:
+                    self._detail("Watchdog: Keine BMW Live-Daten, Reconnect")
+                    if self.client: self.client.connect_mqtt()
         except Exception as exc:
             logger.exception("BMW Worker Fehler: %s", exc)
             if self.on_error_cb:
@@ -224,4 +225,5 @@ class BMWStreamWorker:
             self.on_disconnect_cb(rc)
 
     def _handle_message(self, topic: str, data: Dict[str, Any]):
+        self.last_message_at = time.time()
         self.on_payload(topic, data)

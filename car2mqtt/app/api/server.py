@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict
 
@@ -16,7 +17,7 @@ from app.core.models import AuthSession, VehicleConfig
 from app.core.runtime_settings import load_runtime_mqtt_settings
 from app.core.state_store import StateStore
 from app.mqtt.client import test_connection
-from app.mqtt.topic_builder import base_vehicle_topic, mapped_topic
+from app.mqtt.topic_builder import raw_vehicle_topic, mapped_topic
 from app.providers.bmw.oauth import poll_device_flow, save_token_file, start_device_flow
 from app.providers.registry import ProviderRegistry
 from app.services.worker_manager import WorkerManager
@@ -45,13 +46,14 @@ class BmwAuthPollPayload(BaseModel):
 def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, base_topic: str) -> dict:
     metrics = (runtime_state or {}).get("metrics", {})
     provider_meta = (runtime_state or {}).get("provider_meta", {})
+    raw_topic = (runtime_state or {}).get("raw_topic") or raw_vehicle_topic(base_topic, vehicle.manufacturer, vehicle.license_plate, vehicle.provider_config.get("vin", ""), bool(vehicle.provider_config.get("append_vin", False)))
     return {
         "id": vehicle.id,
         "label": vehicle.label,
         "manufacturer": vehicle.manufacturer.upper(),
         "license_plate": vehicle.license_plate,
-        "topic": base_vehicle_topic(base_topic, vehicle.manufacturer, vehicle.license_plate),
-        "mapped_topic": mapped_topic(base_topic, vehicle.manufacturer, vehicle.license_plate),
+        "topic": raw_topic,
+        "mapped_topic": (runtime_state or {}).get("mapped_topic") or mapped_topic(base_topic, vehicle.manufacturer, vehicle.license_plate),
         "status": (runtime_state or {}).get("connection_state", "idle"),
         "status_detail": (runtime_state or {}).get("connection_detail", vehicle.provider_state.auth_message or "Noch keine Live-Daten"),
         "auth_state": vehicle.provider_state.auth_state,
@@ -67,7 +69,9 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         },
         "live": {
             "vin": vehicle.provider_config.get("vin", provider_meta.get("vin", "")),
-            "mqtt_username": vehicle.provider_state.mqtt_username or provider_meta.get("mqtt_username", ""),
+            "mqtt_username": vehicle.provider_config.get("mqtt_username", provider_meta.get("mqtt_username", "")),
+            "gcid": provider_meta.get("gcid", ""),
+            "append_vin": bool(vehicle.provider_config.get("append_vin", False)),
         },
         "last_update": (runtime_state or {}).get("last_update", ""),
     }
@@ -100,17 +104,7 @@ def create_app() -> FastAPI:
     async def index(request: Request):
         cards, mqtt_settings = build_cards()
         providers = [provider.model_dump(mode="json") for provider in registry.all()]
-        return templates.TemplateResponse(
-            request,
-            "index.html",
-            {
-                "cards": cards,
-                "providers": providers,
-                "version": "0.2.3",
-                "mqtt_settings": mqtt_settings,
-                "cards_json": json.dumps(cards, ensure_ascii=False),
-            },
-        )
+        return templates.TemplateResponse(request, "index.html", {"cards": cards, "providers": providers, "version": "0.2.5", "mqtt_settings": mqtt_settings, "cards_json": json.dumps(cards, ensure_ascii=False)})
 
     @app.get("/api/providers")
     async def get_providers():
@@ -120,6 +114,13 @@ def create_app() -> FastAPI:
     async def get_dashboard():
         cards, mqtt_settings = build_cards()
         return {"vehicles": cards, "mqtt": mqtt_settings}
+
+    @app.get("/api/vehicles/{vehicle_id}")
+    async def get_vehicle(vehicle_id: str):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+        return vehicle.model_dump(mode="json")
 
     @app.post("/api/mqtt/test")
     async def mqtt_test():
@@ -157,15 +158,24 @@ def create_app() -> FastAPI:
         auth_store.upsert(session)
         token_file = Path(data_dir) / "providers" / f"tmp-{session.session_id}" / "bmw_tokens.json"
         save_token_file(token_file, result)
-        return {
-            "state": "authorized",
-            "message": session.message,
-            "session_id": session.session_id,
-            "mqtt_username": result.get("gcid", ""),
-        }
+        if session.vehicle_id:
+            vehicle = store.get_vehicle(session.vehicle_id)
+            if vehicle and vehicle.manufacturer == "bmw":
+                target_file = Path(data_dir) / "providers" / vehicle.id / "bmw_tokens.json"
+                target_file.parent.mkdir(parents=True, exist_ok=True)
+                target_file.write_text(json.dumps(result, indent=2), encoding="utf-8")
+                vehicle.provider_state.auth_state = "authorized"
+                vehicle.provider_state.auth_message = "BMW Re-Auth abgeschlossen"
+                vehicle.provider_state.mqtt_username = result.get("gcid", vehicle.provider_state.mqtt_username)
+                vehicle.provider_state.user_code = session.user_code
+                vehicle.provider_state.verification_url = session.verification_uri_complete
+                store.upsert_vehicle(vehicle)
+                settings = load_runtime_mqtt_settings()
+                if settings.host:
+                    worker_manager.start_or_restart_vehicle(vehicle.id, settings)
+        return {"state": "authorized", "message": session.message, "session_id": session.session_id, "gcid": result.get("gcid", "")}
 
-    @app.post("/api/vehicles")
-    async def create_vehicle(payload: VehiclePayload):
+    def _save_vehicle(payload: VehiclePayload, vehicle_id_to_replace: str | None = None):
         try:
             provider = registry.get(payload.manufacturer)
         except KeyError as exc:
@@ -176,42 +186,62 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         mqtt_settings = load_runtime_mqtt_settings()
-        vehicle = VehicleConfig(
-            id=payload.id,
-            label=payload.label,
-            manufacturer=payload.manufacturer,
-            license_plate=payload.license_plate,
-            enabled=payload.enabled,
-            provider_config=validated_provider,
-        )
+        vehicle = VehicleConfig(id=payload.id, label=payload.label, manufacturer=payload.manufacturer, license_plate=payload.license_plate, enabled=payload.enabled, provider_config=validated_provider)
         vehicle.mqtt.base_topic = mqtt_settings.base_topic
         vehicle.mqtt.qos = mqtt_settings.qos
         vehicle.mqtt.retain = mqtt_settings.retain
 
-        if payload.manufacturer == "bmw":
-            if not payload.auth_session_id:
-                raise HTTPException(status_code=400, detail="BMW Auth fehlt. Bitte zuerst BMW verbinden.")
-            auth_session = auth_store.get(payload.auth_session_id)
-            if not auth_session or auth_session.state != "authorized":
-                raise HTTPException(status_code=400, detail="BMW Auth ist noch nicht abgeschlossen.")
-            tmp_file = Path(data_dir) / "providers" / f"tmp-{auth_session.session_id}" / "bmw_tokens.json"
-            if not tmp_file.exists():
-                raise HTTPException(status_code=400, detail="BMW Token-Datei wurde nicht gefunden.")
-            tokens = json.loads(tmp_file.read_text(encoding="utf-8"))
-            target_file = Path(data_dir) / "providers" / vehicle.id / "bmw_tokens.json"
-            target_file.parent.mkdir(parents=True, exist_ok=True)
-            target_file.write_text(json.dumps(tokens, indent=2), encoding="utf-8")
-            vehicle.provider_state.auth_state = "authorized"
-            vehicle.provider_state.auth_message = "BMW Login abgeschlossen"
-            vehicle.provider_state.mqtt_username = tokens.get("gcid", "")
-            vehicle.provider_state.user_code = auth_session.user_code
-            vehicle.provider_state.verification_url = auth_session.verification_uri_complete
+        existing = store.get_vehicle(vehicle_id_to_replace or payload.id)
+        if existing:
+            vehicle.provider_state = existing.provider_state
 
+        if payload.manufacturer == "bmw":
+            if payload.auth_session_id:
+                auth_session = auth_store.get(payload.auth_session_id)
+                if not auth_session or auth_session.state != "authorized":
+                    raise HTTPException(status_code=400, detail="BMW Auth ist noch nicht abgeschlossen.")
+                tmp_file = Path(data_dir) / "providers" / f"tmp-{auth_session.session_id}" / "bmw_tokens.json"
+                if not tmp_file.exists():
+                    raise HTTPException(status_code=400, detail="BMW Token-Datei wurde nicht gefunden.")
+                tokens = json.loads(tmp_file.read_text(encoding="utf-8"))
+                target_file = Path(data_dir) / "providers" / vehicle.id / "bmw_tokens.json"
+                target_file.parent.mkdir(parents=True, exist_ok=True)
+                target_file.write_text(json.dumps(tokens, indent=2), encoding="utf-8")
+                vehicle.provider_state.auth_state = "authorized"
+                vehicle.provider_state.auth_message = "BMW Login abgeschlossen"
+                vehicle.provider_state.mqtt_username = tokens.get("gcid", "")
+                vehicle.provider_state.user_code = auth_session.user_code
+                vehicle.provider_state.verification_url = auth_session.verification_uri_complete
+            elif existing and existing.manufacturer == "bmw":
+                src = Path(data_dir) / "providers" / existing.id / "bmw_tokens.json"
+                dst = Path(data_dir) / "providers" / vehicle.id / "bmw_tokens.json"
+                if src.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    if src.resolve() != dst.resolve():
+                        dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+
+        if vehicle_id_to_replace and vehicle_id_to_replace != vehicle.id:
+            config = store.load()
+            config.vehicles = [v for v in config.vehicles if v.id != vehicle_id_to_replace]
+            store.save(config)
+            worker_manager.stop_vehicle(vehicle_id_to_replace)
         store.upsert_vehicle(vehicle)
         worker_manager.publish_vehicle_saved_meta(vehicle.id)
-        if payload.manufacturer == "bmw" and mqtt_settings.host:
+        if payload.manufacturer == "bmw" and mqtt_settings.host and vehicle.provider_state.auth_state == "authorized":
             worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
         return {"status": "ok", "vehicle_id": vehicle.id}
+
+    @app.post("/api/vehicles")
+    async def create_vehicle(payload: VehiclePayload):
+        if store.get_vehicle(payload.id):
+            raise HTTPException(status_code=400, detail="Interne ID existiert bereits. Bitte bearbeiten oder neue ID wählen.")
+        return _save_vehicle(payload)
+
+    @app.put("/api/vehicles/{vehicle_id}")
+    async def update_vehicle(vehicle_id: str, payload: VehiclePayload):
+        if not store.get_vehicle(vehicle_id):
+            raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+        return _save_vehicle(payload, vehicle_id_to_replace=vehicle_id)
 
     @app.post("/api/vehicles/{vehicle_id}/restart")
     async def restart_vehicle(vehicle_id: str):
@@ -219,8 +249,35 @@ def create_app() -> FastAPI:
         worker_manager.start_or_restart_vehicle(vehicle_id, settings)
         return {"status": "ok", "vehicle_id": vehicle_id}
 
-    @app.get("/health")
-    async def health():
-        return {"status": "ok", "version": "0.2.3"}
+    @app.post("/api/vehicles/{vehicle_id}/reauth/start")
+    async def reauth_start_vehicle(vehicle_id: str):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle or vehicle.manufacturer != "bmw":
+            raise HTTPException(status_code=404, detail="BMW Fahrzeug nicht gefunden")
+        client_id = str(vehicle.provider_config.get("client_id", "")).strip()
+        vin = str(vehicle.provider_config.get("vin", "")).strip().upper()
+        if not client_id or not vin:
+            raise HTTPException(status_code=400, detail="Client ID und VIN müssen für Re-Auth gesetzt sein")
+        try:
+            session = start_device_flow(client_id, vin, vehicle.license_plate.strip())
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"BMW Re-Auth konnte nicht gestartet werden: {exc}") from exc
+        session.vehicle_id = vehicle_id
+        auth_store.upsert(session)
+        return session.model_dump(mode="json")
+
+    @app.delete("/api/vehicles/{vehicle_id}")
+    async def delete_vehicle(vehicle_id: str):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+        config = store.load()
+        config.vehicles = [v for v in config.vehicles if v.id != vehicle_id]
+        store.save(config)
+        worker_manager.delete_vehicle(vehicle_id)
+        provider_dir = Path(data_dir) / "providers" / vehicle_id
+        if provider_dir.exists():
+            shutil.rmtree(provider_dir, ignore_errors=True)
+        return {"status": "ok", "vehicle_id": vehicle_id}
 
     return app

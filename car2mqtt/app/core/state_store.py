@@ -36,3 +36,11 @@ class StateStore:
     def get_all(self) -> Dict[str, VehicleRuntimeState]:
         with self._lock:
             return self.load()
+
+
+    def delete(self, vehicle_id: str) -> None:
+        with self._lock:
+            state = self.load()
+            if vehicle_id in state:
+                del state[vehicle_id]
+                self.save(state)

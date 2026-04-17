@@ -18,6 +18,7 @@ class MappingConfig(BaseModel):
 
 
 class ProviderState(BaseModel):
+    provider_user: str = ""
     auth_state: AuthState = "not_started"
     auth_message: str = ""
     last_error: str = ""
