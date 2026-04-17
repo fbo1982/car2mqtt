@@ -28,6 +28,7 @@ class GwmIntegratedWorker:
             "username or password is incorrect",
             "account will be locked",
             "verification code request is too frequently",
+            "incorrect verification code",
             "sharprompt requires an interactive environment",
             "ora verification code required",
         ]
@@ -106,7 +107,9 @@ class GwmIntegratedWorker:
         env["ORA_ACCOUNT"] = str(self.vehicle.provider_config.get("account", ""))
         env["ORA_PASSWORD"] = str(self.vehicle.provider_config.get("password", ""))
         env["ORA_COUNTRY"] = str(self.vehicle.provider_config.get("country", "DE"))
-        env["ORA_VERIFICATION_CODE"] = str(self.vehicle.provider_config.get("verification_code", ""))
+        code_file = self.vehicle_dir / "verification_code.txt"
+        verification_code = code_file.read_text(encoding="utf-8").strip() if code_file.exists() else ""
+        env["ORA_VERIFICATION_CODE"] = verification_code
         env["MQTT_HOST"] = self.settings.host
         env["MQTT_USERNAME"] = self.settings.username
         env["MQTT_PASSWORD"] = self.settings.password
@@ -133,6 +136,13 @@ class GwmIntegratedWorker:
                 combined.append(line)
                 if "valid ICU package" in line or "libicu" in line:
                     icu_error = True
+        code_file = self.vehicle_dir / "verification_code.txt"
+        if code_file.exists() and (proc.returncode == 0 or combined):
+            try:
+                code_file.unlink()
+                self.log("Temporärer ORA Verifikationscode verworfen")
+            except Exception:
+                pass
         if proc.returncode != 0:
             joined = "\n".join(combined)
             if icu_error:
