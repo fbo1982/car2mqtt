@@ -119,7 +119,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.3.0",
+                "version": "0.3.1",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -193,6 +193,7 @@ def create_app() -> FastAPI:
                 vehicle.provider_state.auth_state = "authorized"
                 vehicle.provider_state.auth_message = "BMW Re-Auth abgeschlossen"
                 vehicle.provider_state.mqtt_username = result.get("gcid", vehicle.provider_state.mqtt_username)
+                vehicle.provider_config["mqtt_username"] = result.get("gcid", vehicle.provider_config.get("mqtt_username", ""))
                 vehicle.provider_state.user_code = session.user_code
                 vehicle.provider_state.verification_url = session.verification_uri_complete
                 store.upsert_vehicle(vehicle)
@@ -244,6 +245,7 @@ def create_app() -> FastAPI:
                 vehicle.provider_state.auth_state = "authorized"
                 vehicle.provider_state.auth_message = "BMW Login abgeschlossen"
                 vehicle.provider_state.mqtt_username = tokens.get("gcid", "")
+                vehicle.provider_config["mqtt_username"] = tokens.get("gcid", vehicle.provider_config.get("mqtt_username", ""))
                 vehicle.provider_state.user_code = auth_session.user_code
                 vehicle.provider_state.verification_url = auth_session.verification_uri_complete
                 log_store.append(vehicle.id, "BMW Login erstmalig abgeschlossen")
