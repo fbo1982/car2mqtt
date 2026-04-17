@@ -122,7 +122,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.4.4",
+                "version": "0.4.5",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
