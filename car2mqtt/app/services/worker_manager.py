@@ -6,11 +6,12 @@ from typing import Any, Dict
 
 from app.core.config_store import ConfigStore
 from app.core.models import VehicleRuntimeState
-from app.core.state_store import StateStore
 from app.core.runtime_settings import load_runtime_mqtt_settings
+from app.core.state_store import StateStore
+from app.core.vehicle_log_store import VehicleLogStore
 from app.mapping.bmw_mapper import map_bmw_payload
 from app.mqtt.client import LocalMqttClient
-from app.mqtt.topic_builder import raw_vehicle_topic, mapped_topic, meta_topic
+from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic
 from app.providers.bmw.streaming import BMWStreamWorker
 
 
@@ -19,6 +20,7 @@ class WorkerManager:
         self.data_dir = Path(data_dir)
         self.config_store = config_store
         self.state_store = state_store
+        self.log_store = VehicleLogStore(data_dir)
         self.workers: dict[str, BMWStreamWorker] = {}
 
     def start_all(self) -> None:
@@ -31,6 +33,7 @@ class WorkerManager:
         worker = self.workers.pop(vehicle_id, None)
         if worker:
             worker.stop()
+            self.log_store.append(vehicle_id, "Worker gestoppt")
 
     def start_or_restart_vehicle(self, vehicle_id: str, mqtt_settings=None) -> None:
         mqtt_settings = mqtt_settings or load_runtime_mqtt_settings()
@@ -48,7 +51,9 @@ class WorkerManager:
             on_disconnect=lambda rc, vid=vehicle_id: self._set_runtime_state(vid, "disconnected", f"BMW Verbindung getrennt (rc={rc})"),
             on_error=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "error", message),
             on_detail=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "starting", message),
+            log_callback=lambda message, vid=vehicle_id: self.log_store.append(vid, message),
         )
+        self.log_store.append(vehicle_id, "Workerstart angefordert")
         self._set_runtime_state(vehicle_id, "starting", "Worker startet")
         self.workers[vehicle_id].start()
 
@@ -76,6 +81,7 @@ class WorkerManager:
         runtime.raw_topic = raw_topic
         runtime.mapped_topic = mapped
         self.state_store.upsert(runtime)
+        self.log_store.append(vehicle_id, f"Status -> {state}: {detail}")
         self._publish_meta(vehicle, runtime, settings)
 
     def _publish_meta(self, vehicle, runtime: VehicleRuntimeState, settings) -> None:
@@ -102,10 +108,7 @@ class WorkerManager:
         nested: Dict[str, Any] = {}
         for metric_name, metric_data in data_points.items():
             metric_topic = f"{base_topic_prefix}/{metric_name.replace('.', '/')}"
-            if isinstance(metric_data, (dict, list)):
-                client.publish(metric_topic, metric_data)
-            else:
-                client.publish(metric_topic, metric_data)
+            client.publish(metric_topic, metric_data)
             if isinstance(metric_data, dict):
                 for key, value in metric_data.items():
                     client.publish(f"{metric_topic}/{key}", value)
@@ -135,7 +138,7 @@ class WorkerManager:
         runtime.connection_state = "connected"
         runtime.connection_detail = "Streaming aktiv"
         runtime.auth_state = vehicle.provider_state.auth_state
-        runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+        runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         runtime.raw_topic = raw_topic_base
         runtime.mapped_topic = mapped
         runtime.metrics = mapped_payload
@@ -145,12 +148,16 @@ class WorkerManager:
             "gcid": vehicle.provider_state.mqtt_username,
         }
         self.state_store.upsert(runtime)
+        count = len((data or {}).get("data", {}))
+        self.log_store.append(vehicle_id, f"Live-Daten empfangen: {count} Datenpunkte -> {callback_topic}")
         self._publish_meta(vehicle, runtime, mqtt_settings)
 
     def publish_vehicle_saved_meta(self, vehicle_id: str) -> None:
         self._set_runtime_state(vehicle_id, "saved", "Fahrzeug gespeichert")
+        self.log_store.append(vehicle_id, "Fahrzeugkonfiguration gespeichert")
 
     def delete_vehicle(self, vehicle_id: str) -> None:
         self.stop_vehicle(vehicle_id)
         self.state_store.delete(vehicle_id)
-
+        self.log_store.append(vehicle_id, "Fahrzeug gelöscht")
+        self.log_store.delete(vehicle_id)

@@ -51,7 +51,7 @@ class BMWCarDataClient:
         expires_at = token.get("expires_at")
         if not expires_at:
             return None
-        return datetime.fromisoformat(expires_at.replace('Z','+00:00')).replace(tzinfo=None)
+        return datetime.fromisoformat(expires_at.replace('Z', '+00:00')).replace(tzinfo=None)
 
     def _is_token_expiring(self, token_key: str, minutes: int = 5) -> bool:
         expiry = self._expiry(token_key)
@@ -143,7 +143,7 @@ class BMWCarDataClient:
 
 
 class BMWStreamWorker:
-    def __init__(self, vehicle, mqtt_settings, state_store, local_mqtt_client_factory, on_payload: Callable[[str, Dict[str, Any]], None], on_connect=None, on_disconnect=None, on_error=None, on_detail=None):
+    def __init__(self, vehicle, mqtt_settings, state_store, local_mqtt_client_factory, on_payload: Callable[[str, Dict[str, Any]], None], on_connect=None, on_disconnect=None, on_error=None, on_detail=None, log_callback=None):
         self.vehicle = vehicle
         self.mqtt_settings = mqtt_settings
         self.state_store = state_store
@@ -153,10 +153,15 @@ class BMWStreamWorker:
         self.on_disconnect_cb = on_disconnect
         self.on_error_cb = on_error
         self.on_detail_cb = on_detail
+        self.log_callback = log_callback
         self.thread = None
         self.stop_event = threading.Event()
         self.client: Optional[BMWCarDataClient] = None
         self.last_message_at = 0.0
+
+    def _log(self, message: str) -> None:
+        if self.log_callback:
+            self.log_callback(message)
 
     def start(self):
         if self.thread and self.thread.is_alive():
@@ -169,8 +174,10 @@ class BMWStreamWorker:
         self.stop_event.set()
         if self.client:
             self.client.disconnect_mqtt()
+        self._log("BMW Worker gestoppt")
 
     def _detail(self, message: str):
+        self._log(message)
         if self.on_detail_cb:
             self.on_detail_cb(message)
 
@@ -179,6 +186,7 @@ class BMWStreamWorker:
         if not token_file.exists():
             if self.on_error_cb:
                 self.on_error_cb("BMW Token-Datei fehlt")
+            self._log("BMW Token-Datei fehlt")
             return
         try:
             self.client = BMWCarDataClient(
@@ -194,6 +202,7 @@ class BMWStreamWorker:
             if not self.client.connect_mqtt():
                 if self.on_error_cb:
                     self.on_error_cb("BMW MQTT Verbindung konnte nicht aufgebaut werden")
+                self._log("BMW MQTT Verbindung konnte nicht aufgebaut werden")
                 return
             while not self.stop_event.wait(30):
                 if self.client and self.client._is_token_expiring("id_token", minutes=10):
@@ -202,28 +211,35 @@ class BMWStreamWorker:
                         self._detail("Token erneuert, BMW Verbindung wird neu aufgebaut")
                         self.client.connect_mqtt()
                     else:
-                        if self.on_error_cb: self.on_error_cb("Token-Refresh fehlgeschlagen")
+                        if self.on_error_cb:
+                            self.on_error_cb("Token-Refresh fehlgeschlagen")
+                        self._log("Token-Refresh fehlgeschlagen")
                 if self.client and not self.client.is_connected():
                     self._detail("BMW Verbindung wird erneut aufgebaut")
                     self.client.connect_mqtt()
                 if self.last_message_at and time.time() - self.last_message_at > 10800:
                     self._detail("Watchdog: Keine BMW Live-Daten, Reconnect")
-                    if self.client: self.client.connect_mqtt()
+                    if self.client:
+                        self.client.connect_mqtt()
         except Exception as exc:
             logger.exception("BMW Worker Fehler: %s", exc)
+            self._log(f"BMW Worker Fehler: {exc}")
             if self.on_error_cb:
                 self.on_error_cb(str(exc))
 
     def _handle_connect(self):
+        self._log("BMW MQTT verbunden")
         if self.on_connect_cb:
             self.on_connect_cb()
 
     def _handle_disconnect(self, rc: int):
         if self.stop_event.is_set() and rc == 0:
             return
+        self._log(f"BMW MQTT getrennt (rc={rc})")
         if self.on_disconnect_cb:
             self.on_disconnect_cb(rc)
 
     def _handle_message(self, topic: str, data: Dict[str, Any]):
         self.last_message_at = time.time()
+        self._log(f"BMW Live-Nachricht auf Topic {topic}")
         self.on_payload(topic, data)
