@@ -106,10 +106,15 @@ class GwmIntegratedWorker:
         if proc.stdout:
             for line in proc.stdout.splitlines():
                 self.log(f"[ora2mqtt configure] {line}")
+        icu_error = False
         if proc.stderr:
             for line in proc.stderr.splitlines():
                 self.log(f"[ora2mqtt configure][stderr] {line}")
+                if "valid ICU package" in line or "libicu" in line:
+                    icu_error = True
         if proc.returncode != 0:
+            if icu_error:
+                raise RuntimeError("ora2mqtt configure fehlgeschlagen: ICU/libicu fehlt im Container")
             raise RuntimeError(f"ora2mqtt configure fehlgeschlagen (rc={proc.returncode})")
         merge_ora_tokens(self.vehicle.provider_config, config_path)
         self.log("ORA configure erfolgreich abgeschlossen")
@@ -174,7 +179,7 @@ class GwmIntegratedWorker:
             self.log(f"[ora2mqtt run] {line.rstrip()}")
 
     def _run(self) -> None:
-        backoff = 10
+        backoff = 30
         while not self._stop.is_set():
             try:
                 config_path = self._prepare_runtime_files()

@@ -15,11 +15,14 @@ ENV PYTHONUNBUFFERED=1 \
     APP_HOME=/app \
     APP_PORT=8099 \
     APP_DATA_DIR=/config/car2mqtt \
-    OPENSSL_CONF=/opt/ora2mqtt/openssl.cnf
+    OPENSSL_CONF=/opt/ora2mqtt/openssl.cnf \
+    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=0 \
+    LC_ALL=en_US.UTF-8 \
+    LANG=en_US.UTF-8
 
 WORKDIR ${APP_HOME}
 
-RUN apk add --no-cache bash curl ca-certificates
+RUN apk add --no-cache bash curl ca-certificates icu-libs
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
