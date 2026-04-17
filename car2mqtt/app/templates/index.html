@@ -89,7 +89,7 @@ select, option {
 
       <div id="gwmCreateSection" class="info-box hidden">
         <div class="eyebrow">ORA / GWM Setup</div>
-        <div class="muted" style="margin-top:10px">Car2MQTT erzeugt beim Speichern eine <code>ora2mqtt.yml</code>-Vorlage im Fahrzeugordner. Dafür werden Benutzerkonto, Passwort, Land, Sprache, Polling-Intervall, Vehicle ID und optional die Akkukapazität verwendet.</div>
+        <div class="muted" style="margin-top:10px">Car2MQTT übernimmt jetzt <code>ora2mqtt configure</code> und <code>ora2mqtt run</code> automatisch. Benutzerkonto, Passwort, Land, Sprache, Polling-Intervall, Vehicle ID und optional die Akkukapazität werden direkt für den integrierten ORA-Runner verwendet.</div>
         <div class="field" style="margin-top:14px"><label>Benutzerkonto</label><input id="gwmAccount" placeholder="mail@example.com" /></div>
         <div class="field" style="margin-top:16px"><label>Passwort</label><input id="gwmPassword" type="password" /></div>
         <div class="field" style="margin-top:16px"><label>Land</label><input id="gwmCountry" value="DE" /></div>
@@ -163,7 +163,7 @@ select, option {
           <div class="field" style="margin-top:16px"><label>Source Topic Base</label><input id="editGwmSourceTopicBase" /></div>
         </div>
         <div class="log-box">
-          <div class="log-toolbar"><strong>ora2mqtt.yml Vorschau</strong><div class="log-actions"><button id="refreshOraConfigBtn" class="tiny-btn">Vorschau aktualisieren</button></div></div>
+          <div class="log-toolbar"><strong>ora2mqtt.yml Vorschau (automatisch vom Runner genutzt)</strong><div class="log-actions"><button id="refreshOraConfigBtn" class="tiny-btn">Vorschau aktualisieren</button></div></div>
           <div id="oraConfigViewer" class="log-viewer">Noch keine ORA-Konfiguration geladen.</div>
         </div>
       </div>

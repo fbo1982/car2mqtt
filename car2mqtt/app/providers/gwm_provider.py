@@ -13,7 +13,7 @@ class GwmProvider(BaseProvider):
             category="API",
             auth_mode="config_wizard",
             badge="ORA",
-            notes="Erstellt beim Speichern eine ora2mqtt.yml-Vorlage im Fahrzeugordner.",
+            notes="Automatisiert ora2mqtt configure + ora2mqtt run im Add-on und verwaltet die ora2mqtt.yml im Fahrzeugordner.",
             setup_steps=[
                 "Zusätzlichen ORA/GWM Account verwenden und Fahrzeug für diesen Account freigeben.",
                 "Die Eingaben im Wizard speichern, damit eine ora2mqtt.yml erzeugt wird.",

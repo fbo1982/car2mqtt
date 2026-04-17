@@ -14,7 +14,7 @@ from app.mapping.gwm_mapper import apply_gwm_metric
 from app.mqtt.client import LocalMqttClient
 from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic
 from app.providers.bmw.streaming import BMWStreamWorker
-from app.providers.gwm_monitor import GwmMonitorWorker
+from app.providers.gwm_runner import GwmIntegratedWorker
 
 
 class WorkerManager:
@@ -48,10 +48,12 @@ class WorkerManager:
             return
         self.stop_vehicle(vehicle_id)
         if vehicle.manufacturer == "gwm":
-            self.workers[vehicle_id] = GwmMonitorWorker(
+            vehicle_dir = self.data_dir / 'providers' / vehicle.id
+            self.workers[vehicle_id] = GwmIntegratedWorker(
                 vehicle=vehicle,
                 mqtt_settings=mqtt_settings,
-                on_connect=lambda vid=vehicle_id: self._set_runtime_state(vid, "connected", "Mit lokalem ORA MQTT Stream verbunden"),
+                vehicle_dir=vehicle_dir,
+                on_connect=lambda vid=vehicle_id: self._set_runtime_state(vid, "connected", "ORA Runner aktiv und lokaler MQTT Stream verbunden"),
                 on_disconnect=lambda rc, vid=vehicle_id: self._set_runtime_state(vid, "disconnected", f"ORA Verbindung getrennt (rc={rc})"),
                 on_error=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "error", message),
                 on_detail=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "starting", message),
