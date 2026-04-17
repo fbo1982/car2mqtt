@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
+from typing import Optional
 from app.core.models import AppConfig, VehicleConfig
 
 
@@ -24,6 +24,13 @@ class ConfigStore:
             encoding="utf-8",
         )
         return config
+
+    def get_vehicle(self, vehicle_id: str) -> Optional[VehicleConfig]:
+        config = self.load()
+        for vehicle in config.vehicles:
+            if vehicle.id == vehicle_id:
+                return vehicle
+        return None
 
     def upsert_vehicle(self, vehicle: VehicleConfig) -> AppConfig:
         config = self.load()

@@ -1,16 +1,33 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 
-def map_bmw_example(raw: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "soc": raw.get("soc", 97),
-        "plugged": raw.get("plugged", False),
-        "odometer": raw.get("odometer", 1485),
-        "range": raw.get("range", 61),
-        "limitSoc": raw.get("limitSoc", 100),
-        "charging": raw.get("charging", False),
-        "longitude": raw.get("longitude", 8.4960091667),
-        "latitude": raw.get("latitude", 49.82877),
+def _extract(raw: Dict[str, Any], path: str, default=None):
+    node: Any = raw
+    for part in path.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return default
+        node = node[part]
+    return node
+
+
+def map_bmw_payload(raw: Dict[str, Any]) -> Dict[str, Any]:
+    charging_status = _extract(raw, "vehicle.drivetrain.electricEngine.charging.status.value", "")
+    charging_port = _extract(raw, "vehicle.body.chargingPort.status.value", "")
+    comfort = _extract(raw, "vehicle.vehicle.preConditioning.status.value", None)
+    mapped = {
+        "soc": _extract(raw, "vehicle.drivetrain.batteryManagement.header.value", 0),
+        "plugged": charging_port not in (None, "", "DISCONNECTED"),
+        "odometer": _extract(raw, "vehicle.vehicle.travelledDistance.value", 0),
+        "range": _extract(raw, "vehicle.drivetrain.electricEngine.kombiRemainingElectricRange.value", 0),
+        "limitSoc": _extract(raw, "vehicle.powertrain.electric.battery.stateOfCharge.target.value", 100),
+        "charging": charging_status not in (None, "", "NOCHARGING"),
+        "longitude": _extract(raw, "vehicle.cabin.infotainment.navigation.currentLocation.longitude.value", None),
+        "latitude": _extract(raw, "vehicle.cabin.infotainment.navigation.currentLocation.latitude.value", None),
+        "altitude": _extract(raw, "vehicle.cabin.infotainment.navigation.currentLocation.altitude.value", None),
+        "preconditioning": comfort,
+        "lastUpdate": datetime.now(timezone.utc).isoformat(),
     }
+    return mapped

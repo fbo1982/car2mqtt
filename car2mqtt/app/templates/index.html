@@ -7,259 +7,305 @@
     <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}" />
   </head>
   <body>
-    <main class="page-shell">
-      <header class="hero">
+    <main class="shell">
+      <header class="topbar">
         <div>
           <div class="eyebrow">Home Assistant Add-on</div>
-          <div class="hero-row">
-            <h1>Car2MQTT</h1>
-            <span class="version-badge">v{{ version }}</span>
-          </div>
-          <p class="hero-copy">Modulare Multi-Fahrzeug-Zentrale im evcc-inspirierten Kachelstil. MQTT wird zentral in der Add-on-Konfiguration verwaltet und für alle Fahrzeuge wiederverwendet.</p>
+          <h1>Car2MQTT <span>v{{ version }}</span></h1>
+          <p>Multi-Fahrzeug-Zentrale mit Wizard, zentraler MQTT-Konfiguration und BMW-Device-Flow.</p>
         </div>
-        <div class="hero-meta card-surface compact">
-          <div class="meta-label">MQTT aus Add-on-Konfiguration</div>
-          <div class="meta-value">{{ mqtt_settings.host or 'nicht gesetzt' }}:{{ mqtt_settings.port }}</div>
-          <div class="meta-foot">Topic <strong>{{ mqtt_settings.base_topic }}</strong> · QoS {{ mqtt_settings.qos }} · Retain {{ 'an' if mqtt_settings.retain else 'aus' }}</div>
+        <div class="mqtt-pill">
+          <div class="pill-title">MQTT</div>
+          <div class="pill-main">{{ mqtt_settings.host or 'nicht gesetzt' }}:{{ mqtt_settings.port }}</div>
+          <div class="pill-sub">Basis {{ mqtt_settings.base_topic }} · QoS {{ mqtt_settings.qos }}</div>
         </div>
       </header>
 
-      <section class="section-head">
+      <section class="section-header">
         <div>
-          <div class="eyebrow">Übersicht</div>
+          <div class="eyebrow">Live Übersicht</div>
           <h2>Fahrzeuge</h2>
+        </div>
+        <div class="toolbar">
+          <button id="mqttTestBtn" class="ghost-btn">MQTT testen</button>
         </div>
       </section>
 
-      <section class="cards-grid">
+      <section id="cardsGrid" class="cards-grid">
         {% for card in cards %}
-        <article class="vehicle-card card-surface">
-          <div class="vehicle-card-header">
-            <div class="vehicle-title-wrap">
-              <div class="vehicle-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M5 11l1.2-3.2A2 2 0 0 1 8.08 6.5h7.84a2 2 0 0 1 1.88 1.3L19 11" />
-                  <path d="M4 16v-2.5A2.5 2.5 0 0 1 6.5 11h11A2.5 2.5 0 0 1 20 13.5V16" />
-                  <path d="M7 16v1.5M17 16v1.5M4 16h16" />
-                </svg>
-              </div>
+          <article class="vehicle-card">
+            <div class="vehicle-head">
               <div>
                 <div class="vehicle-title">{{ card.label }}</div>
                 <div class="vehicle-subtitle">{{ card.manufacturer }} · {{ card.license_plate }}</div>
               </div>
+              <span class="status-badge {{ card.status }}">{{ card.status }}</span>
             </div>
-            <button class="icon-btn" type="button" title="Bearbeiten folgt später">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/>
-                <line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/>
-                <line x1="4" y1="18" x2="20" y2="18"/><circle cx="11" cy="18" r="2"/>
-              </svg>
-            </button>
-          </div>
-          <div class="vehicle-card-body">
-            <div class="status-row">
-              <span class="status-label">Status</span>
-              <span class="status-pill {{ card.status_tone }}">{{ card.status }}</span>
+            <div class="vehicle-metrics">
+              <div class="metric"><span>SoC</span><strong>{{ card.metrics.soc if card.metrics.soc is not none else '—' }}{% if card.metrics.soc is not none %} %{% endif %}</strong></div>
+              <div class="metric"><span>Reichweite</span><strong>{{ card.metrics.range if card.metrics.range is not none else '—' }}{% if card.metrics.range is not none %} km{% endif %}</strong></div>
+              <div class="metric"><span>Lädt</span><strong>{{ 'ja' if card.metrics.charging else ('nein' if card.metrics.charging is not none else '—') }}</strong></div>
+              <div class="metric"><span>Angesteckt</span><strong>{{ 'ja' if card.metrics.plugged else ('nein' if card.metrics.plugged is not none else '—') }}</strong></div>
+              <div class="metric"><span>Kilometer</span><strong>{{ card.metrics.odometer if card.metrics.odometer is not none else '—' }}</strong></div>
+              <div class="metric"><span>Ladelimit</span><strong>{{ card.metrics.limitSoc if card.metrics.limitSoc is not none else '—' }}{% if card.metrics.limitSoc is not none %} %{% endif %}</strong></div>
             </div>
-            {% for stat in card.stats %}
-            <div class="stat-row"><span>{{ stat.label }}</span><span>{{ stat.value }}</span></div>
-            {% endfor %}
-          </div>
-        </article>
+            <div class="card-footer">
+              <div>{{ card.status_detail }}</div>
+              <div class="muted">{{ card.last_update or 'Noch keine Live-Daten' }}</div>
+            </div>
+          </article>
         {% endfor %}
-
-        <article class="add-card card-outline">
-          <button type="button" id="openModalBtn" class="add-card-btn">
-            <span class="plus">＋</span>
-            <span>Fahrzeug hinzufügen</span>
-          </button>
-        </article>
+        <button class="add-card" id="openWizardBtn">
+          <span>＋</span>
+          <strong>Fahrzeug hinzufügen</strong>
+        </button>
       </section>
     </main>
 
-    <dialog id="vehicleDialog" class="modal">
-      <form id="vehicleForm" class="modal-panel" method="dialog">
-        <div class="modal-head">
+    <dialog id="wizardDialog" class="wizard-dialog">
+      <div class="wizard-panel">
+        <div class="wizard-head">
           <div>
-            <div class="eyebrow">Einrichtung</div>
+            <div class="eyebrow">Wizard</div>
             <h3>Fahrzeug hinzufügen</h3>
           </div>
-          <button type="button" class="icon-btn secondary" id="closeBtn" aria-label="Schließen">✕</button>
+          <button id="closeWizardBtn" class="icon-btn">✕</button>
         </div>
 
-        <div class="form-columns">
-          <section class="column-main">
-            <label>
-              Hersteller
-              <select name="manufacturer" id="manufacturerSelect" required>
-                <option value="">Bitte auswählen</option>
-                {% for provider in providers %}
-                  <option value="{{ provider.id }}">{{ provider.name }}</option>
-                {% endfor %}
-              </select>
-            </label>
+        <div class="wizard-steps">
+          <div class="step is-active" data-step-indicator="1">1 Hersteller</div>
+          <div class="step" data-step-indicator="2">2 Fahrzeug</div>
+          <div class="step" data-step-indicator="3">3 BMW</div>
+          <div class="step" data-step-indicator="4">4 Auth</div>
+          <div class="step" data-step-indicator="5">5 Prüfen</div>
+        </div>
 
-            <div id="providerSummary" class="info-panel" hidden>
-              <div class="info-panel-title" id="providerTitle">Hersteller</div>
-              <p id="providerNotes"></p>
-              <ol id="providerSteps" class="setup-list"></ol>
-            </div>
-
-            <div class="field-grid two-up">
-              <label>
-                Anzeigename
-                <input name="label" required placeholder="BMW iX1 xDrive30e" />
-              </label>
-              <label>
-                Interne ID
-                <input name="id" required placeholder="bmw-ggca501e" />
-              </label>
-              <label>
-                Kennzeichen
-                <input name="license_plate" required placeholder="GGCA501E" />
-              </label>
-            </div>
-
-            <div id="providerFields" class="field-grid"></div>
+        <div class="wizard-body">
+          <section class="wizard-step is-active" data-step="1">
+            <div class="provider-grid" id="providerGrid"></div>
           </section>
 
-          <aside class="column-side">
-            <div class="info-panel compact-panel">
-              <div class="info-panel-title">MQTT Konfiguration</div>
-              <p>Die MQTT-Zugangsdaten sind global in der Add-on-Konfiguration hinterlegt und gelten für alle Fahrzeuge.</p>
-              <div class="kv-list">
-                <div class="kv-item"><span>Host</span><strong>{{ mqtt_settings.host or 'nicht gesetzt' }}</strong></div>
-                <div class="kv-item"><span>Port</span><strong>{{ mqtt_settings.port }}</strong></div>
-                <div class="kv-item"><span>Benutzer</span><strong>{{ mqtt_settings.username or 'nicht gesetzt' }}</strong></div>
-                <div class="kv-item"><span>Passwort</span><strong>{{ 'gesetzt' if mqtt_settings.password_set else 'nicht gesetzt' }}</strong></div>
-                <div class="kv-item"><span>Base Topic</span><strong>{{ mqtt_settings.base_topic }}</strong></div>
-                <div class="kv-item"><span>QoS / Retain</span><strong>{{ mqtt_settings.qos }} / {{ 'an' if mqtt_settings.retain else 'aus' }}</strong></div>
+          <section class="wizard-step" data-step="2">
+            <div class="form-grid two">
+              <label>Anzeigename<input id="vehicleLabel" placeholder="BMW iX1 xDrive30e" /></label>
+              <label>Interne ID<input id="vehicleId" placeholder="bmw-ggca501e" /></label>
+              <label>Kennzeichen<input id="vehiclePlate" placeholder="GG-CA-TEST" /></label>
+            </div>
+          </section>
+
+          <section class="wizard-step" data-step="3">
+            <div class="bmw-card">
+              <div class="bmw-card-head">
+                <div>
+                  <div class="eyebrow">BMW Setup</div>
+                  <h4>BMW CarData Einrichtung</h4>
+                </div>
+                <span class="setup-chip">BMW</span>
+              </div>
+              <p>BMW benötigt einen externen Login-Link. Die MQTT-Zugangsdaten kommen zentral aus der Add-on-Konfiguration. Für Live-Streaming müssen im BMW Portal die Datenpunkte freigegeben sein.</p>
+              <ul id="bmwStepsList"></ul>
+              <div class="form-grid two">
+                <label>Client ID<input id="bmwClientId" placeholder="BMW Client ID" /></label>
+                <label>VIN<input id="bmwVin" placeholder="WBA..." /></label>
+                <label>Region<input id="bmwRegion" value="EU" /></label>
               </div>
             </div>
+          </section>
 
-            <div class="info-panel compact-panel status-panel">
-              <div class="info-panel-title">Verbindungsstatus</div>
-              <div class="status-check-row">
-                <span class="status-pill ok" id="statusText">bereit zum Speichern</span>
-                <button type="button" class="button-ghost" id="checkBtn">prüfen</button>
+          <section class="wizard-step" data-step="4">
+            <div class="auth-box">
+              <div class="auth-head">
+                <h4>BMW Authentifizierung</h4>
+                <button id="startAuthBtn" class="primary-btn">Login-Link erzeugen</button>
               </div>
-              <p class="muted" id="statusHint">In dieser Version wird die Formularlogik validiert. Live-Login und echter Verbindungscheck folgen im nächsten Schritt.</p>
+              <div id="authState" class="auth-state muted">Noch nicht gestartet.</div>
+              <div id="authInfo" class="auth-info" hidden>
+                <div><span>User Code</span><strong id="userCode"></strong></div>
+                <div><span>BMW Link</span><a id="verificationUrl" target="_blank" rel="noopener">Öffnen</a></div>
+              </div>
+              <div class="auth-actions">
+                <button id="pollAuthBtn" class="ghost-btn">Status prüfen</button>
+              </div>
             </div>
-          </aside>
+          </section>
+
+          <section class="wizard-step" data-step="5">
+            <div class="review-panel">
+              <h4>Prüfen & Speichern</h4>
+              <div class="review-grid" id="reviewGrid"></div>
+            </div>
+          </section>
         </div>
 
-        <div class="notice" id="formError"></div>
-        <div class="footer-actions">
-          <button type="button" class="text-btn" id="cancelBtn">Abbrechen</button>
-          <button type="submit" class="button-primary">Überprüfen &amp; speichern</button>
+        <div id="wizardError" class="notice"></div>
+        <div class="wizard-footer">
+          <button id="prevBtn" class="ghost-btn">Zurück</button>
+          <div class="spacer"></div>
+          <button id="nextBtn" class="primary-btn">Weiter</button>
+          <button id="saveBtn" class="primary-btn" hidden>Fahrzeug speichern</button>
         </div>
-      </form>
+      </div>
     </dialog>
 
     <script>
       const providers = {{ providers | tojson }};
-      const dialog = document.getElementById('vehicleDialog');
-      const openModalBtn = document.getElementById('openModalBtn');
-      const closeBtn = document.getElementById('closeBtn');
-      const cancelBtn = document.getElementById('cancelBtn');
-      const vehicleForm = document.getElementById('vehicleForm');
-      const manufacturerSelect = document.getElementById('manufacturerSelect');
-      const providerSummary = document.getElementById('providerSummary');
-      const providerTitle = document.getElementById('providerTitle');
-      const providerNotes = document.getElementById('providerNotes');
-      const providerSteps = document.getElementById('providerSteps');
-      const providerFields = document.getElementById('providerFields');
-      const statusText = document.getElementById('statusText');
-      const statusHint = document.getElementById('statusHint');
-      const checkBtn = document.getElementById('checkBtn');
-      const formError = document.getElementById('formError');
+      const state = { step: 1, manufacturer: null, authSessionId: null, authReady: false };
+      const dialog = document.getElementById('wizardDialog');
+      const providerGrid = document.getElementById('providerGrid');
+      const openWizardBtn = document.getElementById('openWizardBtn');
+      const closeWizardBtn = document.getElementById('closeWizardBtn');
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const saveBtn = document.getElementById('saveBtn');
+      const wizardError = document.getElementById('wizardError');
+      const bmwStepsList = document.getElementById('bmwStepsList');
+      const authState = document.getElementById('authState');
+      const authInfo = document.getElementById('authInfo');
+      const userCode = document.getElementById('userCode');
+      const verificationUrl = document.getElementById('verificationUrl');
+      const reviewGrid = document.getElementById('reviewGrid');
 
-      function providerById(id) {
-        return providers.find((entry) => entry.id === id);
+      function showError(msg='') { wizardError.textContent = msg; wizardError.style.display = msg ? 'block' : 'none'; }
+      function field(id){ return document.getElementById(id); }
+      function updateStep() {
+        document.querySelectorAll('.wizard-step').forEach(el => el.classList.toggle('is-active', Number(el.dataset.step) === state.step));
+        document.querySelectorAll('.step').forEach(el => el.classList.toggle('is-active', Number(el.dataset.stepIndicator) === state.step));
+        prevBtn.style.visibility = state.step === 1 ? 'hidden' : 'visible';
+        nextBtn.hidden = state.step === 5;
+        saveBtn.hidden = state.step !== 5;
+        if (state.step === 5) renderReview();
       }
-
-      function escapeHtml(value) {
-        return String(value)
-          .replaceAll('&', '&amp;')
-          .replaceAll('<', '&lt;')
-          .replaceAll('>', '&gt;')
-          .replaceAll('"', '&quot;')
-          .replaceAll("'", '&#39;');
+      function resetWizard() {
+        state.step = 1; state.manufacturer = null; state.authSessionId = null; state.authReady = false;
+        showError(''); authInfo.hidden = true; authState.textContent = 'Noch nicht gestartet.';
+        updateStep(); renderProviders();
       }
-
-      function renderProviderFields(providerId) {
-        const provider = providerById(providerId);
-        providerFields.innerHTML = '';
-        providerSteps.innerHTML = '';
-
-        if (!provider) {
-          providerSummary.hidden = true;
-          return;
-        }
-
-        providerSummary.hidden = false;
-        providerTitle.textContent = provider.name;
-        providerNotes.textContent = provider.notes || '';
-        (provider.setup_steps || []).forEach((step) => {
-          const li = document.createElement('li');
-          li.textContent = step;
-          providerSteps.appendChild(li);
-        });
-
-        (provider.fields || []).forEach((field) => {
-          const wrapper = document.createElement('label');
-          wrapper.innerHTML = `
-            ${escapeHtml(field.label)}
-            <input
-              name="provider_${escapeHtml(field.name)}"
-              type="${field.type === 'password' ? 'password' : 'text'}"
-              ${field.required ? 'required' : ''}
-              value="${escapeHtml(field.default || '')}"
-              placeholder="${escapeHtml(field.label)}"
-            />`;
-          providerFields.appendChild(wrapper);
+      function renderProviders() {
+        providerGrid.innerHTML = '';
+        providers.forEach(provider => {
+          const btn = document.createElement('button');
+          btn.className = 'provider-card' + (state.manufacturer === provider.id ? ' selected' : '');
+          btn.innerHTML = `<div class="provider-badge">${provider.badge || provider.id.toUpperCase()}</div><strong>${provider.name}</strong><span>${provider.notes || ''}</span>`;
+          btn.onclick = () => {
+            state.manufacturer = provider.id;
+            renderProviders();
+            if (provider.id === 'bmw') {
+              bmwStepsList.innerHTML = '';
+              (provider.setup_steps || []).forEach(step => { const li = document.createElement('li'); li.textContent = step; bmwStepsList.appendChild(li); });
+            }
+          };
+          providerGrid.appendChild(btn);
         });
       }
-
-      openModalBtn?.addEventListener('click', () => dialog.showModal());
-      closeBtn?.addEventListener('click', () => dialog.close());
-      cancelBtn?.addEventListener('click', () => dialog.close());
-      manufacturerSelect?.addEventListener('change', (event) => renderProviderFields(event.target.value));
-      checkBtn?.addEventListener('click', () => {
-        statusText.textContent = 'lokale Validierung aktiv';
-        statusHint.textContent = 'Noch kein echter Online-Check in V0.2.1 – geprüft wird aktuell die Formularstruktur.';
-      });
-
-      vehicleForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        formError.textContent = '';
-        const formData = new FormData(vehicleForm);
-        const provider_config = {};
-        for (const [key, value] of formData.entries()) {
-          if (key.startsWith('provider_')) {
-            provider_config[key.replace('provider_', '')] = value;
-          }
-        }
-        const payload = {
-          id: formData.get('id'),
-          label: formData.get('label'),
-          manufacturer: formData.get('manufacturer'),
-          license_plate: formData.get('license_plate'),
-          enabled: true,
-          provider_config,
-        };
-        const response = await fetch('api/vehicles', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+      function renderReview() {
+        reviewGrid.innerHTML = '';
+        const rows = [
+          ['Hersteller', state.manufacturer],
+          ['Anzeigename', field('vehicleLabel').value],
+          ['Interne ID', field('vehicleId').value],
+          ['Kennzeichen', field('vehiclePlate').value],
+          ['Client ID', field('bmwClientId').value],
+          ['VIN', field('bmwVin').value],
+          ['BMW Auth', state.authReady ? 'abgeschlossen' : 'offen'],
+        ];
+        rows.forEach(([k,v]) => {
+          const div = document.createElement('div');
+          div.className = 'review-row';
+          div.innerHTML = `<span>${k}</span><strong>${v || '—'}</strong>`;
+          reviewGrid.appendChild(div);
         });
-        if (!response.ok) {
-          const err = await response.json();
-          formError.textContent = err.detail || 'Fehler beim Speichern';
-          return;
+      }
+      function validateStep() {
+        showError('');
+        if (state.step === 1 && !state.manufacturer) return 'Bitte Hersteller auswählen.';
+        if (state.step === 2) {
+          if (!field('vehicleLabel').value || !field('vehicleId').value || !field('vehiclePlate').value) return 'Bitte Fahrzeugdaten vollständig ausfüllen.';
         }
+        if (state.step === 3 && state.manufacturer === 'bmw') {
+          if (!field('bmwClientId').value || !field('bmwVin').value) return 'Bitte BMW Client ID und VIN eintragen.';
+        }
+        if (state.step === 4 && state.manufacturer === 'bmw' && !state.authReady) return 'Bitte BMW Authentifizierung abschließen.';
+        return '';
+      }
+      async function refreshCards() {
+        const res = await fetch('./api/dashboard');
+        const data = await res.json();
         window.location.reload();
-      });
+      }
+      openWizardBtn.onclick = () => { resetWizard(); dialog.showModal(); };
+      closeWizardBtn.onclick = () => dialog.close();
+      prevBtn.onclick = () => { if (state.step > 1) { state.step -= 1; updateStep(); } };
+      nextBtn.onclick = () => {
+        const error = validateStep();
+        if (error) return showError(error);
+        if (state.manufacturer !== 'bmw' && state.step === 2) state.step = 5; else state.step += 1;
+        updateStep();
+      };
+      document.getElementById('mqttTestBtn').onclick = async () => {
+        try {
+          const res = await fetch('./api/mqtt/test', { method: 'POST' });
+          const data = await res.json();
+          alert(data.detail || `MQTT ok: ${data.topic}`);
+        } catch (err) { alert('MQTT Test fehlgeschlagen'); }
+      };
+      document.getElementById('startAuthBtn').onclick = async () => {
+        showError('');
+        try {
+          const res = await fetch('./api/providers/bmw/auth/start', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ client_id: field('bmwClientId').value, vin: field('bmwVin').value, license_plate: field('vehiclePlate').value })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || 'Fehler');
+          state.authSessionId = data.session_id;
+          userCode.textContent = data.user_code;
+          verificationUrl.href = data.verification_uri_complete;
+          verificationUrl.textContent = data.verification_uri_complete;
+          authInfo.hidden = false;
+          authState.textContent = data.message || 'BMW Login-Link erstellt.';
+          window.open(data.verification_uri_complete, '_blank');
+        } catch (err) { showError(err.message); }
+      };
+      document.getElementById('pollAuthBtn').onclick = async () => {
+        if (!state.authSessionId) return showError('Bitte zuerst Login-Link erzeugen.');
+        try {
+          const res = await fetch('./api/providers/bmw/auth/poll', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: state.authSessionId })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || 'Fehler');
+          authState.textContent = data.message || data.state;
+          if (data.state === 'authorized') {
+            state.authReady = true;
+            authState.textContent = 'BMW erfolgreich verbunden.';
+          }
+        } catch (err) { showError(err.message); }
+      };
+      saveBtn.onclick = async () => {
+        try {
+          const payload = {
+            id: field('vehicleId').value,
+            label: field('vehicleLabel').value,
+            manufacturer: state.manufacturer,
+            license_plate: field('vehiclePlate').value,
+            provider_config: {
+              client_id: field('bmwClientId').value,
+              vin: field('bmwVin').value,
+              region: field('bmwRegion').value,
+            },
+            auth_session_id: state.authSessionId,
+          };
+          const res = await fetch('./api/vehicles', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || 'Fehler');
+          dialog.close();
+          await refreshCards();
+        } catch (err) { showError(err.message); }
+      };
+      renderProviders(); updateStep();
     </script>
   </body>
 </html>

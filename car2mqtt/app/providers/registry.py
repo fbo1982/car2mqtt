@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from typing import Dict
 from app.providers.base import BaseProvider
-from app.providers.bmw import BmwProvider
-from app.providers.gwm import GwmProvider
+from app.providers.bmw_provider import BmwProvider
+from app.providers.gwm_provider import GwmProvider
 
 
 class ProviderRegistry:
     def __init__(self) -> None:
-        self._providers: Dict[str, BaseProvider] = {
+        self._providers: dict[str, BaseProvider] = {
             "bmw": BmwProvider(),
             "gwm": GwmProvider(),
         }

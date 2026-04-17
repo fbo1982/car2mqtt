@@ -10,6 +10,7 @@ def load_runtime_mqtt_settings() -> RuntimeMqttSettings:
         host=os.getenv("MQTT_HOST", ""),
         port=int(os.getenv("MQTT_PORT", "1883")),
         username=os.getenv("MQTT_USERNAME", ""),
+        password=password,
         password_set=bool(password),
         base_topic=os.getenv("MQTT_BASE_TOPIC", "car"),
         qos=int(os.getenv("MQTT_QOS", "1")),

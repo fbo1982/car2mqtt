@@ -1,11 +1,3 @@
-# Car2MQTT Add-on Repository
+# Car2MQTT Add-ons
 
-Dieses Repository enthält das Home-Assistant-Add-on `car2mqtt`.
-
-## Version
-Aktueller Stand: `v0.2.1`
-
-## Änderungen
-- UI im Kachelstil überarbeitet
-- MQTT-Zugangsdaten in die Add-on-Konfiguration verschoben
-- Multi-Fahrzeug-Basis bleibt erhalten
+Home Assistant Add-on Repository für Car2MQTT.
