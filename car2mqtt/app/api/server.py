@@ -85,6 +85,7 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         "last_update": (runtime_state or {}).get("last_update", ""),
         "enabled": vehicle.enabled,
         "manufacturer_note": "ORA Konfiguration vorbereitet" if vehicle.manufacturer == "gwm" else "",
+        "source_topic_base": vehicle.provider_config.get("source_topic_base", "") if vehicle.manufacturer == "gwm" else "",
     }
 
 
@@ -122,7 +123,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.4.5",
+                "version": "0.4.6",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -276,6 +277,8 @@ def create_app() -> FastAPI:
             (target_dir / "ora2mqtt.yml").write_text(ora_config, encoding="utf-8")
             vehicle.provider_state.auth_state = "authorized"
             vehicle.provider_state.auth_message = "ora2mqtt.yml erzeugt"
+            if not vehicle.provider_config.get("source_topic_base"):
+                vehicle.provider_config["source_topic_base"] = f"GWM/{vehicle.provider_config.get("vehicle_id") or vehicle.id}"
             log_store.append(vehicle.id, "ORA Konfiguration erzeugt: providers/%s/ora2mqtt.yml" % vehicle.id)
 
         if vehicle_id_to_replace and vehicle_id_to_replace != vehicle.id:
@@ -294,7 +297,9 @@ def create_app() -> FastAPI:
 
         if payload.manufacturer == "bmw" and mqtt_settings.host and vehicle.provider_state.auth_state == "authorized":
             worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
-        if payload.manufacturer == "gwm":
+        if payload.manufacturer == "gwm" and mqtt_settings.host:
+            worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
+        elif payload.manufacturer == "gwm":
             worker_manager.publish_vehicle_saved_meta(vehicle.id)
         return {"status": "ok", "vehicle_id": vehicle.id}
 

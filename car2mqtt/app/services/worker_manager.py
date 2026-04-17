@@ -10,9 +10,11 @@ from app.core.runtime_settings import load_runtime_mqtt_settings
 from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
 from app.mapping.bmw_mapper import map_bmw_payload
+from app.mapping.gwm_mapper import apply_gwm_metric
 from app.mqtt.client import LocalMqttClient
 from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic
 from app.providers.bmw.streaming import BMWStreamWorker
+from app.providers.gwm_monitor import GwmMonitorWorker
 
 
 class WorkerManager:
@@ -21,12 +23,12 @@ class WorkerManager:
         self.config_store = config_store
         self.state_store = state_store
         self.log_store = VehicleLogStore(data_dir)
-        self.workers: dict[str, BMWStreamWorker] = {}
+        self.workers: dict[str, object] = {}
 
     def start_all(self) -> None:
         settings = load_runtime_mqtt_settings()
         for vehicle in self.config_store.load().vehicles:
-            if vehicle.manufacturer == "bmw" and vehicle.enabled and vehicle.provider_state.auth_state == "authorized":
+            if vehicle.manufacturer in {"bmw", "gwm"} and vehicle.enabled and vehicle.provider_state.auth_state == "authorized":
                 self.start_or_restart_vehicle(vehicle.id, settings)
 
     def stop_vehicle(self, vehicle_id: str) -> None:
@@ -38,13 +40,29 @@ class WorkerManager:
     def start_or_restart_vehicle(self, vehicle_id: str, mqtt_settings=None) -> None:
         mqtt_settings = mqtt_settings or load_runtime_mqtt_settings()
         vehicle = self.config_store.get_vehicle(vehicle_id)
-        if not vehicle or vehicle.manufacturer != "bmw":
+        if not vehicle or vehicle.manufacturer not in {"bmw", "gwm"}:
             return
         if not vehicle.enabled:
             self._set_runtime_state(vehicle_id, "inactive", "Fahrzeug ist inaktiv")
             self.log_store.append(vehicle_id, "Fahrzeug ist inaktiv - kein Remote-Login, kein Streaming")
             return
         self.stop_vehicle(vehicle_id)
+        if vehicle.manufacturer == "gwm":
+            self.workers[vehicle_id] = GwmMonitorWorker(
+                vehicle=vehicle,
+                mqtt_settings=mqtt_settings,
+                on_connect=lambda vid=vehicle_id: self._set_runtime_state(vid, "connected", "Mit lokalem ORA MQTT Stream verbunden"),
+                on_disconnect=lambda rc, vid=vehicle_id: self._set_runtime_state(vid, "disconnected", f"ORA Verbindung getrennt (rc={rc})"),
+                on_error=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "error", message),
+                on_detail=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "starting", message),
+                on_message=lambda topic, payload, vid=vehicle_id: self._handle_gwm_payload(vid, topic, payload, mqtt_settings),
+                log_callback=lambda message, vid=vehicle_id: self.log_store.append(vid, message),
+            )
+            self.log_store.append(vehicle_id, "ORA Workerstart angefordert")
+            self._set_runtime_state(vehicle_id, "starting", "ORA Worker startet")
+            self.workers[vehicle_id].start()
+            return
+
         self.workers[vehicle_id] = BMWStreamWorker(
             vehicle=vehicle,
             mqtt_settings=mqtt_settings,
@@ -154,6 +172,64 @@ class WorkerManager:
         self.state_store.upsert(runtime)
         count = len((data or {}).get("data", {}))
         self.log_store.append(vehicle_id, f"Live-Daten empfangen: {count} Datenpunkte -> {callback_topic}")
+        self._publish_meta(vehicle, runtime, mqtt_settings)
+
+
+    def _handle_gwm_payload(self, vehicle_id: str, source_topic: str, payload: str, mqtt_settings) -> None:
+        vehicle = self.config_store.get_vehicle(vehicle_id)
+        if not vehicle:
+            return
+        source_base = str(vehicle.provider_config.get("source_topic_base", "")).strip() or f"GWM/{vehicle.provider_config.get('vehicle_id', vehicle.id)}"
+        if source_topic.startswith(source_base + "/"):
+            relative = source_topic[len(source_base) + 1:]
+        else:
+            relative = source_topic
+
+        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
+        target_topic = f"{raw_topic_base}/{relative}"
+
+        client = LocalMqttClient(mqtt_settings)
+        try:
+            client.connect()
+            client.publish(target_topic, payload)
+        finally:
+            client.disconnect()
+
+        runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
+        metrics = dict(runtime.metrics or {})
+        parts = source_topic.split("/")
+        item_id = ""
+        if "items" in parts:
+            idx = parts.index("items")
+            if len(parts) > idx + 1:
+                item_id = parts[idx + 1]
+        metrics = apply_gwm_metric(metrics, item_id, payload)
+
+        runtime.connection_state = "connected"
+        runtime.connection_detail = "ORA Stream aktiv"
+        runtime.auth_state = vehicle.provider_state.auth_state
+        runtime.raw_topic = raw_topic_base
+        runtime.mapped_topic = mapped
+        runtime.metrics = metrics
+        runtime.provider_meta = {
+            "vehicle_id": vehicle.provider_config.get("vehicle_id", vehicle.id),
+            "source_topic_base": source_base,
+        }
+
+        from datetime import datetime, timezone
+        runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+        self.state_store.upsert(runtime)
+
+        if metrics:
+            client = LocalMqttClient(mqtt_settings)
+            try:
+                client.connect()
+                for key, value in metrics.items():
+                    client.publish(f"{mapped}/{key}", value)
+            finally:
+                client.disconnect()
+
+        self.log_store.append(vehicle_id, f"ORA Datenpunkt empfangen: {source_topic} = {payload}")
         self._publish_meta(vehicle, runtime, mqtt_settings)
 
     def publish_vehicle_saved_meta(self, vehicle_id: str) -> None:
