@@ -1,6 +1,6 @@
 # Car2MQTT Home Assistant Add-on
 
-Version 0.3.2
+Version 0.4.0
 
 ## Enthalten
 - mehrstufiger Fahrzeug-Wizard
@@ -16,3 +16,8 @@ Version 0.3.2
 - MQTT-Zugangsdaten werden zentral in der Add-on-Konfiguration gepflegt.
 - BMW nutzt den Device Flow mit externem Login-Link.
 - GWM/ORA bleibt in dieser Version ein Platzhalter für den nächsten Schritt.
+
+
+## V0.4.0
+- ORA/GWM Wizard erzeugt eine `ora2mqtt.yml`-Vorlage im Fahrzeugordner.
+- BMW bleibt unverändert aktiv.

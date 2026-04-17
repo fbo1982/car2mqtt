@@ -29,7 +29,7 @@
     <div>
       <div class="eyebrow">Home Assistant Add-on</div>
       <h1>Car2MQTT <span>v{{ version }}</span></h1>
-      <p>BMW-Mehrfahrzeug-Zentrale mit exakter Topic-Logik, optionalem append_vin, Bearbeiten-Dialog mit Re-Auth, Logviewer und Aktiv/Inaktiv-Steuerung pro Fahrzeug.</p>
+      <p>BMW-Mehrfahrzeug-Zentrale plus ORA/GWM-Konfigurationsassistent für ora2mqtt.yml.</p>
     </div>
     <div class="mqtt-pill">
       <div class="pill-title">MQTT</div>
@@ -77,6 +77,21 @@
             <button id="pollAuthBtn" class="tiny-btn">Status prüfen</button>
           </div>
         </div>
+
+      <div id="gwmCreateSection" class="info-box hidden">
+        <div class="eyebrow">ORA / GWM Setup</div>
+        <div class="muted" style="margin-top:10px">Car2MQTT erzeugt beim Speichern eine <code>ora2mqtt.yml</code>-Vorlage im Fahrzeugordner.</div>
+        <div class="field" style="margin-top:14px"><label>Benutzerkonto</label><input id="gwmAccount" placeholder="mail@example.com" /></div>
+        <div class="field" style="margin-top:16px"><label>Passwort</label><input id="gwmPassword" type="password" /></div>
+        <div class="field" style="margin-top:16px"><label>Land</label><input id="gwmCountry" value="DE" /></div>
+        <div class="field" style="margin-top:16px"><label>Sprache</label><input id="gwmLanguage" value="de" /></div>
+        <div class="field" style="margin-top:16px"><label>Polling-Intervall (Sekunden)</label><input id="gwmPollInterval" type="number" value="60" min="10" /></div>
+        <div class="field" style="margin-top:16px"><label>Vehicle ID</label><input id="gwmVehicleId" placeholder="optional, sonst interne ID" /></div>
+        <div class="field" style="margin-top:16px"><label>Akkukapazität (kWh)</label><input id="gwmCapacity" type="number" step="0.1" placeholder="z. B. 63" /></div>
+        <div class="auth-box">
+          <strong>Hinweis</strong>
+          <div class="muted" style="margin-top:8px">Upstream beschreibt, dass <code>ora2mqtt configure</code> zuerst eine Konfigurationsdatei erzeugt. Hier wird stattdessen eine gespeicherte Vorlage erzeugt, damit die ORA-Integration im Add-on vorbereitet ist.</div>
+        </div>
       </div>
     </div>
     <div class="modal-foot"><button id="cancelWizardBtn" class="ghost-btn">Abbrechen</button><div class="spacer"></div><button id="saveCreateBtn" class="primary-btn">Überprüfen &amp; speichern</button></div>
@@ -120,6 +135,27 @@
           </div>
         </div>
       </div>
+
+      <div id="editGwmSection" class="grid hidden">
+        <div class="info-box">
+          <div class="eyebrow">ORA / GWM Setup</div>
+          <div class="field" style="margin-top:14px"><label>Benutzerkonto</label><input id="editGwmAccount" /></div>
+          <div class="field" style="margin-top:16px"><label>Passwort</label><input id="editGwmPassword" type="password" /></div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="field"><label>Land</label><input id="editGwmCountry" /></div>
+            <div class="field"><label>Sprache</label><input id="editGwmLanguage" /></div>
+          </div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="field"><label>Polling-Intervall (Sekunden)</label><input id="editGwmPollInterval" type="number" min="10" /></div>
+            <div class="field"><label>Vehicle ID</label><input id="editGwmVehicleId" /></div>
+          </div>
+          <div class="field" style="margin-top:16px"><label>Akkukapazität (kWh)</label><input id="editGwmCapacity" type="number" step="0.1" /></div>
+        </div>
+        <div class="log-box">
+          <div class="log-toolbar"><strong>ora2mqtt.yml Vorschau</strong><div class="log-actions"><button id="refreshOraConfigBtn" class="tiny-btn">Vorschau aktualisieren</button></div></div>
+          <div id="oraConfigViewer" class="log-viewer">Noch keine ORA-Konfiguration geladen.</div>
+        </div>
+      </div>
       <div class="log-box">
         <div class="log-toolbar"><strong>Fahrzeug-Log</strong><div class="log-actions"><span id="liveLogState" class="live-chip">Live aus</span><button id="toggleLiveLogsBtn" class="tiny-btn">Live-Log einschalten</button><button id="refreshLogsBtn" class="tiny-btn">Logs aktualisieren</button></div></div>
         <div id="vehicleLogViewer" class="log-viewer">Noch keine Logs geladen.</div>
@@ -147,9 +183,9 @@ function cardHtml(card){
 function renderCards(){ field('cardsGrid').innerHTML = cards.map(cardHtml).join('') + `<button class="add-card" id="openWizardBtn"><span>＋</span><strong>Fahrzeug hinzufügen</strong></button>`; field('openWizardBtn').onclick = openWizard; }
 function renderProviderList(){ const select = field('createManufacturer'); select.innerHTML = `<option value="">Bitte Hersteller wählen</option>` + providers.map(provider => `<option value="${provider.id}">${provider.name}</option>`).join(''); select.value = createState.manufacturer || ''; }
 function fillManufacturerSelect(){ field('editManufacturer').innerHTML = providers.map(p => `<option value="${p.id}">${p.name}</option>`).join(''); }
-function toggleCreateSections(){ createState.manufacturer = field('createManufacturer').value || null; field('bmwCreateSection').classList.toggle('hidden', createState.manufacturer !== 'bmw'); }
-function toggleEditSections(){ field('editBmwSection').classList.toggle('hidden', field('editManufacturer').value !== 'bmw'); }
-function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehicleId','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin'].forEach(id=>field(id).value=''); field('bmwRegion').value='EU'; field('bmwAppendVin').checked=false; field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; toggleCreateSections(); }
+function toggleCreateSections(){ createState.manufacturer = field('createManufacturer').value || null; field('bmwCreateSection').classList.toggle('hidden', createState.manufacturer !== 'bmw'); field('gwmCreateSection').classList.toggle('hidden', createState.manufacturer !== 'gwm'); }
+function toggleEditSections(){ const man = field('editManufacturer').value; field('editBmwSection').classList.toggle('hidden', man !== 'bmw'); field('editGwmSection').classList.toggle('hidden', man !== 'gwm'); }
+function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehicleId','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity'].forEach(id=>field(id).value=''); field('bmwRegion').value='EU'; field('bmwAppendVin').checked=false; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; toggleCreateSections(); }
 function openWizard(){ resetCreate(); field('wizardDialog').showModal(); }
 async function loadDashboard(){ const res = await fetch('./api/dashboard'); const data = await res.json(); cards = data.vehicles || []; renderCards(); }
 async function postJson(url,payload,method='POST'){ const res = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})}); const text = await res.text(); let data={}; try{ data = text ? JSON.parse(text) : {}; }catch{ data = { detail: text }; } if(!res.ok) throw new Error(data.detail || 'Unbekannter Fehler'); return data; }
@@ -169,6 +205,10 @@ field('saveCreateBtn').onclick = async()=>{
       if(!createState.authReady) throw new Error('Bitte BMW Authentifizierung abschließen.');
       payload.provider_config = { client_id: field('bmwClientId').value.trim(), mqtt_username: field('bmwMqttUsername').value.trim(), vin: field('bmwVin').value.trim(), region: field('bmwRegion').value.trim(), append_vin: field('bmwAppendVin').checked };
     }
+    if(createState.manufacturer === 'gwm'){
+      payload.provider_config = { account: field('gwmAccount').value.trim(), password: field('gwmPassword').value.trim(), country: field('gwmCountry').value.trim(), language: field('gwmLanguage').value.trim(), poll_interval: field('gwmPollInterval').value.trim(), vehicle_id: field('gwmVehicleId').value.trim() || field('vehicleId').value.trim(), capacity_kwh: field('gwmCapacity').value.trim() };
+      if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.');
+    }
     await postJson('./api/vehicles', payload);
     field('wizardDialog').close();
     await loadDashboard();
@@ -183,9 +223,10 @@ async function editVehicle(vehicleId){
   field('editManufacturer').value = vehicle.manufacturer; field('editLabel').value = vehicle.label; field('editId').value = vehicle.id; field('editPlate').value = vehicle.license_plate;
   field('editEnabled').checked = vehicle.enabled !== false;
   field('editBmwClientId').value = vehicle.provider_config.client_id || ''; field('editBmwMqttUsername').value = vehicle.provider_config.mqtt_username || ''; field('editBmwVin').value = vehicle.provider_config.vin || ''; field('editBmwRegion').value = vehicle.provider_config.region || 'EU'; field('editBmwAppendVin').checked = !!vehicle.provider_config.append_vin;
+  field('editGwmAccount').value = vehicle.provider_config.account || ''; field('editGwmPassword').value = vehicle.provider_config.password || ''; field('editGwmCountry').value = vehicle.provider_config.country || 'DE'; field('editGwmLanguage').value = vehicle.provider_config.language || 'de'; field('editGwmPollInterval').value = vehicle.provider_config.poll_interval || 60; field('editGwmVehicleId').value = vehicle.provider_config.vehicle_id || vehicle.id; field('editGwmCapacity').value = vehicle.provider_config.capacity_kwh || '';
   field('editAuthState').textContent = vehicle.enabled === false ? 'Fahrzeug ist inaktiv.' : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'BMW Anmeldung prüfen.');
-  field('editReauthStartBtn').disabled = vehicle.enabled === false;
-  field('editAuthInfo').classList.add('hidden'); toggleEditSections(); await refreshVehicleLogs(); field('editDialog').showModal();
+  field('editReauthStartBtn').disabled = vehicle.enabled === false || vehicle.manufacturer !== 'bmw';
+  field('editAuthInfo').classList.add('hidden'); toggleEditSections(); await refreshVehicleLogs(); if(vehicle.manufacturer === 'gwm'){ await refreshOraConfig(); } else { field('oraConfigViewer').textContent = 'Für dieses Fahrzeug nicht relevant.'; } field('editDialog').showModal();
 }
 window.editVehicle = editVehicle;
 
@@ -194,6 +235,8 @@ function stopLiveLogs(){ if(editState.liveLogTimer){ clearInterval(editState.liv
 async function refreshVehicleLogs(){ if(!editState.vehicleId) return; try{ const text = await fetchText(`./api/vehicles/${editState.vehicleId}/logs`); const viewer = field('vehicleLogViewer'); const changed = text !== editState.lastLogText; viewer.textContent = text || 'Noch keine Logs vorhanden.'; if(changed){ viewer.scrollTop = viewer.scrollHeight; } editState.lastLogText = text; }catch(err){ field('vehicleLogViewer').textContent = err.message; } }
 function startLiveLogs(){ if(!editState.vehicleId) return; stopLiveLogs(); editState.liveLogsEnabled = true; setLiveLogUi(); refreshVehicleLogs(); editState.liveLogTimer = setInterval(refreshVehicleLogs, 2000); }
 field('refreshLogsBtn').onclick = refreshVehicleLogs;
+async function refreshOraConfig(){ if(!editState.vehicleId) return; try{ const text = await fetchText(`./api/vehicles/${editState.vehicleId}/ora/config`); field('oraConfigViewer').textContent = text || 'Noch keine ORA-Konfiguration vorhanden.'; }catch(err){ field('oraConfigViewer').textContent = err.message; } }
+field('refreshOraConfigBtn').onclick = refreshOraConfig;
 field('toggleLiveLogsBtn').onclick = ()=>{ if(editState.liveLogsEnabled) stopLiveLogs(); else startLiveLogs(); };
 field('editManufacturer').onchange = toggleEditSections;
 field('closeEditBtn').onclick = field('cancelEditBtn').onclick = () => { stopLiveLogs(); field('editDialog').close(); };
@@ -202,6 +245,7 @@ field('editPollAuthBtn').onclick = async()=>{ if(!editState.reauthSessionId) ret
 field('saveEditBtn').onclick = async()=>{ try{ const manufacturer = field('editManufacturer').value; const payload = { id: field('editId').value.trim(), label: field('editLabel').value.trim(), manufacturer, license_plate: field('editPlate').value.trim(), enabled: field('editEnabled').checked, provider_config: {}, auth_session_id: editState.reauthSessionId || null };
   if(!payload.id || !payload.label || !payload.license_plate) throw new Error('Bitte Titel, Interne ID und Kennzeichen ausfüllen.');
   if(manufacturer === 'bmw'){ payload.provider_config = { client_id: field('editBmwClientId').value.trim(), mqtt_username: field('editBmwMqttUsername').value.trim(), vin: field('editBmwVin').value.trim(), region: field('editBmwRegion').value.trim(), append_vin: field('editBmwAppendVin').checked }; if(!payload.provider_config.client_id || !payload.provider_config.vin) throw new Error('Bitte BMW Client ID und VIN eintragen.'); }
+  if(manufacturer === 'gwm'){ payload.provider_config = { account: field('editGwmAccount').value.trim(), password: field('editGwmPassword').value.trim(), country: field('editGwmCountry').value.trim(), language: field('editGwmLanguage').value.trim(), poll_interval: field('editGwmPollInterval').value.trim(), vehicle_id: field('editGwmVehicleId').value.trim() || field('editId').value.trim(), capacity_kwh: field('editGwmCapacity').value.trim() }; if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.'); }
   await postJson(`./api/vehicles/${editState.vehicleId}`, payload, 'PUT'); field('editDialog').close(); await loadDashboard(); } catch(err){ showNotice('editError', err.message); } };
 
 async function deleteVehicle(vehicleId){ if(!confirm('Fahrzeug wirklich löschen?')) return; await fetch(`./api/vehicles/${vehicleId}`,{method:'DELETE'}); await loadDashboard(); }

@@ -21,6 +21,7 @@ from app.mqtt.client import test_connection
 from app.mqtt.topic_builder import mapped_topic, raw_vehicle_topic
 from app.providers.bmw.oauth import poll_device_flow, save_token_file, start_device_flow
 from app.providers.registry import ProviderRegistry
+from app.providers.gwm_config import render_ora2mqtt_yaml
 from app.services.worker_manager import WorkerManager
 
 
@@ -77,11 +78,13 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         "live": {
             "vin": vehicle.provider_config.get("vin", provider_meta.get("vin", "")),
             "mqtt_username": vehicle.provider_config.get("mqtt_username", provider_meta.get("mqtt_username", "")),
+            "vehicle_id": vehicle.provider_config.get("vehicle_id", provider_meta.get("vehicle_id", "")),
             "gcid": provider_meta.get("gcid", ""),
             "append_vin": bool(vehicle.provider_config.get("append_vin", False)),
         },
         "last_update": (runtime_state or {}).get("last_update", ""),
         "enabled": vehicle.enabled,
+        "manufacturer_note": "ORA Konfiguration vorbereitet" if vehicle.manufacturer == "gwm" else "",
     }
 
 
@@ -119,7 +122,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.3.2",
+                "version": "0.4.0",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -146,6 +149,14 @@ def create_app() -> FastAPI:
         if not store.get_vehicle(vehicle_id):
             raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
         return log_store.read(vehicle_id)
+
+    @app.get("/api/vehicles/{vehicle_id}/ora/config", response_class=PlainTextResponse)
+    async def get_ora_config(vehicle_id: str):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle or vehicle.manufacturer != "gwm":
+            raise HTTPException(status_code=404, detail="ORA Fahrzeug nicht gefunden")
+        settings = load_runtime_mqtt_settings()
+        return render_ora2mqtt_yaml(vehicle.provider_config, settings)
 
     @app.post("/api/mqtt/test")
     async def mqtt_test():
@@ -257,6 +268,16 @@ def create_app() -> FastAPI:
                     if src.resolve() != dst.resolve():
                         dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
 
+        if payload.manufacturer == "gwm":
+            target_dir = Path(data_dir) / "providers" / vehicle.id
+            target_dir.mkdir(parents=True, exist_ok=True)
+            settings = load_runtime_mqtt_settings()
+            ora_config = render_ora2mqtt_yaml(vehicle.provider_config, settings)
+            (target_dir / "ora2mqtt.yml").write_text(ora_config, encoding="utf-8")
+            vehicle.provider_state.auth_state = "authorized"
+            vehicle.provider_state.auth_message = "ora2mqtt.yml erzeugt"
+            log_store.append(vehicle.id, "ORA Konfiguration erzeugt: providers/%s/ora2mqtt.yml" % vehicle.id)
+
         if vehicle_id_to_replace and vehicle_id_to_replace != vehicle.id:
             config = store.load()
             config.vehicles = [v for v in config.vehicles if v.id != vehicle_id_to_replace]
@@ -273,6 +294,8 @@ def create_app() -> FastAPI:
 
         if payload.manufacturer == "bmw" and mqtt_settings.host and vehicle.provider_state.auth_state == "authorized":
             worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
+        if payload.manufacturer == "gwm":
+            worker_manager.publish_vehicle_saved_meta(vehicle.id)
         return {"status": "ok", "vehicle_id": vehicle.id}
 
     @app.post("/api/vehicles")
