@@ -20,6 +20,8 @@ class BMWCarDataClient:
         self.client_id = client_id
         self.vin = vin
         self.mqtt_username = mqtt_username
+        self.subscribe_topic = ""
+        self.wildcard_topic = ""
         self.mqtt_host = mqtt_host
         self.mqtt_port = mqtt_port
         self.token_file = token_file
@@ -80,8 +82,16 @@ class BMWCarDataClient:
     def ensure_tokens(self) -> bool:
         if not self._load_tokens():
             return False
+        # GCID from token payload is the source of truth for BMW streaming topics.
+        token_gcid = str(self.tokens.get("gcid", "")).strip()
+        if token_gcid:
+            self.mqtt_username = token_gcid
         if self._is_token_expiring("id_token"):
-            return self.refresh_tokens()
+            ok = self.refresh_tokens()
+            token_gcid = str(self.tokens.get("gcid", "")).strip()
+            if token_gcid:
+                self.mqtt_username = token_gcid
+            return ok
         return True
 
     @staticmethod
@@ -100,9 +110,11 @@ class BMWCarDataClient:
     def _on_connect(self, client, userdata, flags, reason_code, properties=None):
         rc = self._normalize_reason_code(reason_code)
         if rc == 0:
-            client.subscribe(f"{self.mqtt_username}/{self.vin}", qos=1)
+            self.subscribe_topic = f"{self.mqtt_username}/{self.vin}"
+            self.wildcard_topic = f"{self.mqtt_username}/+"
+            client.subscribe(self.subscribe_topic, qos=1)
             if self.subscribe_wildcard:
-                client.subscribe(f"{self.mqtt_username}/+", qos=1)
+                client.subscribe(self.wildcard_topic, qos=1)
             self._connected.set()
             if self.connect_callback:
                 self.connect_callback()
@@ -127,7 +139,7 @@ class BMWCarDataClient:
         if not self.ensure_tokens():
             return False
         token = self.tokens.get("id_token", {}).get("token", "")
-        if not token:
+        if not token or not self.mqtt_username:
             return False
         self.disconnect_mqtt()
         self.mqtt_client = mqtt.Client(protocol=mqtt.MQTTv5, callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
@@ -205,13 +217,14 @@ class BMWStreamWorker:
             self.client = BMWCarDataClient(
                 client_id=self.vehicle.provider_config["client_id"],
                 vin=self.vehicle.provider_config["vin"],
-                mqtt_username=self.vehicle.provider_config["mqtt_username"],
+                mqtt_username=self.vehicle.provider_state.mqtt_username or self.vehicle.provider_config.get("mqtt_username", ""),
                 token_file=str(token_file),
             )
             self.client.set_message_callback(self._handle_message)
             self.client.set_connect_callback(self._handle_connect)
             self.client.set_disconnect_callback(self._handle_disconnect)
             self._detail("BMW Verbindung wird aufgebaut")
+            self._log(f"BMW VIN: {self.vehicle.provider_config.get('vin','')}")
             if not self.client.connect_mqtt():
                 if self.on_error_cb:
                     self.on_error_cb("BMW MQTT Verbindung konnte nicht aufgebaut werden")
@@ -242,6 +255,12 @@ class BMWStreamWorker:
 
     def _handle_connect(self):
         self._log("BMW MQTT verbunden")
+        if self.client:
+            self._log(f"BMW MQTT Username/GCID: {self.client.mqtt_username}")
+            if self.client.subscribe_topic:
+                self._log(f"BMW Subscribe Topic: {self.client.subscribe_topic}")
+            if self.client.wildcard_topic:
+                self._log(f"BMW Wildcard Topic: {self.client.wildcard_topic}")
         if self.on_connect_cb:
             self.on_connect_cb()
 

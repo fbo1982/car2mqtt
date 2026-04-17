@@ -17,13 +17,13 @@ class BmwProvider(BaseProvider):
             notes="Externer BMW-Login-Link, danach Streaming direkt aus BMW CarData nach MQTT.",
             setup_steps=[
                 "Im BMW/MINI CarData Portal eine Client-ID anlegen.",
-                "Zusätzlich den BMW Streaming MQTT Username aus der BMW Streaming-Dokumentation eintragen.",
+                "Der BMW Streaming-Identifier (GCID) wird nach erfolgreichem Login automatisch aus den Tokens übernommen.",
                 "Im BMW Portal die Streaming-Datenpunkte für das Fahrzeug freigeben.",
                 "Login-Link öffnen, Zugriff bestätigen und Status prüfen.",
             ],
             fields=[
                 {"name": "client_id", "label": "Client ID", "type": "text", "required": True},
-                {"name": "mqtt_username", "label": "BMW MQTT Username", "type": "text", "required": True},
+                {"name": "mqtt_username", "label": "BMW MQTT Username / GCID", "type": "text", "required": False},
                 {"name": "vin", "label": "VIN", "type": "text", "required": True},
                 {"name": "region", "label": "Region", "type": "text", "required": False, "default": "EU"},
                 {"name": "append_vin", "label": "VIN an Raw-Topic anhängen", "type": "checkbox", "required": False, "default": False},
@@ -36,8 +36,6 @@ class BmwProvider(BaseProvider):
         vin = str(provider_config.get("vin", "")).strip().upper()
         if not client_id:
             raise ValueError("BMW Client ID fehlt")
-        if not mqtt_username:
-            raise ValueError("BMW MQTT Username fehlt")
         if not vin or len(vin) < 8:
             raise ValueError("BMW VIN fehlt oder ist zu kurz")
         return {

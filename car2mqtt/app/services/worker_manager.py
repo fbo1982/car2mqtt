@@ -148,8 +148,8 @@ class WorkerManager:
         runtime.metrics = mapped_payload
         runtime.provider_meta = {
             "vin": vehicle.provider_config.get("vin", ""),
-            "mqtt_username": vehicle.provider_config.get("mqtt_username", ""),
-            "gcid": vehicle.provider_state.mqtt_username,
+            "mqtt_username": vehicle.provider_state.mqtt_username or vehicle.provider_config.get("mqtt_username", ""),
+            "gcid": vehicle.provider_state.mqtt_username or vehicle.provider_config.get("mqtt_username", ""),
         }
         self.state_store.upsert(runtime)
         count = len((data or {}).get("data", {}))
