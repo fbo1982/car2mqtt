@@ -15,7 +15,11 @@
     .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:22px}.vehicle-card,.add-card{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow)}.vehicle-card{overflow:hidden}.vehicle-head{display:flex;justify-content:space-between;gap:14px;padding:22px 24px 18px;border-bottom:1px solid var(--line)}.vehicle-title{font-size:18px;font-weight:800;margin-bottom:6px}.vehicle-subtitle{color:var(--muted);font-size:14px}.status-badge{padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px;text-transform:uppercase;letter-spacing:.08em;height:max-content}.status-badge.connected{color:#042d14;background:var(--ok)}.status-badge.error,.status-badge.disconnected{color:white;background:rgba(255,93,108,.9)}.status-badge.starting,.status-badge.saved{background:rgba(0,183,255,.18);color:#7ed5ff}
     .vehicle-metrics{display:grid;grid-template-columns:1fr 1fr;gap:16px 26px;padding:22px 24px}.metric{display:flex;justify-content:space-between;gap:18px}.metric span{color:var(--muted)}.metric strong{color:var(--ok);font-size:19px}.card-footer{border-top:1px solid var(--line);padding:16px 24px 22px;color:var(--muted);font-size:14px}.topic-row{margin-top:8px;font-size:12px;color:#93b3ff;word-break:break-all}.card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.add-card{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:258px;color:var(--text);background:transparent}.add-card span{font-size:44px;line-height:1}.add-card strong{font-size:24px;margin-top:10px}
     dialog{border:0;padding:0;background:transparent}.modal::backdrop{background:rgba(0,0,0,.6);backdrop-filter:blur(8px)}.panel{width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:30px;box-shadow:var(--shadow)}.panel.wide{width:min(900px,calc(100vw - 32px))}.modal-head,.modal-foot{display:flex;align-items:center;gap:16px;padding:24px 28px}.modal-head{justify-content:space-between;border-bottom:1px solid var(--line)}.modal-head h3{margin:4px 0 0;font-size:24px}.modal-body{padding:24px 28px 28px}.notice{display:none;margin:0 28px 18px;padding:14px 16px;border-radius:14px;background:rgba(255,93,108,.14);color:#ffd8dd;border:1px solid rgba(255,93,108,.28)}
-    .field{display:flex;flex-direction:column;gap:8px}.field label{font-weight:700;color:#edf1ff}.field small,.muted{color:var(--muted)}input,select,textarea{width:100%;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--text);padding:14px 15px}.grid{display:grid;gap:16px}.grid.two{grid-template-columns:1fr 1fr}.grid.three{grid-template-columns:1fr 1fr 1fr}.provider-list{display:grid;gap:14px}.provider-card{padding:20px;border-radius:22px;background:rgba(0,0,0,.12);border:1px solid transparent}.provider-card.selected{border-color:var(--accent)}.provider-card strong{display:block;font-size:20px;margin:8px 0}.provider-card span{color:var(--muted)}.info-box,.auth-box,.log-box{background:rgba(0,0,0,.14);border:1px solid var(--line);border-radius:22px;padding:18px}.auth-box{margin-top:18px}.auth-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.auth-link{word-break:break-all;color:#8ad7ff}.log-viewer{background:#101425;border:1px solid var(--line);border-radius:18px;padding:16px;min-height:220px;max-height:360px;overflow:auto;white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:13px;line-height:1.55}.review-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.review-row,.meta-item{padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.05)}.review-row span,.meta-item span{display:block;color:var(--muted);margin-bottom:6px}.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}.spacer{flex:1}.hidden{display:none!important}
+    .field{display:flex;flex-direction:column;gap:8px}.field label{font-weight:700;color:#edf1ff}.field small,.muted{color:var(--muted)}input,select,textarea{width:100%;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--text);padding:14px 15px}.grid{display:grid;gap:16px}.grid.two{grid-template-columns:1fr 1fr}.grid.three{grid-template-columns:1fr 1fr 1fr}.provider-list{display:grid;gap:14px}.provider-card{padding:20px;border-radius:22px;background:rgba(0,0,0,.12);border:1px solid transparent}.provider-card.selected{border-color:var(--accent)}.provider-card strong{display:block;font-size:20px;margin:8px 0}.provider-card span{color:var(--muted)}.info-box,.auth-box,.log-box{background:rgba(0,0,0,.14);border:1px solid var(--line);border-radius:22px;padding:18px}.auth-box{margin-top:18px}.auth-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.auth-link{word-break:break-all;color:#8ad7ff}.log-viewer{background:#0a1024;border:1px solid rgba(138,215,255,.18);border-radius:18px;padding:16px;min-height:220px;max-height:360px;overflow:auto;white-space:pre-wrap;color:#d9f2ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.7;box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}
+    .live-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.05);font-size:13px;color:var(--muted)}
+    .live-chip.active{color:#03190c;background:var(--ok);border-color:transparent;font-weight:800}
+    .log-toolbar{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+    .log-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.review-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.review-row,.meta-item{padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.05)}.review-row span,.meta-item span{display:block;color:var(--muted);margin-bottom:6px}.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}.spacer{flex:1}.hidden{display:none!important}
     @media(max-width:900px){.topbar,.section-header,.modal-head,.modal-foot{flex-direction:column;align-items:stretch}.grid.two,.grid.three,.review-grid,.meta-grid{grid-template-columns:1fr}.topbar h1{font-size:34px}}
   </style>
 </head>
@@ -122,7 +126,7 @@
         </div>
       </div>
       <div class="log-box">
-        <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px"><strong>Fahrzeug-Log</strong><button id="refreshLogsBtn" class="tiny-btn">Logs aktualisieren</button></div>
+        <div class="log-toolbar"><strong>Fahrzeug-Log</strong><div class="log-actions"><span id="liveLogState" class="live-chip">Live aus</span><button id="toggleLiveLogsBtn" class="tiny-btn">Live-Log einschalten</button><button id="refreshLogsBtn" class="tiny-btn">Logs aktualisieren</button></div></div>
         <div id="vehicleLogViewer" class="log-viewer">Noch keine Logs geladen.</div>
       </div>
     </div>
@@ -134,7 +138,7 @@
 const providers = {{ providers | tojson }};
 let cards = {{ cards_json | safe }};
 const createState = { manufacturer: null, authSessionId: null, authReady: false };
-const editState = { vehicleId: null, reauthSessionId: null, authReady: true };
+const editState = { vehicleId: null, reauthSessionId: null, authReady: true, liveLogTimer: null, liveLogsEnabled: false, lastLogText: '' };
 const field = (id) => document.getElementById(id);
 
 function showNotice(id, msg='') { const el = field(id); el.textContent = msg; el.style.display = msg ? 'block' : 'none'; }
@@ -180,7 +184,7 @@ async function editVehicle(vehicleId){
   showNotice('editError');
   fillManufacturerSelect();
   const vehicle = await (await fetch(`./api/vehicles/${vehicleId}`)).json();
-  editState.vehicleId = vehicleId; editState.reauthSessionId = null; editState.authReady = vehicle.provider_state?.auth_state === 'authorized';
+  stopLiveLogs(); editState.vehicleId = vehicleId; editState.reauthSessionId = null; editState.authReady = vehicle.provider_state?.auth_state === 'authorized'; editState.lastLogText = ''; setLiveLogUi();
   field('editManufacturer').value = vehicle.manufacturer; field('editLabel').value = vehicle.label; field('editId').value = vehicle.id; field('editPlate').value = vehicle.license_plate;
   field('editBmwClientId').value = vehicle.provider_config.client_id || ''; field('editBmwMqttUsername').value = vehicle.provider_config.mqtt_username || ''; field('editBmwVin').value = vehicle.provider_config.vin || ''; field('editBmwRegion').value = vehicle.provider_config.region || 'EU'; field('editBmwAppendVin').checked = !!vehicle.provider_config.append_vin;
   field('editAuthState').textContent = vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'BMW Anmeldung prüfen.';
@@ -188,10 +192,14 @@ async function editVehicle(vehicleId){
 }
 window.editVehicle = editVehicle;
 
-async function refreshVehicleLogs(){ if(!editState.vehicleId) return; try{ field('vehicleLogViewer').textContent = await fetchText(`./api/vehicles/${editState.vehicleId}/logs`); }catch(err){ field('vehicleLogViewer').textContent = err.message; } }
+function setLiveLogUi(){ const state = field('liveLogState'); const btn = field('toggleLiveLogsBtn'); state.textContent = editState.liveLogsEnabled ? 'Live an' : 'Live aus'; state.classList.toggle('active', editState.liveLogsEnabled); btn.textContent = editState.liveLogsEnabled ? 'Live-Log stoppen' : 'Live-Log einschalten'; }
+function stopLiveLogs(){ if(editState.liveLogTimer){ clearInterval(editState.liveLogTimer); editState.liveLogTimer = null; } editState.liveLogsEnabled = false; setLiveLogUi(); }
+async function refreshVehicleLogs(){ if(!editState.vehicleId) return; try{ const text = await fetchText(`./api/vehicles/${editState.vehicleId}/logs`); const viewer = field('vehicleLogViewer'); const changed = text !== editState.lastLogText; viewer.textContent = text || 'Noch keine Logs vorhanden.'; if(changed){ viewer.scrollTop = viewer.scrollHeight; } editState.lastLogText = text; }catch(err){ field('vehicleLogViewer').textContent = err.message; } }
+function startLiveLogs(){ if(!editState.vehicleId) return; stopLiveLogs(); editState.liveLogsEnabled = true; setLiveLogUi(); refreshVehicleLogs(); editState.liveLogTimer = setInterval(refreshVehicleLogs, 2000); }
 field('refreshLogsBtn').onclick = refreshVehicleLogs;
+field('toggleLiveLogsBtn').onclick = ()=>{ if(editState.liveLogsEnabled) stopLiveLogs(); else startLiveLogs(); };
 field('editManufacturer').onchange = toggleEditSections;
-field('closeEditBtn').onclick = field('cancelEditBtn').onclick = () => field('editDialog').close();
+field('closeEditBtn').onclick = field('cancelEditBtn').onclick = () => { stopLiveLogs(); field('editDialog').close(); };
 field('editReauthStartBtn').onclick = async()=>{ if(!editState.vehicleId) return; showNotice('editError'); try{ const d = await postJson(`./api/vehicles/${editState.vehicleId}/reauth/start`,{}); editState.reauthSessionId = d.session_id; editState.authReady = false; field('editAuthState').textContent = d.message || 'Re-Auth gestartet.'; field('editUserCode').textContent = d.user_code; field('editVerificationUrl').href = d.verification_uri_complete; field('editVerificationUrl').textContent = d.verification_uri_complete; field('editAuthInfo').classList.remove('hidden'); window.open(d.verification_uri_complete,'_blank'); await refreshVehicleLogs(); }catch(err){ showNotice('editError', err.message); } };
 field('editPollAuthBtn').onclick = async()=>{ if(!editState.reauthSessionId) return showNotice('editError','Bitte zuerst Re-Auth starten.'); try{ const d = await postJson('./api/providers/bmw/auth/poll',{ session_id: editState.reauthSessionId }); if(d.state === 'authorized'){ editState.authReady = true; field('editAuthState').textContent = 'BMW Re-Auth erfolgreich abgeschlossen.'; await refreshVehicleLogs(); } else { field('editAuthState').textContent = d.message || d.state; } }catch(err){ showNotice('editError', err.message); } };
 field('saveEditBtn').onclick = async()=>{ try{ const manufacturer = field('editManufacturer').value; const payload = { id: field('editId').value.trim(), label: field('editLabel').value.trim(), manufacturer, license_plate: field('editPlate').value.trim(), provider_config: {}, auth_session_id: editState.reauthSessionId || null };
@@ -202,7 +210,7 @@ field('saveEditBtn').onclick = async()=>{ try{ const manufacturer = field('editM
 async function deleteVehicle(vehicleId){ if(!confirm('Fahrzeug wirklich löschen?')) return; await fetch(`./api/vehicles/${vehicleId}`,{method:'DELETE'}); await loadDashboard(); }
 window.deleteVehicle = deleteVehicle;
 
-renderCards(); renderProviderList(); fillManufacturerSelect(); setInterval(loadDashboard, 15000);
+setLiveLogUi(); renderCards(); renderProviderList(); fillManufacturerSelect(); setInterval(loadDashboard, 15000);
 </script>
 </body>
 </html>
