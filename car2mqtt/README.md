@@ -1,33 +1,35 @@
 # Car2MQTT Home Assistant Add-on
 
-Version `0.1.3`
+Version `0.2.0`
 
 ## Inhalt
-Diese Version ist ein lauffähiges Grundgerüst für ein Home-Assistant-Add-on mit:
-- gültiger Add-on-Repository-Struktur
-- Web-UI mit Kachelansicht
-- Fahrzeug hinzufügen per Dialog
-- modularem Provider-Register
-- vorbereiteten Providern für BMW und GWM/ORA
-- persistenter Fahrzeugkonfiguration
-- MQTT-Topic-Basis für Raw- und Mapped-Daten
+Diese Version bringt das Scaffold auf den gewünschten Stil und verankert MQTT zentral in der Add-on-Konfiguration.
 
-## Repository-Struktur
-```text
-repository.yaml
-car2mqtt/
-  config.yaml
-  Dockerfile
-  build.yaml
-  run.sh
-  requirements.txt
-  app/
-```
+### Neu in v0.2.0
+- evcc-inspirierte Kacheloberfläche
+- Dialog „Fahrzeug hinzufügen" im gleichen Stil
+- MQTT-Zugangsdaten zentral in der Add-on-Konfiguration
+- MQTT-Konfiguration im Dialog nur noch als Read-only-Übersicht
+- vorbereitete Herstellerdialoge für BMW CarData und GWM/ORA
+- Fahrzeugdaten speichern weiterhin persistent im Add-on-Storage
 
-## MQTT Topics
+## MQTT-Konfiguration
+Die Zugangsdaten werden jetzt in Home Assistant unter **Add-on → Konfiguration** gepflegt:
+- `mqtt_host`
+- `mqtt_port`
+- `mqtt_username`
+- `mqtt_password`
+- `mqtt_base_topic`
+- `mqtt_qos`
+- `mqtt_retain`
+- `mqtt_tls`
+
+Diese Werte gelten global für alle Fahrzeuge.
+
+## Topic-Struktur
 - Raw: `car/<hersteller>/<kennzeichen>/...`
 - Mapped: `car/<hersteller>/<kennzeichen>/mapped/...`
 
 ## Hinweise
-- BMW- und GWM-Anbindung sind in `v0.1.3` noch als Scaffold vorbereitet.
-- Diese Version behebt primär die fehlende Home-Assistant-Repository-Struktur.
+- Live-MQTT-Connect-Test und echte BMW-Auth folgen im nächsten Schritt.
+- v0.2.0 fokussiert UI-Stil, zentrale MQTT-Konfiguration und saubere Fahrzeuganlage.

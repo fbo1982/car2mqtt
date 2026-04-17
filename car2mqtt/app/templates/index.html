@@ -7,60 +7,124 @@
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
-    <header class="topbar">
-      <div>
-        <h1>Car2MQTT</h1>
-        <p>Version {{ version }} · Multi-Fahrzeug-Scaffold</p>
+    <main class="app-shell">
+      <div class="topbar">
+        <div>
+          <div class="title">Car2MQTT</div>
+          <div class="subtitle">Version {{ version }} · Multi-Fahrzeug Add-on für Home Assistant</div>
+        </div>
       </div>
-      <button id="openModalBtn" class="primary">Fahrzeug hinzufügen</button>
-    </header>
 
-    <main class="container">
-      <section class="grid">
-        {% if cards %}
-          {% for card in cards %}
-          <article class="card">
-            <div class="card-header">
+      <div class="section-head">
+        <h2>Fahrzeuge</h2>
+        <div class="mqtt-summary">
+          MQTT aus Add-on-Konfiguration · <strong>{{ mqtt_settings.host or 'nicht gesetzt' }}</strong>:{{ mqtt_settings.port }} · Topic <strong>{{ mqtt_settings.base_topic }}</strong>
+        </div>
+      </div>
+
+      <section class="cards-grid">
+        {% for card in cards %}
+        <article class="vehicle-card">
+          <div class="vehicle-card-header">
+            <div class="vehicle-title">
+              <span>🚘</span>
               <div>
-                <h2>{{ card.label }}</h2>
-                <p>{{ card.manufacturer }} · {{ card.license_plate }}</p>
+                {{ card.label }}
+                <small>{{ card.manufacturer }} · {{ card.status }}</small>
               </div>
-              <span class="pill {{ 'ok' if card.enabled else 'off' }}">{{ 'aktiv' if card.enabled else 'deaktiviert' }}</span>
             </div>
-            <div class="meta">
-              <div><strong>Raw</strong><br>{{ card.topic }}</div>
-              <div><strong>Mapped</strong><br>{{ card.mapped_topic }}</div>
-            </div>
-          </article>
-          {% endfor %}
-        {% else %}
-          <article class="empty-state">
-            <h2>Noch keine Fahrzeuge</h2>
-            <p>Lege dein erstes Fahrzeug an und wähle anschließend den Hersteller.</p>
-          </article>
-        {% endif %}
+            <button class="icon-btn" type="button" title="Einstellungen folgen später">⚙️</button>
+          </div>
+          <div class="vehicle-card-body">
+            {% for stat in card.stats %}
+            <div class="stat-row"><span>{{ stat.label }}</span><span>{{ stat.value }}</span></div>
+            {% endfor %}
+          </div>
+        </article>
+        {% endfor %}
+
+        <article class="add-card">
+          <button type="button" id="openModalBtn">
+            <span class="plus">＋</span>
+            <span>Fahrzeug hinzufügen</span>
+          </button>
+        </article>
       </section>
     </main>
 
     <dialog id="vehicleDialog" class="modal">
-      <form id="vehicleForm" method="dialog">
-        <h3>Fahrzeug hinzufügen</h3>
-        <label>ID<input name="id" required placeholder="bmw-ggca501e" /></label>
-        <label>Anzeigename<input name="label" required placeholder="BMW iX1" /></label>
-        <label>Kennzeichen<input name="license_plate" required placeholder="GGCA501E" /></label>
-        <label>Hersteller
-          <select name="manufacturer" id="manufacturerSelect" required>
-            <option value="">Bitte wählen</option>
-            {% for provider in providers %}
-              <option value="{{ provider.id }}">{{ provider.name }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <div id="providerNotes" class="hint"></div>
-        <div id="providerFields"></div>
-        <div class="actions">
-          <button type="button" id="cancelBtn">Abbrechen</button>
-          <button type="submit" class="primary">Speichern</button>
+      <form id="vehicleForm" class="modal-panel" method="dialog">
+        <div class="modal-head">
+          <div>
+            <h3>Fahrzeug hinzufügen</h3>
+          </div>
+          <button type="button" class="text-btn" id="closeBtn">✕</button>
+        </div>
+
+        <div class="modal-grid">
+          <section>
+            <label>
+              Hersteller
+              <select name="manufacturer" id="manufacturerSelect" required>
+                <option value="">Bitte auswählen</option>
+                {% for provider in providers %}
+                  <option value="{{ provider.id }}">{{ provider.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+
+            <div id="providerSummary" class="setup-box" hidden>
+              <h4 id="providerTitle">Hersteller</h4>
+              <p id="providerNotes"></p>
+              <ol id="providerSteps" class="setup-list"></ol>
+            </div>
+
+            <div class="provider-fields">
+              <label>
+                Anzeigename
+                <input name="label" required placeholder="BMW iX1 xDrive30e" />
+              </label>
+              <label>
+                Interne ID
+                <input name="id" required placeholder="bmw-ggca501e" />
+              </label>
+              <label>
+                Kennzeichen
+                <input name="license_plate" required placeholder="GGCA501E" />
+              </label>
+              <div id="providerFields"></div>
+            </div>
+          </section>
+
+          <aside>
+            <div class="system-box">
+              <h4>MQTT Konfiguration</h4>
+              <p>Die MQTT-Zugangsdaten sind fest in der Add-on-Konfiguration hinterlegt und gelten für alle Fahrzeuge.</p>
+              <div class="mqtt-list">
+                <div class="mqtt-item"><span>Host</span><span>{{ mqtt_settings.host or 'nicht gesetzt' }}</span></div>
+                <div class="mqtt-item"><span>Port</span><span>{{ mqtt_settings.port }}</span></div>
+                <div class="mqtt-item"><span>Benutzer</span><span>{{ mqtt_settings.username or 'nicht gesetzt' }}</span></div>
+                <div class="mqtt-item"><span>Passwort</span><span>{{ 'gesetzt' if mqtt_settings.password_set else 'nicht gesetzt' }}</span></div>
+                <div class="mqtt-item"><span>Base Topic</span><span>{{ mqtt_settings.base_topic }}</span></div>
+                <div class="mqtt-item"><span>QoS / Retain</span><span>{{ mqtt_settings.qos }} / {{ 'an' if mqtt_settings.retain else 'aus' }}</span></div>
+              </div>
+            </div>
+
+            <div class="status-box" style="margin-top:18px;">
+              <h4>Verbindungsstatus</h4>
+              <div class="status-line">
+                <span class="status-pill ok" id="statusText">bereit zum Speichern</span>
+                <button type="button" class="ghost-btn" id="checkBtn">prüfen</button>
+              </div>
+              <p class="hint">In dieser Version wird die Konfiguration validiert. Der Live-Connect-Test folgt im nächsten Schritt.</p>
+            </div>
+          </aside>
+        </div>
+
+        <div class="notice" id="formError"></div>
+        <div class="footer-actions">
+          <button type="button" class="text-btn" id="cancelBtn">Abbrechen</button>
+          <button type="submit" class="primary-btn">Überprüfen &amp; speichern</button>
         </div>
       </form>
     </dialog>
@@ -69,21 +133,39 @@
       const providers = {{ providers | tojson }};
       const dialog = document.getElementById('vehicleDialog');
       const openModalBtn = document.getElementById('openModalBtn');
+      const closeBtn = document.getElementById('closeBtn');
       const cancelBtn = document.getElementById('cancelBtn');
       const manufacturerSelect = document.getElementById('manufacturerSelect');
       const providerFields = document.getElementById('providerFields');
+      const providerTitle = document.getElementById('providerTitle');
       const providerNotes = document.getElementById('providerNotes');
+      const providerSteps = document.getElementById('providerSteps');
+      const providerSummary = document.getElementById('providerSummary');
       const vehicleForm = document.getElementById('vehicleForm');
+      const formError = document.getElementById('formError');
+      const statusText = document.getElementById('statusText');
+      const checkBtn = document.getElementById('checkBtn');
 
-      openModalBtn?.addEventListener('click', () => dialog.showModal());
-      cancelBtn?.addEventListener('click', () => dialog.close());
-
-      function renderProviderFields(providerId) {
+      function clearProviderDetails() {
         providerFields.innerHTML = '';
         providerNotes.textContent = '';
+        providerSteps.innerHTML = '';
+        providerSummary.hidden = true;
+        providerTitle.textContent = 'Hersteller';
+      }
+
+      function renderProviderFields(providerId) {
+        clearProviderDetails();
         const provider = providers.find((p) => p.id === providerId);
         if (!provider) return;
+        providerSummary.hidden = false;
+        providerTitle.textContent = provider.name;
         providerNotes.textContent = provider.notes || '';
+        for (const step of (provider.setup_steps || [])) {
+          const li = document.createElement('li');
+          li.textContent = step;
+          providerSteps.appendChild(li);
+        }
         for (const field of provider.fields) {
           const wrapper = document.createElement('label');
           wrapper.textContent = field.label;
@@ -97,12 +179,24 @@
         }
       }
 
-      manufacturerSelect.addEventListener('change', (event) => {
-        renderProviderFields(event.target.value);
+      function openDialog() {
+        formError.textContent = '';
+        statusText.textContent = 'bereit zum Speichern';
+        dialog.showModal();
+      }
+
+      openModalBtn?.addEventListener('click', openDialog);
+      closeBtn?.addEventListener('click', () => dialog.close());
+      cancelBtn?.addEventListener('click', () => dialog.close());
+      manufacturerSelect?.addEventListener('change', (event) => renderProviderFields(event.target.value));
+      checkBtn?.addEventListener('click', () => {
+        statusText.textContent = 'lokale Validierung aktiv';
+        formError.textContent = 'Kein Live-Verbindungstest in V0.2.0 – gespeichert wird nach Formularvalidierung.';
       });
 
       vehicleForm.addEventListener('submit', async (event) => {
         event.preventDefault();
+        formError.textContent = '';
         const formData = new FormData(vehicleForm);
         const provider_config = {};
         for (const [key, value] of formData.entries()) {
@@ -125,7 +219,7 @@
         });
         if (!response.ok) {
           const err = await response.json();
-          alert(err.detail || 'Fehler beim Speichern');
+          formError.textContent = err.detail || 'Fehler beim Speichern';
           return;
         }
         window.location.reload();

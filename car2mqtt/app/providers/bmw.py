@@ -9,34 +9,42 @@ class BmwProvider(BaseProvider):
     def descriptor(self) -> ProviderDescriptor:
         return ProviderDescriptor(
             id="bmw",
-            name="BMW",
+            name="BMW CarData (EU Data Act)",
             auth_mode="external_link",
-            notes="BMW benötigt einen Login-/Token-Flow über einen externen Link.",
+            notes=(
+                "BMW benötigt einen externen Login-Link. Die MQTT-Zugangsdaten kommen "
+                "zentral aus der Add-on-Konfiguration und werden nicht pro Fahrzeug erfasst."
+            ),
+            setup_steps=[
+                "Im BMW/MINI CarData Portal die gewünschten Datenpunkte für Streaming freigeben.",
+                "Client-ID im Fahrzeugdialog hinterlegen.",
+                "Danach den BMW-Login-/Token-Flow über den vorbereiteten Assistenten starten.",
+            ],
             fields=[
+                {"name": "client_id", "label": "Client ID", "type": "text", "required": True},
+                {"name": "vin", "label": "VIN (optional)", "type": "text", "required": False},
                 {"name": "region", "label": "Region", "type": "text", "required": True, "default": "EU"},
-                {"name": "vin", "label": "VIN", "type": "text", "required": False},
-                {"name": "client_id", "label": "Client ID", "type": "text", "required": False},
             ],
         )
 
     def validate_config(self, provider_config: Dict[str, Any]) -> Dict[str, Any]:
-        region = provider_config.get("region", "EU")
-        if not region:
-            raise ValueError("BMW: region ist erforderlich")
+        client_id = str(provider_config.get("client_id", "")).strip()
+        if not client_id:
+            raise ValueError("BMW benötigt eine Client ID.")
         return {
-            "region": region,
-            "vin": provider_config.get("vin", ""),
-            "client_id": provider_config.get("client_id", ""),
+            "client_id": client_id,
+            "vin": str(provider_config.get("vin", "")).strip(),
+            "region": str(provider_config.get("region", "EU")).strip() or "EU",
         }
 
     def map_example(self) -> Dict[str, Any]:
         return {
             "soc": 97,
             "plugged": False,
+            "charging": False,
             "odometer": 1485,
             "range": 61,
             "limitSoc": 100,
-            "charging": False,
-            "longitude": 8.4960091667,
             "latitude": 49.82877,
+            "longitude": 8.4960091667,
         }

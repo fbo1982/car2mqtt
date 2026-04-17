@@ -37,3 +37,15 @@ class ProviderDescriptor(BaseModel):
     auth_mode: str
     fields: List[Dict[str, Any]]
     notes: Optional[str] = None
+    setup_steps: List[str] = Field(default_factory=list)
+
+
+class RuntimeMqttSettings(BaseModel):
+    host: str = ""
+    port: int = 1883
+    username: str = ""
+    password_set: bool = False
+    base_topic: str = "car"
+    qos: int = 1
+    retain: bool = True
+    tls: bool = False

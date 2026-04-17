@@ -11,17 +11,29 @@ class GwmProvider(BaseProvider):
             id="gwm",
             name="GWM / ORA",
             auth_mode="credentials",
-            notes="ORA/GWM ist als modularer Provider vorbereitet. Der genaue Auth-Flow kann später erweitert werden.",
+            notes=(
+                "GWM/ORA ist als modularer Provider vorbereitet. Die MQTT-Zugangsdaten sind global "
+                "in der Add-on-Konfiguration hinterlegt."
+            ),
+            setup_steps=[
+                "Zugangsdaten für GWM/ORA erfassen.",
+                "Fahrzeug-ID oder eindeutige Kennung eintragen.",
+                "Verbindung testen und anschließend speichern.",
+            ],
             fields=[
-                {"name": "username", "label": "Benutzername", "type": "text", "required": False},
-                {"name": "password", "label": "Passwort", "type": "password", "required": False},
-                {"name": "vehicle_id", "label": "Vehicle ID", "type": "text", "required": False},
+                {"name": "username", "label": "Benutzername", "type": "text", "required": True},
+                {"name": "password", "label": "Passwort", "type": "password", "required": True},
+                {"name": "vehicle_id", "label": "Fahrzeug-ID", "type": "text", "required": False},
             ],
         )
 
     def validate_config(self, provider_config: Dict[str, Any]) -> Dict[str, Any]:
+        username = str(provider_config.get("username", "")).strip()
+        password = str(provider_config.get("password", "")).strip()
+        if not username or not password:
+            raise ValueError("GWM/ORA benötigt Benutzername und Passwort.")
         return {
-            "username": provider_config.get("username", ""),
-            "password": provider_config.get("password", ""),
-            "vehicle_id": provider_config.get("vehicle_id", ""),
+            "username": username,
+            "password": password,
+            "vehicle_id": str(provider_config.get("vehicle_id", "")).strip(),
         }
