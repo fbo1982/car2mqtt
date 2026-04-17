@@ -45,6 +45,10 @@ class BmwAuthPollPayload(BaseModel):
     session_id: str
 
 
+class GwmVerificationPayload(BaseModel):
+    verification_code: str
+
+
 def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, base_topic: str) -> dict:
     metrics = (runtime_state or {}).get("metrics", {})
     provider_meta = (runtime_state or {}).get("provider_meta", {})
@@ -123,7 +127,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.4.9",
+                "version": "0.5.0",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -276,7 +280,7 @@ def create_app() -> FastAPI:
             ora_config = render_ora2mqtt_yaml(vehicle.provider_config, settings)
             (target_dir / "ora2mqtt.yml").write_text(ora_config, encoding="utf-8")
             vehicle.provider_state.auth_state = "authorized"
-            vehicle.provider_state.auth_message = "ora2mqtt.yml erzeugt"
+            vehicle.provider_state.auth_message = "ORA Runner vorbereitet"
             if not vehicle.provider_config.get("source_topic_base"):
                 vehicle.provider_config["source_topic_base"] = f"GWM/{vehicle.provider_config.get("vehicle_id") or vehicle.id}"
             log_store.append(vehicle.id, "ORA Konfiguration erzeugt: providers/%s/ora2mqtt.yml" % vehicle.id)
@@ -334,6 +338,24 @@ def create_app() -> FastAPI:
         auth_store.upsert(session)
         log_store.append(vehicle_id, "BMW Re-Auth gestartet")
         return session.model_dump(mode="json")
+
+
+    @app.post("/api/vehicles/{vehicle_id}/gwm/submit-code")
+    async def gwm_submit_code(vehicle_id: str, payload: GwmVerificationPayload):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle or vehicle.manufacturer != "gwm":
+            raise HTTPException(status_code=404, detail="ORA Fahrzeug nicht gefunden")
+        code = payload.verification_code.strip()
+        if not code:
+            raise HTTPException(status_code=400, detail="Verifikationscode fehlt")
+        vehicle.provider_config["verification_code"] = code
+        vehicle.provider_state.auth_message = "Verifikationscode übernommen"
+        store.upsert_vehicle(vehicle)
+        log_store.append(vehicle_id, "ORA Verifikationscode übernommen")
+        settings = load_runtime_mqtt_settings()
+        if vehicle.enabled and settings.host:
+            worker_manager.start_or_restart_vehicle(vehicle.id, settings)
+        return {"status": "ok", "vehicle_id": vehicle_id}
 
     @app.delete("/api/vehicles/{vehicle_id}")
     async def delete_vehicle(vehicle_id: str):

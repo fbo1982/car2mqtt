@@ -18,13 +18,16 @@ from app.providers.gwm_config import ensure_ora_runtime_config, render_ora2mqtt_
 
 
 class GwmIntegratedWorker:
+    def _is_waiting_for_code(self, text: str) -> bool:
+        lowered = (text or "").lower()
+        return "ora_waiting_for_code" in lowered or "verification code required" in lowered
+
     def _is_permanent_auth_error(self, text: str) -> bool:
         lowered = (text or "").lower()
         markers = [
             "username or password is incorrect",
             "account will be locked",
             "verification code request is too frequently",
-            "verification code required",
             "sharprompt requires an interactive environment",
             "ora verification code required",
         ]
@@ -38,6 +41,7 @@ class GwmIntegratedWorker:
         on_connect: Callable[[], None],
         on_disconnect: Callable[[str], None],
         on_error: Callable[[str], None],
+        on_waiting: Callable[[str], None],
         on_detail: Callable[[str], None],
         on_message: Callable[[str, str], None],
         log_callback: Callable[[str], None],
@@ -48,6 +52,7 @@ class GwmIntegratedWorker:
         self.on_connect = on_connect
         self.on_disconnect = on_disconnect
         self.on_error = on_error
+        self.on_waiting = on_waiting
         self.on_detail = on_detail
         self.on_message = on_message
         self.log = log_callback
@@ -132,6 +137,8 @@ class GwmIntegratedWorker:
             joined = "\n".join(combined)
             if icu_error:
                 raise RuntimeError("ora2mqtt configure fehlgeschlagen: ICU/libicu fehlt im Container")
+            if self._is_waiting_for_code(joined):
+                raise RuntimeError("ORA_WAITING_FOR_CODE::Verifikationscode angefordert. Bitte Code eingeben und senden.")
             if self._is_permanent_auth_error(joined):
                 raise RuntimeError(f"ORA_AUTH_FATAL::{joined.splitlines()[0] if joined else 'Authentifizierungsfehler'}")
             raise RuntimeError(f"ora2mqtt configure fehlgeschlagen (rc={proc.returncode})")
@@ -219,6 +226,11 @@ class GwmIntegratedWorker:
             except Exception as exc:
                 self.log(f"ORA Worker Fehler: {exc}")
                 message = str(exc)
+                if message.startswith("ORA_WAITING_FOR_CODE::"):
+                    final_message = message.split("::", 1)[1]
+                    self.on_waiting(final_message)
+                    self.log("ORA wartet auf Verifikationscode - kein automatischer Retry")
+                    break
                 if message.startswith("ORA_AUTH_FATAL::"):
                     final_message = message.split("::", 1)[1]
                     self.on_error(final_message)

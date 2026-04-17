@@ -89,7 +89,7 @@ select, option {
 
       <div id="gwmCreateSection" class="info-box hidden">
         <div class="eyebrow">ORA / GWM Setup</div>
-        <div class="muted" style="margin-top:10px">Car2MQTT übernimmt jetzt <code>ora2mqtt configure</code> und <code>ora2mqtt run</code> automatisch. Wenn GWM/ORA einen Code per Mail/SMS schickt, kannst du ihn hier im Feld <code>Verifikationscode</code> eintragen und erneut speichern.</div>
+        <div class="muted" style="margin-top:10px">Car2MQTT übernimmt jetzt <code>ora2mqtt configure</code> und <code>ora2mqtt run</code> automatisch. Wenn GWM/ORA einen Code per Mail/SMS schickt, wechselt der Status auf <code>waiting_for_code</code>. Dann den Code eingeben und über <code>Code senden</code> fortsetzen.</div>
         <div class="field" style="margin-top:14px"><label>Benutzerkonto</label><input id="gwmAccount" placeholder="mail@example.com" /></div>
         <div class="field" style="margin-top:16px"><label>Passwort</label><input id="gwmPassword" type="password" /></div>
         <div class="field" style="margin-top:16px"><label>Land</label><input id="gwmCountry" value="DE" /></div>
@@ -162,7 +162,7 @@ select, option {
           </div>
           <div class="field" style="margin-top:16px"><label>Akkukapazität (kWh)</label><input id="editGwmCapacity" type="number" step="0.1" /></div>
           <div class="field" style="margin-top:16px"><label>Source Topic Base</label><input id="editGwmSourceTopicBase" /></div>
-          <div class="field" style="margin-top:16px"><label>Verifikationscode</label><input id="editGwmVerificationCode" /></div>
+          <div class="field" style="margin-top:16px"><label>Verifikationscode</label><input id="editGwmVerificationCode" placeholder="z. B. 3719" /><div class="log-actions" style="margin-top:10px"><button id="submitGwmCodeBtn" class="tiny-btn">Code senden</button></div></div>
         </div>
         <div class="log-box">
           <div class="log-toolbar"><strong>ora2mqtt.yml Vorschau (automatisch vom Runner genutzt)</strong><div class="log-actions"><button id="refreshOraConfigBtn" class="tiny-btn">Vorschau aktualisieren</button></div></div>
@@ -278,6 +278,23 @@ function startLiveLogs(){ if(!editState.vehicleId) return; stopLiveLogs(); editS
 field('refreshLogsBtn').onclick = refreshVehicleLogs;
 async function refreshOraConfig(){ if(!editState.vehicleId) return; try{ const text = await fetchText(`./api/vehicles/${editState.vehicleId}/ora/config`); field('oraConfigViewer').textContent = text || 'Noch keine ORA-Konfiguration vorhanden.'; }catch(err){ field('oraConfigViewer').textContent = err.message; } }
 field('refreshOraConfigBtn').onclick = refreshOraConfig;
+async function submitGwmCode(){
+  if(!editState.vehicleId) return;
+  const code = field('editGwmVerificationCode').value.trim();
+  if(!code){ alert('Bitte Verifikationscode eintragen.'); return; }
+  try{
+    await fetchJson(`./api/vehicles/${editState.vehicleId}/gwm/submit-code`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ verification_code: code })
+    });
+    await refreshDashboard();
+    await refreshVehicleLogs();
+  }catch(err){
+    alert(err.message);
+  }
+}
+field('submitGwmCodeBtn').onclick = submitGwmCode;
 field('toggleLiveLogsBtn').onclick = ()=>{ if(editState.liveLogsEnabled) stopLiveLogs(); else startLiveLogs(); };
 field('editManufacturer').onchange = toggleEditSections;
 field('closeEditBtn').onclick = field('cancelEditBtn').onclick = () => { stopLiveLogs(); field('editDialog').close(); };

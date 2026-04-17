@@ -143,19 +143,20 @@ namespace ora2mqtt
             catch (GwmApiException e) when (e.Code == "110641")
             {
                 // SMS / mail verification login
-                await client.GetSmsCodeAsync(new GetSmsCode { Email = request.Account }, cancellationToken);
-
                 string code;
+
                 if (NonInteractive)
                 {
                     if (String.IsNullOrWhiteSpace(VerificationCode))
                     {
-                        throw new Exception("ORA verification code required. Please provide the code in the Car2MQTT vehicle settings and save again.");
+                        await client.GetSmsCodeAsync(new GetSmsCode { Email = request.Account }, cancellationToken);
+                        throw new Exception("ORA_WAITING_FOR_CODE: Verification code requested. Please provide the received code.");
                     }
                     code = VerificationCode!;
                 }
                 else
                 {
+                    await client.GetSmsCodeAsync(new GetSmsCode { Email = request.Account }, cancellationToken);
                     code = Prompt.Password("Code required. Please check your mail and enter the 4 digit code");
                 }
 

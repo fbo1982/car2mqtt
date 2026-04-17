@@ -56,6 +56,7 @@ class WorkerManager:
                 on_connect=lambda vid=vehicle_id: self._set_runtime_state(vid, "connected", "ORA Runner aktiv und lokaler MQTT Stream verbunden"),
                 on_disconnect=lambda rc, vid=vehicle_id: self._set_runtime_state(vid, "disconnected", f"ORA Verbindung getrennt (rc={rc})"),
                 on_error=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "error", message),
+                on_waiting=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "waiting_for_code", message),
                 on_detail=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "starting", message),
                 on_message=lambda topic, payload, vid=vehicle_id: self._handle_gwm_payload(vid, topic, payload, mqtt_settings),
                 log_callback=lambda message, vid=vehicle_id: self.log_store.append(vid, message),
