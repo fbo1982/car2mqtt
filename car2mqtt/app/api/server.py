@@ -81,6 +81,7 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
             "append_vin": bool(vehicle.provider_config.get("append_vin", False)),
         },
         "last_update": (runtime_state or {}).get("last_update", ""),
+        "enabled": vehicle.enabled,
     }
 
 
@@ -118,7 +119,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.2.10",
+                "version": "0.3.0",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -262,6 +263,12 @@ def create_app() -> FastAPI:
             log_store.append(vehicle.id, f"Fahrzeug-ID geändert von {vehicle_id_to_replace} auf {vehicle.id}")
         store.upsert_vehicle(vehicle)
         worker_manager.publish_vehicle_saved_meta(vehicle.id)
+        if not vehicle.enabled:
+            vehicle.provider_state.auth_message = "Fahrzeug ist inaktiv"
+            worker_manager.stop_vehicle(vehicle.id)
+            worker_manager.publish_vehicle_saved_meta(vehicle.id)
+            return {"status": "ok", "vehicle_id": vehicle.id}
+
         if payload.manufacturer == "bmw" and mqtt_settings.host and vehicle.provider_state.auth_state == "authorized":
             worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
         return {"status": "ok", "vehicle_id": vehicle.id}
@@ -283,6 +290,8 @@ def create_app() -> FastAPI:
         vehicle = store.get_vehicle(vehicle_id)
         if not vehicle or vehicle.manufacturer != "bmw":
             raise HTTPException(status_code=404, detail="BMW Fahrzeug nicht gefunden")
+        if not vehicle.enabled:
+            raise HTTPException(status_code=400, detail="Fahrzeug ist inaktiv. Bitte zuerst aktivieren.")
         client_id = str(vehicle.provider_config.get("client_id", "")).strip()
         vin = str(vehicle.provider_config.get("vin", "")).strip().upper()
         if not client_id or not vin:

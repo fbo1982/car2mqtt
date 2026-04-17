@@ -40,6 +40,10 @@ class WorkerManager:
         vehicle = self.config_store.get_vehicle(vehicle_id)
         if not vehicle or vehicle.manufacturer != "bmw":
             return
+        if not vehicle.enabled:
+            self._set_runtime_state(vehicle_id, "inactive", "Fahrzeug ist inaktiv")
+            self.log_store.append(vehicle_id, "Fahrzeug ist inaktiv - kein Remote-Login, kein Streaming")
+            return
         self.stop_vehicle(vehicle_id)
         self.workers[vehicle_id] = BMWStreamWorker(
             vehicle=vehicle,
@@ -153,6 +157,11 @@ class WorkerManager:
         self._publish_meta(vehicle, runtime, mqtt_settings)
 
     def publish_vehicle_saved_meta(self, vehicle_id: str) -> None:
+        vehicle = self.config_store.get_vehicle(vehicle_id)
+        if vehicle and not vehicle.enabled:
+            self._set_runtime_state(vehicle_id, "inactive", "Fahrzeug ist inaktiv")
+            self.log_store.append(vehicle_id, "Fahrzeugkonfiguration gespeichert (inaktiv)")
+            return
         self._set_runtime_state(vehicle_id, "saved", "Fahrzeug gespeichert")
         self.log_store.append(vehicle_id, "Fahrzeugkonfiguration gespeichert")
 
