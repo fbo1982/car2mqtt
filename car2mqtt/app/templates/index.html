@@ -58,12 +58,14 @@ select, option {
     <div id="wizardError" class="notice"></div>
     <div class="modal-body grid">
       <div class="field">
-        <label>Hersteller</label><div class="muted" style="margin-top:8px">Die Bearbeitungsmaske passt sich jetzt dem Hersteller an.</div>
+        <label>Hersteller</label><div id="createManufacturerNote" class="muted" style="margin-top:8px"></div>
         <select id="createManufacturer"></select>
       </div>
+      <div id="createGenericFields">
       <div class="field"><label>Anzeigename</label><input id="vehicleLabel" placeholder="BMW iX1 xDrive30e" /></div>
       <div class="field"><label>Interne ID</label><input id="vehicleId" placeholder="bmw-ggca1013e" /></div>
       <div class="field"><label>Kennzeichen</label><input id="vehiclePlate" placeholder="GG-CA-1013E" /></div>
+      </div>
       <div id="bmwCreateSection" class="info-box hidden">
         <div class="eyebrow">BMW Setup</div>
         <div class="field" style="margin-top:14px"><label>Client ID</label><input id="bmwClientId" /></div>
@@ -189,7 +191,21 @@ function cardHtml(card){
 function renderCards(){ field('cardsGrid').innerHTML = cards.map(cardHtml).join('') + `<button class="add-card" id="openWizardBtn"><span>＋</span><strong>Fahrzeug hinzufügen</strong></button>`; field('openWizardBtn').onclick = openWizard; }
 function renderProviderList(){ const select = field('createManufacturer'); select.innerHTML = `<option value="">Bitte Hersteller wählen</option>` + providers.map(provider => `<option value="${provider.id}">${provider.name}</option>`).join(''); select.value = createState.manufacturer || ''; }
 function fillManufacturerSelect(){ field('editManufacturer').innerHTML = providers.map(p => `<option value="${p.id}">${p.name}</option>`).join(''); }
-function toggleCreateSections(){ createState.manufacturer = field('createManufacturer').value || null; field('bmwCreateSection').classList.toggle('hidden', createState.manufacturer !== 'bmw'); field('gwmCreateSection').classList.toggle('hidden', createState.manufacturer !== 'gwm'); }
+
+function setCreateManufacturerLayout(manufacturer){
+  const note = field('createManufacturerNote');
+  const isBmw = manufacturer === 'bmw';
+  const isGwm = manufacturer === 'gwm';
+  const generic = field('createGenericFields');
+  if(note){
+    note.textContent = isBmw ? 'BMW-spezifische Maske aktiv.' : (isGwm ? 'ORA / GWM-spezifische Maske aktiv.' : '');
+  }
+  if(generic) generic.style.display = manufacturer ? '' : 'none';
+  field('bmwCreateSection')?.classList.toggle('hidden', !isBmw);
+  field('gwmCreateSection')?.classList.toggle('hidden', !isGwm);
+}
+
+function toggleCreateSections(){ createState.manufacturer = field('createManufacturer').value || null; setCreateManufacturerLayout(createState.manufacturer); }
 
 function setEditManufacturerLayout(manufacturer){
   const isBmw = manufacturer === 'bmw';
@@ -205,7 +221,7 @@ function setEditManufacturerLayout(manufacturer){
 }
 
 function toggleEditSections(){ const man = field('editManufacturer').value; setEditManufacturerLayout(man); }
-function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehicleId','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity'].forEach(id=>field(id).value=''); field('bmwRegion').value='EU'; field('bmwAppendVin').checked=false; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; toggleCreateSections(); }
+function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehicleId','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity'].forEach(id=>field(id).value=''); field('bmwRegion').value='EU'; field('bmwAppendVin').checked=false; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; setCreateManufacturerLayout(null); }
 function openWizard(){ resetCreate(); field('wizardDialog').showModal(); }
 async function loadDashboard(){ const res = await fetch('./api/dashboard'); const data = await res.json(); cards = data.vehicles || []; renderCards(); }
 async function postJson(url,payload,method='POST'){ const res = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})}); const text = await res.text(); let data={}; try{ data = text ? JSON.parse(text) : {}; }catch{ data = { detail: text }; } if(!res.ok) throw new Error(data.detail || 'Unbekannter Fehler'); return data; }

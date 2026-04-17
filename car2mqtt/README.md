@@ -1,6 +1,6 @@
 # Car2MQTT Home Assistant Add-on
 
-Version 0.4.3
+Version 0.4.4
 
 ## Enthalten
 - mehrstufiger Fahrzeug-Wizard
@@ -18,6 +18,6 @@ Version 0.4.3
 - GWM/ORA bleibt in dieser Version ein Platzhalter für den nächsten Schritt.
 
 
-## V0.4.2
+## V0.4.4
 - ORA/GWM Wizard erzeugt eine `ora2mqtt.yml`-Vorlage im Fahrzeugordner.
 - BMW bleibt unverändert aktiv.
