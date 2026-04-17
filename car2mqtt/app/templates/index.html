@@ -58,7 +58,7 @@ select, option {
     <div id="wizardError" class="notice"></div>
     <div class="modal-body grid">
       <div class="field">
-        <label>Hersteller</label>
+        <label>Hersteller</label><div class="muted" style="margin-top:8px">Die Bearbeitungsmaske passt sich jetzt dem Hersteller an.</div>
         <select id="createManufacturer"></select>
       </div>
       <div class="field"><label>Anzeigename</label><input id="vehicleLabel" placeholder="BMW iX1 xDrive30e" /></div>
@@ -116,7 +116,7 @@ select, option {
         <div class="field"><label>Interne ID</label><input id="editId" /></div>
         <div class="field"><label>Kennzeichen</label><input id="editPlate" /></div>
       </div>
-      <div id="editBmwSection" class="grid hidden">
+      <div id="editBmwSection" class="grid hidden"><div class="field" style="grid-column:1/-1"><div class="eyebrow">BMW-spezifische Einstellungen</div></div>
         <div class="grid three">
           <div class="field"><label>Client ID</label><input id="editBmwClientId" /></div>
           <div class="field"><label>BMW MQTT Username</label><input id="editBmwMqttUsername" /></div>
@@ -142,7 +142,7 @@ select, option {
         </div>
       </div>
 
-      <div id="editGwmSection" class="grid hidden">
+      <div id="editGwmSection" class="grid hidden"><div class="field" style="grid-column:1/-1"><div class="eyebrow">ORA / GWM-spezifische Einstellungen</div></div>
         <div class="info-box">
           <div class="eyebrow">ORA / GWM Setup</div>
           <div class="field" style="margin-top:14px"><label>Benutzerkonto</label><input id="editGwmAccount" /></div>
@@ -190,7 +190,21 @@ function renderCards(){ field('cardsGrid').innerHTML = cards.map(cardHtml).join(
 function renderProviderList(){ const select = field('createManufacturer'); select.innerHTML = `<option value="">Bitte Hersteller wählen</option>` + providers.map(provider => `<option value="${provider.id}">${provider.name}</option>`).join(''); select.value = createState.manufacturer || ''; }
 function fillManufacturerSelect(){ field('editManufacturer').innerHTML = providers.map(p => `<option value="${p.id}">${p.name}</option>`).join(''); }
 function toggleCreateSections(){ createState.manufacturer = field('createManufacturer').value || null; field('bmwCreateSection').classList.toggle('hidden', createState.manufacturer !== 'bmw'); field('gwmCreateSection').classList.toggle('hidden', createState.manufacturer !== 'gwm'); }
-function toggleEditSections(){ const man = field('editManufacturer').value; field('editBmwSection').classList.toggle('hidden', man !== 'bmw'); field('editGwmSection').classList.toggle('hidden', man !== 'gwm'); }
+
+function setEditManufacturerLayout(manufacturer){
+  const isBmw = manufacturer === 'bmw';
+  const isGwm = manufacturer === 'gwm';
+  const editLabelWrap = field('editLabel')?.closest('.field');
+  const editIdWrap = field('editId')?.closest('.field');
+  const editPlateWrap = field('editPlate')?.closest('.field');
+  if(editLabelWrap) editLabelWrap.style.display = '';
+  if(editIdWrap) editIdWrap.style.display = '';
+  if(editPlateWrap) editPlateWrap.style.display = '';
+  field('editBmwSection')?.classList.toggle('hidden', !isBmw);
+  field('editGwmSection')?.classList.toggle('hidden', !isGwm);
+}
+
+function toggleEditSections(){ const man = field('editManufacturer').value; setEditManufacturerLayout(man); }
 function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehicleId','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity'].forEach(id=>field(id).value=''); field('bmwRegion').value='EU'; field('bmwAppendVin').checked=false; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; toggleCreateSections(); }
 function openWizard(){ resetCreate(); field('wizardDialog').showModal(); }
 async function loadDashboard(){ const res = await fetch('./api/dashboard'); const data = await res.json(); cards = data.vehicles || []; renderCards(); }
@@ -232,7 +246,7 @@ async function editVehicle(vehicleId){
   field('editGwmAccount').value = vehicle.provider_config.account || ''; field('editGwmPassword').value = vehicle.provider_config.password || ''; field('editGwmCountry').value = vehicle.provider_config.country || 'DE'; field('editGwmLanguage').value = vehicle.provider_config.language || 'de'; field('editGwmPollInterval').value = vehicle.provider_config.poll_interval || 60; field('editGwmVehicleId').value = vehicle.provider_config.vehicle_id || vehicle.id; field('editGwmCapacity').value = vehicle.provider_config.capacity_kwh || '';
   field('editAuthState').textContent = vehicle.enabled === false ? 'Fahrzeug ist inaktiv.' : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'BMW Anmeldung prüfen.');
   field('editReauthStartBtn').disabled = vehicle.enabled === false || vehicle.manufacturer !== 'bmw';
-  field('editAuthInfo').classList.add('hidden'); toggleEditSections(); await refreshVehicleLogs(); if(vehicle.manufacturer === 'gwm'){ await refreshOraConfig(); } else { field('oraConfigViewer').textContent = 'Für dieses Fahrzeug nicht relevant.'; } field('editDialog').showModal();
+  field('editAuthInfo').classList.add('hidden'); setEditManufacturerLayout(vehicle.manufacturer); await refreshVehicleLogs(); if(vehicle.manufacturer === 'gwm'){ await refreshOraConfig(); } else { field('oraConfigViewer').textContent = 'Für dieses Fahrzeug nicht relevant.'; } field('editDialog').showModal();
 }
 window.editVehicle = editVehicle;
 
