@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any, Dict
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
@@ -44,6 +44,7 @@ class BmwAuthPollPayload(BaseModel):
 
 def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, base_topic: str) -> dict:
     metrics = (runtime_state or {}).get("metrics", {})
+    provider_meta = (runtime_state or {}).get("provider_meta", {})
     return {
         "id": vehicle.id,
         "label": vehicle.label,
@@ -61,6 +62,12 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
             "plugged": metrics.get("plugged"),
             "odometer": metrics.get("odometer"),
             "limitSoc": metrics.get("limitSoc"),
+            "latitude": metrics.get("latitude"),
+            "longitude": metrics.get("longitude"),
+        },
+        "live": {
+            "vin": vehicle.provider_config.get("vin", provider_meta.get("vin", "")),
+            "mqtt_username": vehicle.provider_state.mqtt_username or provider_meta.get("mqtt_username", ""),
         },
         "last_update": (runtime_state or {}).get("last_update", ""),
     }
@@ -70,7 +77,6 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Car2MQTT")
     root = Path(__file__).resolve().parent.parent
     templates = Jinja2Templates(directory=str(root / "templates"))
-    app.mount("/static", StaticFiles(directory=str(root / "static")), name="static")
 
     data_dir = os.getenv("APP_DATA_DIR", "/config/car2mqtt")
     store = ConfigStore(data_dir)
@@ -83,21 +89,26 @@ def create_app() -> FastAPI:
     async def startup_event():
         worker_manager.start_all()
 
-    @app.get("/", response_class=HTMLResponse)
-    async def index(request: Request):
+    def build_cards() -> tuple[list[dict], dict]:
         config = store.load()
         mqtt_settings = load_runtime_mqtt_settings()
         runtime_states = {k: v.model_dump(mode="json") for k, v in state_store.get_all().items()}
-        providers = [provider.model_dump(mode="json") for provider in registry.all()]
         cards = [_vehicle_card(vehicle, runtime_states.get(vehicle.id), mqtt_settings.base_topic) for vehicle in config.vehicles]
+        return cards, mqtt_settings.model_dump(mode="json")
+
+    @app.get("/", response_class=HTMLResponse)
+    async def index(request: Request):
+        cards, mqtt_settings = build_cards()
+        providers = [provider.model_dump(mode="json") for provider in registry.all()]
         return templates.TemplateResponse(
             request,
             "index.html",
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.2.2",
-                "mqtt_settings": mqtt_settings.model_dump(mode="json"),
+                "version": "0.2.3",
+                "mqtt_settings": mqtt_settings,
+                "cards_json": json.dumps(cards, ensure_ascii=False),
             },
         )
 
@@ -107,13 +118,8 @@ def create_app() -> FastAPI:
 
     @app.get("/api/dashboard")
     async def get_dashboard():
-        config = store.load()
-        mqtt_settings = load_runtime_mqtt_settings()
-        runtime_states = {k: v.model_dump(mode="json") for k, v in state_store.get_all().items()}
-        return {
-            "vehicles": [_vehicle_card(vehicle, runtime_states.get(vehicle.id), mqtt_settings.base_topic) for vehicle in config.vehicles],
-            "mqtt": mqtt_settings.model_dump(mode="json"),
-        }
+        cards, mqtt_settings = build_cards()
+        return {"vehicles": cards, "mqtt": mqtt_settings}
 
     @app.post("/api/mqtt/test")
     async def mqtt_test():
@@ -151,7 +157,12 @@ def create_app() -> FastAPI:
         auth_store.upsert(session)
         token_file = Path(data_dir) / "providers" / f"tmp-{session.session_id}" / "bmw_tokens.json"
         save_token_file(token_file, result)
-        return {"state": "authorized", "message": session.message, "session_id": session.session_id}
+        return {
+            "state": "authorized",
+            "message": session.message,
+            "session_id": session.session_id,
+            "mqtt_username": result.get("gcid", ""),
+        }
 
     @app.post("/api/vehicles")
     async def create_vehicle(payload: VehiclePayload):
@@ -183,12 +194,18 @@ def create_app() -> FastAPI:
             auth_session = auth_store.get(payload.auth_session_id)
             if not auth_session or auth_session.state != "authorized":
                 raise HTTPException(status_code=400, detail="BMW Auth ist noch nicht abgeschlossen.")
-            vehicle.provider_state.auth_state = "authorized"
-            vehicle.provider_state.auth_message = "BMW Login abgeschlossen"
             tmp_file = Path(data_dir) / "providers" / f"tmp-{auth_session.session_id}" / "bmw_tokens.json"
+            if not tmp_file.exists():
+                raise HTTPException(status_code=400, detail="BMW Token-Datei wurde nicht gefunden.")
+            tokens = json.loads(tmp_file.read_text(encoding="utf-8"))
             target_file = Path(data_dir) / "providers" / vehicle.id / "bmw_tokens.json"
             target_file.parent.mkdir(parents=True, exist_ok=True)
-            target_file.write_text(tmp_file.read_text(encoding="utf-8"), encoding="utf-8")
+            target_file.write_text(json.dumps(tokens, indent=2), encoding="utf-8")
+            vehicle.provider_state.auth_state = "authorized"
+            vehicle.provider_state.auth_message = "BMW Login abgeschlossen"
+            vehicle.provider_state.mqtt_username = tokens.get("gcid", "")
+            vehicle.provider_state.user_code = auth_session.user_code
+            vehicle.provider_state.verification_url = auth_session.verification_uri_complete
 
         store.upsert_vehicle(vehicle)
         worker_manager.publish_vehicle_saved_meta(vehicle.id)
@@ -196,8 +213,14 @@ def create_app() -> FastAPI:
             worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
         return {"status": "ok", "vehicle_id": vehicle.id}
 
+    @app.post("/api/vehicles/{vehicle_id}/restart")
+    async def restart_vehicle(vehicle_id: str):
+        settings = load_runtime_mqtt_settings()
+        worker_manager.start_or_restart_vehicle(vehicle_id, settings)
+        return {"status": "ok", "vehicle_id": vehicle_id}
+
     @app.get("/health")
     async def health():
-        return {"status": "ok", "version": "0.2.2"}
+        return {"status": "ok", "version": "0.2.3"}
 
     return app

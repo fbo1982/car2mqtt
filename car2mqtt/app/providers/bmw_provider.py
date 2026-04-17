@@ -14,12 +14,12 @@ class BmwProvider(BaseProvider):
             category="API",
             auth_mode="device_flow",
             badge="BMW",
-            notes="BMW nutzt den OAuth2 Device Flow. Im Wizard wird ein Login-Link erzeugt, danach wird auf Tokens gewartet.",
+            notes="Externer BMW-Login-Link, danach Streaming direkt aus BMW CarData nach MQTT.",
             setup_steps=[
-                "Im BMW/MINI CarData Portal Client-ID anlegen.",
-                "Für das Fahrzeug Streaming und benötigte Datenpunkte freigeben.",
-                "Im Wizard VIN, Client-ID und Kennzeichen eintragen.",
-                "BMW-Login-Link öffnen und Freigabe bestätigen.",
+                "Im BMW/MINI CarData Portal eine Client-ID anlegen.",
+                "Im BMW Portal die Streaming-Datenpunkte für das Fahrzeug freigeben.",
+                "Im Wizard Anzeigename, Kennzeichen, VIN und Client-ID eintragen.",
+                "Login-Link öffnen, Zugriff bestätigen und Status prüfen.",
             ],
             fields=[
                 {"name": "client_id", "label": "Client ID", "type": "text", "required": True},
@@ -39,6 +39,16 @@ class BmwProvider(BaseProvider):
             "client_id": client_id,
             "vin": vin,
             "region": str(provider_config.get("region", "EU")).strip() or "EU",
+            "required_data_points": [
+                "vehicle.body.chargingPort.status",
+                "vehicle.cabin.infotainment.navigation.currentLocation.latitude",
+                "vehicle.cabin.infotainment.navigation.currentLocation.longitude",
+                "vehicle.drivetrain.batteryManagement.header",
+                "vehicle.drivetrain.electricEngine.charging.status",
+                "vehicle.drivetrain.electricEngine.kombiRemainingElectricRange",
+                "vehicle.powertrain.electric.battery.stateOfCharge.target",
+                "vehicle.vehicle.travelledDistance",
+            ],
         }
 
     def map_example(self) -> Dict[str, Any]:

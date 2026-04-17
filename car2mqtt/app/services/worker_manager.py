@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
@@ -25,7 +24,7 @@ class WorkerManager:
     def start_all(self) -> None:
         settings = load_runtime_mqtt_settings()
         for vehicle in self.config_store.load().vehicles:
-            if vehicle.manufacturer == "bmw" and vehicle.enabled:
+            if vehicle.manufacturer == "bmw" and vehicle.enabled and vehicle.provider_state.auth_state == "authorized":
                 self.start_or_restart_vehicle(vehicle.id, settings)
 
     def start_or_restart_vehicle(self, vehicle_id: str, mqtt_settings=None) -> None:
@@ -41,16 +40,18 @@ class WorkerManager:
             state_store=self.state_store,
             local_mqtt_client_factory=LocalMqttClient,
             on_payload=lambda topic, data, vid=vehicle_id: self._handle_bmw_payload(vid, topic, data, mqtt_settings),
+            on_connect=lambda vid=vehicle_id: self._set_runtime_state(vid, "connected", "Mit BMW Streaming-Server verbunden"),
+            on_disconnect=lambda rc, vid=vehicle_id: self._set_runtime_state(vid, "disconnected", f"BMW Verbindung getrennt (rc={rc})"),
+            on_error=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "error", message),
         )
-        self._publish_meta(vehicle_id, "starting", "Worker startet")
+        self._set_runtime_state(vehicle_id, "starting", "Worker startet")
         self.workers[vehicle_id].start()
 
-    def _publish_meta(self, vehicle_id: str, state: str, detail: str) -> None:
+    def _set_runtime_state(self, vehicle_id: str, state: str, detail: str) -> None:
         vehicle = self.config_store.get_vehicle(vehicle_id)
         if not vehicle:
             return
         settings = load_runtime_mqtt_settings()
-        topic = meta_topic(settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
         runtime.connection_state = state
         runtime.connection_detail = detail
@@ -58,17 +59,29 @@ class WorkerManager:
         runtime.raw_topic = base_vehicle_topic(settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
         runtime.mapped_topic = mapped_topic(settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
         self.state_store.upsert(runtime)
+        self._publish_meta(vehicle, runtime, settings)
+
+    def _publish_meta(self, vehicle, runtime: VehicleRuntimeState, settings) -> None:
         if not settings.host:
             return
+        topic = meta_topic(settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
         client = LocalMqttClient(settings)
-        client.connect()
-        client.publish(f"{topic}/status", state)
-        client.publish(f"{topic}/detail", detail)
-        client.disconnect()
+        try:
+            client.connect()
+            client.publish(f"{topic}/status", runtime.connection_state)
+            client.publish(f"{topic}/detail", runtime.connection_detail)
+            client.publish(f"{topic}/auth_state", runtime.auth_state)
+            client.publish(f"{topic}/raw_topic", runtime.raw_topic)
+            client.publish(f"{topic}/mapped_topic", runtime.mapped_topic)
+            if runtime.last_update:
+                client.publish(f"{topic}/last_update", runtime.last_update)
+        finally:
+            client.disconnect()
 
-    def _flatten_publish(self, client: LocalMqttClient, base_topic_prefix: str, data: Dict[str, Any]) -> None:
+    def _flatten_publish(self, client: LocalMqttClient, base_topic_prefix: str, data: Dict[str, Any]) -> Dict[str, Any]:
         data_points = data.get("data", {})
         nested: Dict[str, Any] = {}
+        client.publish(base_topic_prefix, data_points)
         for metric_name, metric_data in data_points.items():
             topic = f"{base_topic_prefix}/{metric_name.replace('.', '/')}"
             client.publish(topic, metric_data)
@@ -87,13 +100,15 @@ class WorkerManager:
         if not vehicle:
             return
         client = LocalMqttClient(mqtt_settings)
-        client.connect()
         raw_topic_base = base_vehicle_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
-        nested = self._flatten_publish(client, raw_topic_base, data)
-        mapped = map_bmw_payload(nested)
-        for key, value in mapped.items():
-            client.publish(f"{mapped_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)}/{key}", value)
-        client.disconnect()
+        try:
+            client.connect()
+            nested = self._flatten_publish(client, raw_topic_base, data)
+            mapped = map_bmw_payload(nested)
+            for key, value in mapped.items():
+                client.publish(f"{mapped_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)}/{key}", value)
+        finally:
+            client.disconnect()
 
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
         runtime.connection_state = "connected"
@@ -103,7 +118,12 @@ class WorkerManager:
         runtime.raw_topic = raw_topic_base
         runtime.mapped_topic = mapped_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
         runtime.metrics = mapped
+        runtime.provider_meta = {
+            "vin": vehicle.provider_config.get("vin", ""),
+            "mqtt_username": vehicle.provider_state.mqtt_username,
+        }
         self.state_store.upsert(runtime)
+        self._publish_meta(vehicle, runtime, mqtt_settings)
 
     def publish_vehicle_saved_meta(self, vehicle_id: str) -> None:
-        self._publish_meta(vehicle_id, "saved", "Fahrzeug gespeichert")
+        self._set_runtime_state(vehicle_id, "saved", "Fahrzeug gespeichert")
