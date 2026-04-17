@@ -53,24 +53,18 @@
     <div class="modal-body grid">
       <div class="field">
         <label>Hersteller</label>
-        <div id="providerGrid" class="provider-list"></div>
+        <select id="createManufacturer"></select>
       </div>
-      <div class="grid three">
-        <div class="field"><label>Anzeigename</label><input id="vehicleLabel" placeholder="BMW iX1 xDrive30e" /></div>
-        <div class="field"><label>Interne ID</label><input id="vehicleId" placeholder="bmw-ggca1013e" /></div>
-        <div class="field"><label>Kennzeichen</label><input id="vehiclePlate" placeholder="GG-CA-1013E" /></div>
-      </div>
+      <div class="field"><label>Anzeigename</label><input id="vehicleLabel" placeholder="BMW iX1 xDrive30e" /></div>
+      <div class="field"><label>Interne ID</label><input id="vehicleId" placeholder="bmw-ggca1013e" /></div>
+      <div class="field"><label>Kennzeichen</label><input id="vehiclePlate" placeholder="GG-CA-1013E" /></div>
       <div id="bmwCreateSection" class="info-box hidden">
         <div class="eyebrow">BMW Setup</div>
-        <div class="grid three" style="margin-top:14px">
-          <div class="field"><label>Client ID</label><input id="bmwClientId" /></div>
-          <div class="field"><label>BMW MQTT Username</label><input id="bmwMqttUsername" /></div>
-          <div class="field"><label>Region</label><input id="bmwRegion" value="EU" /></div>
-        </div>
-        <div class="grid two" style="margin-top:16px">
-          <div class="field"><label>VIN</label><input id="bmwVin" /></div>
-          <div class="field"><label style="margin-bottom:0">append_vin</label><div><input id="bmwAppendVin" type="checkbox" style="width:auto;margin-right:8px"> VIN ans Raw-Topic anhängen</div></div>
-        </div>
+        <div class="field" style="margin-top:14px"><label>Client ID</label><input id="bmwClientId" /></div>
+        <div class="field" style="margin-top:16px"><label>BMW MQTT Username</label><input id="bmwMqttUsername" /></div>
+        <div class="field" style="margin-top:16px"><label>Region</label><input id="bmwRegion" value="EU" /></div>
+        <div class="field" style="margin-top:16px"><label>VIN</label><input id="bmwVin" /></div>
+        <div class="field" style="margin-top:16px"><label style="margin-bottom:0">append_vin</label><div><input id="bmwAppendVin" type="checkbox" style="width:auto;margin-right:8px"> VIN ans Raw-Topic anhängen</div></div>
         <div class="auth-box">
           <strong>BMW Authentifizierung</strong>
           <div class="muted" id="authState">Noch nicht gestartet.</div>
@@ -150,11 +144,11 @@ function cardHtml(card){
   return `<article class="vehicle-card"><div class="vehicle-head"><div><div class="vehicle-title">${card.label}</div><div class="vehicle-subtitle">${card.manufacturer} · ${card.license_plate}</div></div><span class="status-badge ${card.status}">${statusLabel(card.status)}</span></div><div class="vehicle-metrics"><div class="metric"><span>SoC</span><strong>${metric(card.metrics.soc,' %')}</strong></div><div class="metric"><span>Reichweite</span><strong>${metric(card.metrics.range,' km')}</strong></div><div class="metric"><span>Lädt</span><strong>${yesNo(card.metrics.charging)}</strong></div><div class="metric"><span>Angesteckt</span><strong>${yesNo(card.metrics.plugged)}</strong></div><div class="metric"><span>Kilometer</span><strong>${metric(card.metrics.odometer,' km')}</strong></div><div class="metric"><span>Ladelimit</span><strong>${metric(card.metrics.limitSoc,' %')}</strong></div></div><div class="card-footer"><div>${card.status_detail || ''}</div><div class="topic-row">raw: ${card.topic}</div><div class="topic-row">mapped: ${card.mapped_topic}</div>${card.live?.mqtt_username ? `<div class="topic-row">BMW MQTT Username: ${card.live.mqtt_username}</div>` : ''}<div class="muted">${card.last_update || 'Noch keine Live-Daten'}</div><div class="card-actions"><button class="tiny-btn" onclick="editVehicle('${card.id}')">Bearbeiten</button><button class="danger-btn" onclick="deleteVehicle('${card.id}')">Löschen</button></div></div></article>`;
 }
 function renderCards(){ field('cardsGrid').innerHTML = cards.map(cardHtml).join('') + `<button class="add-card" id="openWizardBtn"><span>＋</span><strong>Fahrzeug hinzufügen</strong></button>`; field('openWizardBtn').onclick = openWizard; }
-function renderProviderList(){ const grid = field('providerGrid'); grid.innerHTML=''; providers.forEach(provider => { const btn = document.createElement('button'); btn.className='provider-card'+(createState.manufacturer===provider.id?' selected':''); btn.innerHTML=`<div class="eyebrow">${provider.badge || provider.id.toUpperCase()}</div><strong>${provider.name}</strong><span>${provider.notes || ''}</span>`; btn.onclick=()=>{ createState.manufacturer=provider.id; renderProviderList(); toggleCreateSections(); }; grid.appendChild(btn); }); }
+function renderProviderList(){ const select = field('createManufacturer'); select.innerHTML = `<option value="">Bitte Hersteller wählen</option>` + providers.map(provider => `<option value="${provider.id}">${provider.name}</option>`).join(''); select.value = createState.manufacturer || ''; }
 function fillManufacturerSelect(){ field('editManufacturer').innerHTML = providers.map(p => `<option value="${p.id}">${p.name}</option>`).join(''); }
-function toggleCreateSections(){ field('bmwCreateSection').classList.toggle('hidden', createState.manufacturer !== 'bmw'); }
+function toggleCreateSections(){ createState.manufacturer = field('createManufacturer').value || null; field('bmwCreateSection').classList.toggle('hidden', createState.manufacturer !== 'bmw'); }
 function toggleEditSections(){ field('editBmwSection').classList.toggle('hidden', field('editManufacturer').value !== 'bmw'); }
-function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehicleId','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin'].forEach(id=>field(id).value=''); field('bmwRegion').value='EU'; field('bmwAppendVin').checked=false; field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); toggleCreateSections(); }
+function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehicleId','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin'].forEach(id=>field(id).value=''); field('bmwRegion').value='EU'; field('bmwAppendVin').checked=false; field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; toggleCreateSections(); }
 function openWizard(){ resetCreate(); field('wizardDialog').showModal(); }
 async function loadDashboard(){ const res = await fetch('./api/dashboard'); const data = await res.json(); cards = data.vehicles || []; renderCards(); }
 async function postJson(url,payload,method='POST'){ const res = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})}); const text = await res.text(); let data={}; try{ data = text ? JSON.parse(text) : {}; }catch{ data = { detail: text }; } if(!res.ok) throw new Error(data.detail || 'Unbekannter Fehler'); return data; }
@@ -210,7 +204,7 @@ field('saveEditBtn').onclick = async()=>{ try{ const manufacturer = field('editM
 async function deleteVehicle(vehicleId){ if(!confirm('Fahrzeug wirklich löschen?')) return; await fetch(`./api/vehicles/${vehicleId}`,{method:'DELETE'}); await loadDashboard(); }
 window.deleteVehicle = deleteVehicle;
 
-setLiveLogUi(); renderCards(); renderProviderList(); fillManufacturerSelect(); setInterval(loadDashboard, 15000);
+field('createManufacturer').onchange = toggleCreateSections; setLiveLogUi(); renderCards(); renderProviderList(); fillManufacturerSelect(); setInterval(loadDashboard, 15000);
 </script>
 </body>
 </html>

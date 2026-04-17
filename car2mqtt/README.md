@@ -1,6 +1,6 @@
 # Car2MQTT Home Assistant Add-on
 
-Version 0.2.7
+Version 0.2.9
 
 ## Enthalten
 - mehrstufiger Fahrzeug-Wizard
