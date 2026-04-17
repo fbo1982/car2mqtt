@@ -1,0 +1,25 @@
+configuration:
+  log_level:
+    name: Log-Level
+    description: Ausführlichkeit der Backend-Logs von Car2MQTT.
+  mqtt:
+    name: MQTT-Standardwerte
+    description: Standard-MQTT-Verbindungseinstellungen für das Add-on.
+    fields:
+      host:
+        name: Host
+      port:
+        name: Port
+      username:
+        name: Benutzername
+      password:
+        name: Passwort
+      base_topic:
+        name: Basis-Topic
+      qos:
+        name: QoS
+      retain:
+        name: Retain
+  vehicles:
+    name: Fahrzeuge
+    description: Initiale Fahrzeugliste. Verwaltung vorzugsweise über die UI.

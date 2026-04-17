@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Car2MQTT</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Home Assistant Add-on</p>
+          <h1>Car2MQTT</h1>
+          <p class="subtle">Modulare Multi-Fahrzeug-Verwaltung für BMW, GWM/ORA und weitere Hersteller.</p>
+        </div>
+        <div class="actions">
+          <span id="versionBadge" class="badge">v-</span>
+          <button id="addVehicleButton" class="primary">+ Fahrzeug hinzufügen</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero-grid">
+          <article class="hero-card">
+            <h2>Fahrzeuge</h2>
+            <p class="metric" id="vehicleCount">0</p>
+            <p class="subtle">Verwaltete Fahrzeuge</p>
+          </article>
+          <article class="hero-card">
+            <h2>Aktiv</h2>
+            <p class="metric" id="runningCount">0</p>
+            <p class="subtle">Laufende Instanzen</p>
+          </article>
+          <article class="hero-card">
+            <h2>Provider</h2>
+            <p class="metric" id="providerCount">0</p>
+            <p class="subtle">BMW / GWM vorbereitet</p>
+          </article>
+        </section>
+
+        <section class="section-header">
+          <div>
+            <h2>Fahrzeugübersicht</h2>
+            <p class="subtle">Kachelansicht im Stil eines Setup-Dashboards.</p>
+          </div>
+        </section>
+
+        <section id="cards" class="card-grid"></section>
+
+        <section class="section-header">
+          <div>
+            <h2>BMW Mapping Beispiel</h2>
+            <p class="subtle">Vorbereitung für dein späteres kanonisches Modell unter <code>/mapped</code>.</p>
+          </div>
+        </section>
+        <pre id="mappingPreview" class="code-block"></pre>
+      </main>
+    </div>
+
+    <dialog id="vehicleDialog" class="dialog">
+      <form id="vehicleForm" class="dialog-content">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Wizard</p>
+            <h3 id="dialogTitle">Fahrzeug hinzufügen</h3>
+          </div>
+          <button type="button" class="ghost" id="closeDialogButton">✕</button>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            <span>Interne ID</span>
+            <input name="id" required placeholder="bmw-ggca501e" />
+          </label>
+          <label>
+            <span>Anzeige-Name</span>
+            <input name="label" required placeholder="BMW iX1" />
+          </label>
+          <label>
+            <span>Kennzeichen</span>
+            <input name="license_plate" required placeholder="GGCA501E" />
+          </label>
+          <label>
+            <span>Hersteller</span>
+            <select name="manufacturer" id="manufacturerSelect" required></select>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <label class="toggle">
+            <input type="checkbox" name="enabled" checked />
+            <span>Aktiviert</span>
+          </label>
+        </div>
+
+        <section>
+          <div class="section-header compact">
+            <div>
+              <h4>Hersteller-spezifische Einstellungen</h4>
+              <p id="providerDescription" class="subtle"></p>
+            </div>
+          </div>
+          <div id="providerFields" class="form-grid"></div>
+        </section>
+
+        <div class="dialog-actions">
+          <button type="button" class="ghost" id="cancelDialogButton">Abbrechen</button>
+          <button type="submit" class="primary">Speichern</button>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="vehicleCardTemplate">
+      <article class="vehicle-card">
+        <div class="card-top">
+          <div>
+            <p class="eyebrow manufacturer"></p>
+            <h3 class="label"></h3>
+            <p class="subtle plate"></p>
+          </div>
+          <span class="status-pill"></span>
+        </div>
+        <dl class="meta-grid">
+          <div>
+            <dt>ID</dt>
+            <dd class="vehicle-id"></dd>
+          </div>
+          <div>
+            <dt>Letztes Signal</dt>
+            <dd class="last-seen">—</dd>
+          </div>
+          <div>
+            <dt>Status</dt>
+            <dd class="message"></dd>
+          </div>
+          <div>
+            <dt>Topic</dt>
+            <dd class="topic-hint"></dd>
+          </div>
+        </dl>
+        <div class="card-actions">
+          <button class="secondary start">Start</button>
+          <button class="secondary stop">Stop</button>
+          <button class="secondary edit">Bearbeiten</button>
+          <button class="danger delete">Löschen</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
