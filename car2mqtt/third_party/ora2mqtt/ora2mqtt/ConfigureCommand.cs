@@ -19,6 +19,7 @@ namespace ora2mqtt
         private static string? Env(string name) => Environment.GetEnvironmentVariable(name);
         private static bool HasEnv(string name) => !String.IsNullOrWhiteSpace(Env(name));
         private bool NonInteractive => HasEnv("ORA_ACCOUNT") && HasEnv("ORA_PASSWORD");
+        private string? VerificationCode => Env("ORA_VERIFICATION_CODE");
 
         public async Task<int> Run(CancellationToken cancellationToken)
         {
@@ -141,13 +142,27 @@ namespace ora2mqtt
             }
             catch (GwmApiException e) when (e.Code == "110641")
             {
-                //SMS Login
+                // SMS / mail verification login
                 await client.GetSmsCodeAsync(new GetSmsCode { Email = request.Account }, cancellationToken);
-                var code = Prompt.Password("Code required. Please check your mail and enter the 4 digit code");
+
+                string code;
+                if (NonInteractive)
+                {
+                    if (String.IsNullOrWhiteSpace(VerificationCode))
+                    {
+                        throw new Exception("ORA verification code required. Please provide the code in the Car2MQTT vehicle settings and save again.");
+                    }
+                    code = VerificationCode!;
+                }
+                else
+                {
+                    code = Prompt.Password("Code required. Please check your mail and enter the 4 digit code");
+                }
+
                 var loginRequest = new LoginWithSmsRequest
                 {
                     Email = request.Account,
-                    Country = "DE",
+                    Country = options.Country,
                     DeviceId = options.DeviceId,
                     Model = "ora2mqtt",
                     SmsCode = code

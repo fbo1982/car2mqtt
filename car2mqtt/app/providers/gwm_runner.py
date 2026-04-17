@@ -18,6 +18,18 @@ from app.providers.gwm_config import ensure_ora_runtime_config, render_ora2mqtt_
 
 
 class GwmIntegratedWorker:
+    def _is_permanent_auth_error(self, text: str) -> bool:
+        lowered = (text or "").lower()
+        markers = [
+            "username or password is incorrect",
+            "account will be locked",
+            "verification code request is too frequently",
+            "verification code required",
+            "sharprompt requires an interactive environment",
+            "ora verification code required",
+        ]
+        return any(m in lowered for m in markers)
+
     def __init__(
         self,
         vehicle: VehicleConfig,
@@ -89,6 +101,7 @@ class GwmIntegratedWorker:
         env["ORA_ACCOUNT"] = str(self.vehicle.provider_config.get("account", ""))
         env["ORA_PASSWORD"] = str(self.vehicle.provider_config.get("password", ""))
         env["ORA_COUNTRY"] = str(self.vehicle.provider_config.get("country", "DE"))
+        env["ORA_VERIFICATION_CODE"] = str(self.vehicle.provider_config.get("verification_code", ""))
         env["MQTT_HOST"] = self.settings.host
         env["MQTT_USERNAME"] = self.settings.username
         env["MQTT_PASSWORD"] = self.settings.password
@@ -103,18 +116,24 @@ class GwmIntegratedWorker:
             text=True,
             timeout=180,
         )
+        combined = []
         if proc.stdout:
             for line in proc.stdout.splitlines():
                 self.log(f"[ora2mqtt configure] {line}")
+                combined.append(line)
         icu_error = False
         if proc.stderr:
             for line in proc.stderr.splitlines():
                 self.log(f"[ora2mqtt configure][stderr] {line}")
+                combined.append(line)
                 if "valid ICU package" in line or "libicu" in line:
                     icu_error = True
         if proc.returncode != 0:
+            joined = "\n".join(combined)
             if icu_error:
                 raise RuntimeError("ora2mqtt configure fehlgeschlagen: ICU/libicu fehlt im Container")
+            if self._is_permanent_auth_error(joined):
+                raise RuntimeError(f"ORA_AUTH_FATAL::{joined.splitlines()[0] if joined else 'Authentifizierungsfehler'}")
             raise RuntimeError(f"ora2mqtt configure fehlgeschlagen (rc={proc.returncode})")
         merge_ora_tokens(self.vehicle.provider_config, config_path)
         self.log("ORA configure erfolgreich abgeschlossen")
@@ -199,7 +218,13 @@ class GwmIntegratedWorker:
                 self.on_disconnect(str(rc))
             except Exception as exc:
                 self.log(f"ORA Worker Fehler: {exc}")
-                self.on_error(str(exc))
+                message = str(exc)
+                if message.startswith("ORA_AUTH_FATAL::"):
+                    final_message = message.split("::", 1)[1]
+                    self.on_error(final_message)
+                    self.log("ORA Fatalfehler erkannt - kein automatischer Retry")
+                    break
+                self.on_error(message)
             finally:
                 if self._monitor_client:
                     try:
