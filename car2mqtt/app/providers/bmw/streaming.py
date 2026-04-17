@@ -84,8 +84,21 @@ class BMWCarDataClient:
             return self.refresh_tokens()
         return True
 
+    @staticmethod
+    def _normalize_reason_code(reason_code) -> int:
+        if isinstance(reason_code, int):
+            return reason_code
+        value = getattr(reason_code, "value", None)
+        if isinstance(value, int):
+            return value
+        try:
+            return int(value if value is not None else reason_code)
+        except (TypeError, ValueError):
+            logger.warning("Unbekannter MQTT ReasonCode-Typ: %r", reason_code)
+            return -1
+
     def _on_connect(self, client, userdata, flags, reason_code, properties=None):
-        rc = int(reason_code) if not isinstance(reason_code, int) else reason_code
+        rc = self._normalize_reason_code(reason_code)
         if rc == 0:
             client.subscribe(f"{self.mqtt_username}/{self.vin}", qos=1)
             if self.subscribe_wildcard:
@@ -94,7 +107,7 @@ class BMWCarDataClient:
             if self.connect_callback:
                 self.connect_callback()
         else:
-            logger.error("BMW MQTT Verbindung fehlgeschlagen: %s", rc)
+            logger.error("BMW MQTT Verbindung fehlgeschlagen: %s (%r)", rc, reason_code)
 
     def _on_message(self, client, userdata, msg):
         try:
@@ -105,7 +118,7 @@ class BMWCarDataClient:
             logger.exception("BMW Nachricht konnte nicht verarbeitet werden: %s", exc)
 
     def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties=None):
-        rc = int(reason_code) if not isinstance(reason_code, int) else reason_code
+        rc = self._normalize_reason_code(reason_code)
         self._connected.clear()
         if self.disconnect_callback:
             self.disconnect_callback(rc)
