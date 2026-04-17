@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Car2MQTT</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Car2MQTT</h1>
+        <p>Version {{ version }} · Multi-Fahrzeug-Scaffold</p>
+      </div>
+      <button id="openModalBtn" class="primary">Fahrzeug hinzufügen</button>
+    </header>
+
+    <main class="container">
+      <section class="grid">
+        {% if cards %}
+          {% for card in cards %}
+          <article class="card">
+            <div class="card-header">
+              <div>
+                <h2>{{ card.label }}</h2>
+                <p>{{ card.manufacturer }} · {{ card.license_plate }}</p>
+              </div>
+              <span class="pill {{ 'ok' if card.enabled else 'off' }}">{{ 'aktiv' if card.enabled else 'deaktiviert' }}</span>
+            </div>
+            <div class="meta">
+              <div><strong>Raw</strong><br>{{ card.topic }}</div>
+              <div><strong>Mapped</strong><br>{{ card.mapped_topic }}</div>
+            </div>
+          </article>
+          {% endfor %}
+        {% else %}
+          <article class="empty-state">
+            <h2>Noch keine Fahrzeuge</h2>
+            <p>Lege dein erstes Fahrzeug an und wähle anschließend den Hersteller.</p>
+          </article>
+        {% endif %}
+      </section>
+    </main>
+
+    <dialog id="vehicleDialog" class="modal">
+      <form id="vehicleForm" method="dialog">
+        <h3>Fahrzeug hinzufügen</h3>
+        <label>ID<input name="id" required placeholder="bmw-ggca501e" /></label>
+        <label>Anzeigename<input name="label" required placeholder="BMW iX1" /></label>
+        <label>Kennzeichen<input name="license_plate" required placeholder="GGCA501E" /></label>
+        <label>Hersteller
+          <select name="manufacturer" id="manufacturerSelect" required>
+            <option value="">Bitte wählen</option>
+            {% for provider in providers %}
+              <option value="{{ provider.id }}">{{ provider.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div id="providerNotes" class="hint"></div>
+        <div id="providerFields"></div>
+        <div class="actions">
+          <button type="button" id="cancelBtn">Abbrechen</button>
+          <button type="submit" class="primary">Speichern</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script>
+      const providers = {{ providers | tojson }};
+      const dialog = document.getElementById('vehicleDialog');
+      const openModalBtn = document.getElementById('openModalBtn');
+      const cancelBtn = document.getElementById('cancelBtn');
+      const manufacturerSelect = document.getElementById('manufacturerSelect');
+      const providerFields = document.getElementById('providerFields');
+      const providerNotes = document.getElementById('providerNotes');
+      const vehicleForm = document.getElementById('vehicleForm');
+
+      openModalBtn?.addEventListener('click', () => dialog.showModal());
+      cancelBtn?.addEventListener('click', () => dialog.close());
+
+      function renderProviderFields(providerId) {
+        providerFields.innerHTML = '';
+        providerNotes.textContent = '';
+        const provider = providers.find((p) => p.id === providerId);
+        if (!provider) return;
+        providerNotes.textContent = provider.notes || '';
+        for (const field of provider.fields) {
+          const wrapper = document.createElement('label');
+          wrapper.textContent = field.label;
+          const input = document.createElement('input');
+          input.name = `provider_${field.name}`;
+          input.type = field.type === 'password' ? 'password' : 'text';
+          input.required = Boolean(field.required);
+          input.value = field.default || '';
+          wrapper.appendChild(input);
+          providerFields.appendChild(wrapper);
+        }
+      }
+
+      manufacturerSelect.addEventListener('change', (event) => {
+        renderProviderFields(event.target.value);
+      });
+
+      vehicleForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const formData = new FormData(vehicleForm);
+        const provider_config = {};
+        for (const [key, value] of formData.entries()) {
+          if (key.startsWith('provider_')) {
+            provider_config[key.replace('provider_', '')] = value;
+          }
+        }
+        const payload = {
+          id: formData.get('id'),
+          label: formData.get('label'),
+          manufacturer: formData.get('manufacturer'),
+          license_plate: formData.get('license_plate'),
+          enabled: true,
+          provider_config,
+        };
+        const response = await fetch('/api/vehicles', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          const err = await response.json();
+          alert(err.detail || 'Fehler beim Speichern');
+          return;
+        }
+        window.location.reload();
+      });
+    </script>
+  </body>
+</html>
