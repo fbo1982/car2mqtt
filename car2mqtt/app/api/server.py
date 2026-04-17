@@ -54,7 +54,7 @@ def create_app() -> FastAPI:
         return templates.TemplateResponse(
             request,
             "index.html",
-            {"cards": cards, "providers": providers, "version": "0.1.1"},
+            {"cards": cards, "providers": providers, "version": "0.1.2"},
         )
 
     @app.get("/api/providers")
@@ -94,6 +94,6 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
-        return {"status": "ok", "version": "0.1.1"}
+        return {"status": "ok", "version": "0.1.2"}
 
     return app

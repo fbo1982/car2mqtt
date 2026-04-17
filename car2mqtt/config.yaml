@@ -1,5 +1,5 @@
 name: "Car2MQTT"
-version: "0.1.1"
+version: "0.1.2"
 slug: "car2mqtt"
 description: "Modular multi-vehicle MQTT bridge scaffold for Home Assistant"
 url: "https://github.com/tbo1982/car2mqtt"
@@ -13,7 +13,6 @@ panel_title: Car2MQTT
 arch:
   - amd64
   - aarch64
-  - armv7
 ports:
   8099/tcp: 8099
 ports_description:
@@ -24,4 +23,3 @@ options:
   log_level: info
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)
-image: "ghcr.io/tbo1982/{arch}-addon-car2mqtt"
