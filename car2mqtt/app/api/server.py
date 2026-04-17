@@ -127,7 +127,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.5.1",
+                "version": "0.5.2",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -348,15 +348,16 @@ def create_app() -> FastAPI:
         code = payload.verification_code.strip()
         if not code:
             raise HTTPException(status_code=400, detail="Verifikationscode fehlt")
-        target_dir = Path(data_dir) / "providers" / vehicle.id
-        target_dir.mkdir(parents=True, exist_ok=True)
-        (target_dir / "verification_code.txt").write_text(code, encoding="utf-8")
         vehicle.provider_state.auth_message = "Verifikationscode übernommen"
         store.upsert_vehicle(vehicle)
-        log_store.append(vehicle_id, "ORA Verifikationscode übernommen (temporär)")
+        vehicle.provider_state.auth_message = "Verifikationscode wird verarbeitet"
+        vehicle.provider_config["verification_code"] = code
+        log_store.append(vehicle_id, "ORA Verifikationscode übernommen")
         settings = load_runtime_mqtt_settings()
         if vehicle.enabled and settings.host:
             worker_manager.start_or_restart_vehicle(vehicle.id, settings)
+        vehicle.provider_config["verification_code"] = ""
+        store.upsert_vehicle(vehicle)
         return {"status": "ok", "vehicle_id": vehicle_id}
 
     @app.delete("/api/vehicles/{vehicle_id}")
