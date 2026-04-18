@@ -88,8 +88,6 @@ class WorkerManager:
             settings.base_topic,
             vehicle.manufacturer,
             vehicle.license_plate,
-            vin=vin,
-            append_vin=bool(vehicle.provider_config.get("append_vin", False)),
         )
         return raw_topic, mapped_topic(settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
 
@@ -121,8 +119,6 @@ class WorkerManager:
             client.publish(f"{topic}/auth_state", runtime.auth_state)
             client.publish(f"{topic}/raw_topic", runtime.raw_topic)
             client.publish(f"{topic}/mapped_topic", runtime.mapped_topic)
-            if vehicle.provider_config.get("append_vin", False):
-                client.publish(f"{topic}/append_vin", True)
             if runtime.last_update:
                 client.publish(f"{topic}/last_update", runtime.last_update)
         finally:
