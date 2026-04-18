@@ -35,7 +35,7 @@ select, option {
     <div>
       <div class="eyebrow">Home Assistant Add-on</div>
       <h1>Car2MQTT <span>v{{ version }}</span></h1>
-      <p>BMW-Mehrfahrzeug-Zentrale plus ORA/GWM-Konfigurationsassistent für ora2mqtt.yml. BMW Topics und interne IDs sind an das Kennzeichen-Schema angepasst.</p>
+      <p>BMW-Mehrfahrzeug-Zentrale plus ORA/GWM-Konfigurationsassistent für ora2mqtt.yml. BMW Topics, Kapazitäts-Mapping und interne IDs sind an das Kennzeichen-Schema angepasst.</p>
     </div>
     <div class="mqtt-pill">
       <div class="pill-title">MQTT</div>
@@ -127,7 +127,19 @@ select, option {
         </div>
         <div class="grid two">
           <div class="field"><label>VIN</label><input id="editBmwVin" /></div>
-                  </div>
+          <div class="field">
+            <label>Reconnect</label>
+            <div style="display:flex;align-items:center;gap:10px;margin:4px 0 8px">
+              <input id="editBmwAutoReconnect" class="check-lg" type="checkbox" style="width:auto" checked>
+              <span>Automatisch nach Tokenlaufzeit erneuern</span>
+            </div>
+            <small>Wenn deaktiviert, wird die BMW-Verbindung in einem festen Intervall neu aufgebaut.</small>
+            <div id="editBmwManualReconnectWrap" class="hidden" style="margin-top:10px">
+              <label style="display:block;margin-bottom:8px;font-weight:700;color:#edf1ff">Manueller Reconnect (Minuten)</label>
+              <input id="editBmwManualReconnectMinutes" type="number" min="15" max="60" value="15" />
+            </div>
+          </div>
+        </div>
         <div class="auth-box">
           <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap">
             <div>
@@ -210,6 +222,9 @@ function buildEvccCustomTemplate(){
   let capacity = '';
   if(manufacturer === 'gwm'){
     capacity = String(field('editGwmCapacity').value || '').trim();
+  } else if (manufacturer === 'bmw') {
+    const current = getCurrentEditCard();
+    capacity = String((current && current.metrics && current.metrics.capacityKwh != null ? current.metrics.capacityKwh : '') || '').trim();
   }
   const topicBase = `car/${manufacturerTopicPrefix(manufacturer)}/${id}/mapped`;
   const capacityLine = capacity ? `capacity: ${capacity}` : 'capacity: 0 #<- Auf die Batteriekapazität anpassen';
@@ -261,20 +276,38 @@ status:
     timeout: 24h
 `;
 }
+async function copyTextRobust(content){
+  if(navigator.clipboard && window.isSecureContext){
+    try{
+      await navigator.clipboard.writeText(content);
+      return true;
+    }catch(err){}
+  }
+  try{
+    const ta = document.createElement('textarea');
+    ta.value = content;
+    ta.setAttribute('readonly','');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    if(ok) return true;
+  }catch(err){}
+  return false;
+}
 async function copyCurrentCarToEvcc(){
   try{
     const content = buildEvccCustomTemplate();
-    if(navigator.clipboard && navigator.clipboard.writeText){
-      await navigator.clipboard.writeText(content);
+    const copied = await copyTextRobust(content);
+    if(copied){
+      alert('EVCC-Vorlage in die Zwischenablage kopiert.');
     }else{
-      const ta = document.createElement('textarea');
-      ta.value = content;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      ta.remove();
+      window.prompt('Bitte Inhalt manuell kopieren:', content);
     }
-    alert('EVCC-Vorlage in die Zwischenablage kopiert.');
   }catch(err){
     alert('EVCC-Vorlage konnte nicht kopiert werden: ' + (err.message || err));
   }
@@ -327,6 +360,11 @@ function setEditManufacturerLayout(manufacturer){
 }
 
 function toggleEditSections(){ const man = field('editManufacturer').value; setEditManufacturerLayout(man); }
+function toggleBmwReconnectMode(){
+  const auto = field('editBmwAutoReconnect')?.checked;
+  const wrap = field('editBmwManualReconnectWrap');
+  if(wrap) wrap.classList.toggle('hidden', !!auto);
+}
 function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity','gwmSourceTopicBase','gwmVerificationCode'].forEach(id=>field(id).value=''); field('bmwRegion').value='EU'; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; setCreateManufacturerLayout(null); }
 function openWizard(){ resetCreate(); field('wizardDialog').showModal(); }
 async function loadDashboard(){ const res = await fetch('./api/dashboard'); const data = await res.json(); cards = data.vehicles || []; renderCards(); }
@@ -347,7 +385,7 @@ field('saveCreateBtn').onclick = async()=>{
     if(createState.manufacturer === 'bmw'){
       if(!field('bmwClientId').value.trim() || !field('bmwVin').value.trim()) throw new Error('Bitte BMW Client ID und VIN eintragen.');
       if(!createState.authReady) throw new Error('Bitte BMW Authentifizierung abschließen.');
-      payload.provider_config = { client_id: field('bmwClientId').value.trim(), mqtt_username: field('bmwMqttUsername').value.trim(), vin: field('bmwVin').value.trim(), region: field('bmwRegion').value.trim() };
+      payload.provider_config = { client_id: field('bmwClientId').value.trim(), mqtt_username: field('bmwMqttUsername').value.trim(), vin: field('bmwVin').value.trim(), region: field('bmwRegion').value.trim(), auto_reconnect: true, manual_reconnect_minutes: 15 };
     }
     if(createState.manufacturer === 'gwm'){
       payload.provider_config = { account: field('gwmAccount').value.trim(), password: field('gwmPassword').value.trim(), country: field('gwmCountry').value.trim(), language: field('gwmLanguage').value.trim(), poll_interval: field('gwmPollInterval').value.trim(), vehicle_id: field('gwmVehicleId').value.trim() || derivedId, capacity_kwh: field('gwmCapacity').value.trim(), source_topic_base: field('gwmSourceTopicBase').value.trim() };
@@ -366,7 +404,7 @@ async function editVehicle(vehicleId){
   stopLiveLogs(); editState.vehicleId = vehicleId; editState.reauthSessionId = null; editState.authReady = vehicle.provider_state?.auth_state === 'authorized'; editState.lastLogText = ''; setLiveLogUi();
   field('editManufacturer').value = vehicle.manufacturer; field('editLabel').value = vehicle.label; field('editPlate').value = vehicle.license_plate;
   field('editEnabled').checked = vehicle.enabled !== false;
-  field('editBmwClientId').value = vehicle.provider_config.client_id || ''; field('editBmwMqttUsername').value = vehicle.provider_config.mqtt_username || ''; field('editBmwVin').value = vehicle.provider_config.vin || ''; field('editBmwRegion').value = vehicle.provider_config.region || 'EU';
+  field('editBmwClientId').value = vehicle.provider_config.client_id || ''; field('editBmwMqttUsername').value = vehicle.provider_config.mqtt_username || ''; field('editBmwVin').value = vehicle.provider_config.vin || ''; field('editBmwRegion').value = vehicle.provider_config.region || 'EU'; field('editBmwAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editBmwManualReconnectMinutes').value = vehicle.provider_config.manual_reconnect_minutes || 15; toggleBmwReconnectMode();
   field('editGwmAccount').value = vehicle.provider_config.account || ''; field('editGwmPassword').value = vehicle.provider_config.password || ''; field('editGwmCountry').value = vehicle.provider_config.country || 'DE'; field('editGwmLanguage').value = vehicle.provider_config.language || 'de'; field('editGwmPollInterval').value = vehicle.provider_config.poll_interval || 60; field('editGwmVehicleId').value = vehicle.provider_config.vehicle_id || vehicle.id; field('editGwmCapacity').value = vehicle.provider_config.capacity_kwh || ''; field('editGwmSourceTopicBase').value = vehicle.provider_config.source_topic_base || ''; field('editGwmVerificationCode').value = '';
   field('editAuthState').textContent = vehicle.enabled === false ? 'Fahrzeug ist inaktiv.' : (vehicle.status === 'waiting_for_code' ? 'Verifikationscode erforderlich.' : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'Anmeldung prüfen.'));
   field('editReauthStartBtn').disabled = vehicle.enabled === false || vehicle.manufacturer !== 'bmw';
@@ -386,12 +424,18 @@ async function submitGwmCode(){
   const code = field('editGwmVerificationCode').value.trim();
   if(!code){ alert('Bitte Verifikationscode eintragen.'); return; }
   try{
-    await fetchJson(`./api/vehicles/${editState.vehicleId}/gwm/submit-code`, {
+    await fetch(`./api/vehicles/${editState.vehicleId}/gwm/submit-code`, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ verification_code: code })
+    }).then(async res => {
+      if(!res.ok){
+        const txt = await res.text();
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
+      return res.json();
     });
-    await refreshDashboard();
+    await loadDashboard();
     await refreshVehicleLogs();
     field('editGwmVerificationCode').value = '';
     setGwmVerifyVisibility(false, false);
@@ -423,7 +467,7 @@ field('editReauthStartBtn').onclick = async()=>{ if(!editState.vehicleId) return
 field('editPollAuthBtn').onclick = async()=>{ if(!editState.reauthSessionId) return showNotice('editError','Bitte zuerst Re-Auth starten.'); try{ const d = await postJson('./api/providers/bmw/auth/poll',{ session_id: editState.reauthSessionId }); if(d.state === 'authorized'){ editState.authReady = true; field('editAuthState').textContent = 'BMW Re-Auth erfolgreich abgeschlossen.'; await refreshVehicleLogs(); } else { field('editAuthState').textContent = d.message || d.state; } }catch(err){ showNotice('editError', err.message); } };
 async function saveEdit(closeAfter){ try{ const manufacturer = field('editManufacturer').value; const derivedId = normalizeVehicleIdFromPlate(field('editPlate').value.trim()); const payload = { id: derivedId, label: field('editLabel').value.trim(), manufacturer, license_plate: field('editPlate').value.trim(), enabled: field('editEnabled').checked, provider_config: {}, auth_session_id: editState.reauthSessionId || null };
   if(!payload.label || !payload.license_plate || !derivedId) throw new Error('Bitte Titel und Kennzeichen ausfüllen.');
-  if(manufacturer === 'bmw'){ payload.provider_config = { client_id: field('editBmwClientId').value.trim(), mqtt_username: field('editBmwMqttUsername').value.trim(), vin: field('editBmwVin').value.trim(), region: field('editBmwRegion').value.trim() }; if(!payload.provider_config.client_id || !payload.provider_config.vin) throw new Error('Bitte BMW Client ID und VIN eintragen.'); }
+  if(manufacturer === 'bmw'){ payload.provider_config = { client_id: field('editBmwClientId').value.trim(), mqtt_username: field('editBmwMqttUsername').value.trim(), vin: field('editBmwVin').value.trim(), region: field('editBmwRegion').value.trim(), auto_reconnect: field('editBmwAutoReconnect').checked, manual_reconnect_minutes: Math.max(15, Math.min(60, parseInt(field('editBmwManualReconnectMinutes').value || '15', 10))) }; if(!payload.provider_config.client_id || !payload.provider_config.vin) throw new Error('Bitte BMW Client ID und VIN eintragen.'); }
   if(manufacturer === 'gwm'){ payload.provider_config = { account: field('editGwmAccount').value.trim(), password: field('editGwmPassword').value.trim(), country: field('editGwmCountry').value.trim(), language: field('editGwmLanguage').value.trim(), poll_interval: field('editGwmPollInterval').value.trim(), vehicle_id: field('editGwmVehicleId').value.trim() || derivedId, capacity_kwh: field('editGwmCapacity').value.trim(), source_topic_base: field('editGwmSourceTopicBase').value.trim() }; if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.'); }
   await postJson(`./api/vehicles/${editState.vehicleId}`, payload, 'PUT'); await loadDashboard(); if(closeAfter){ field('editDialog').close(); } } catch(err){ showNotice('editError', err.message); } }
 field('saveEditKeepOpenBtn').onclick = ()=>saveEdit(false);
@@ -432,6 +476,7 @@ field('saveEditBtn').onclick = ()=>saveEdit(true);
 async function deleteVehicle(vehicleId){ if(!confirm('Fahrzeug wirklich löschen?')) return; await fetch(`./api/vehicles/${vehicleId}`,{method:'DELETE'}); await loadDashboard(); }
 window.deleteVehicle = deleteVehicle;
 
+field('copyEvccBtn').onclick = copyCurrentCarToEvcc;
 field('createManufacturer').onchange = toggleCreateSections; setLiveLogUi(); renderCards(); renderProviderList(); fillManufacturerSelect(); setInterval(loadDashboard, 15000);
 </script>
 </body>
