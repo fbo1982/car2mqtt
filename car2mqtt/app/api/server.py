@@ -48,6 +48,66 @@ class BmwAuthPollPayload(BaseModel):
 class GwmVerificationPayload(BaseModel):
     verification_code: str
 
+import html
+
+
+def _render_cards_html(cards: list[dict]) -> str:
+    parts: list[str] = []
+    for card in cards:
+        status = html.escape(str(card.get("status", "idle")))
+        label = html.escape(str(card.get("label", "")))
+        manufacturer = html.escape(str(card.get("manufacturer", "")))
+        plate = html.escape(str(card.get("license_plate", "")))
+        detail = html.escape(str(card.get("status_detail", "")))
+        topic = html.escape(str(card.get("topic", "")))
+        mapped = html.escape(str(card.get("mapped_topic", "")))
+        last_update = html.escape(str(card.get("last_update", "")))
+        verify_badge = '<span class="chip chip-warn">Verify needed</span>' if card.get("verify_needed") else ''
+        metrics = card.get("metrics", {}) or {}
+
+        def m(key: str, suffix: str = "") -> str:
+            value = metrics.get(key)
+            return "—" if value in (None, "") else f"{html.escape(str(value))}{suffix}"
+
+        def b(key: str) -> str:
+            value = metrics.get(key)
+            if value is True:
+                return "ja"
+            if value is False:
+                return "nein"
+            return "—"
+
+        parts.append(f"""
+<article class="vehicle-card">
+  <div class="vehicle-head">
+    <div>
+      <div class="vehicle-title">{label}</div>
+      <div class="vehicle-subtitle">{manufacturer} · {plate}</div>
+    </div>
+    <div class="state-stack">{verify_badge}<span class="status-badge {status}">{status}</span></div>
+  </div>
+  <div class="vehicle-metrics">
+    <div class="metric"><span>SoC</span><strong>{m("soc"," %")}</strong></div>
+    <div class="metric"><span>Reichweite</span><strong>{m("range"," km")}</strong></div>
+    <div class="metric"><span>Lädt</span><strong>{b("charging")}</strong></div>
+    <div class="metric"><span>Angesteckt</span><strong>{b("plugged")}</strong></div>
+    <div class="metric"><span>Kilometer</span><strong>{m("odometer"," km")}</strong></div>
+    <div class="metric"><span>Ladelimit</span><strong>{m("limitSoc"," %")}</strong></div>
+  </div>
+  <div class="card-footer">
+    <div>{detail}</div>
+    <div class="topic-row">raw: {topic}</div>
+    <div class="topic-row">mapped: {mapped}</div>
+    <div class="muted">{last_update or 'Noch keine Live-Daten'}</div>
+    <div class="card-actions">
+      <button class="tiny-btn" onclick="editVehicle('{html.escape(str(card.get("id","")))}')">Bearbeiten</button>
+      <button class="danger-btn" onclick="deleteVehicle('{html.escape(str(card.get("id","")))}')">Löschen</button>
+    </div>
+  </div>
+</article>""")
+    parts.append('<button class="add-card" id="openWizardBtn"><span>＋</span><strong>Fahrzeug hinzufügen</strong></button>')
+    return "".join(parts)
+
 
 def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, base_topic: str) -> dict:
     metrics = (runtime_state or {}).get("metrics", {})
@@ -128,9 +188,10 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.5.6",
+                "version": "0.5.7",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
+                "cards_html": _render_cards_html(cards),
             },
         )
 

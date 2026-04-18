@@ -54,7 +54,7 @@ select, option {
     <div class="toolbar"><button id="mqttTestBtn" class="ghost-btn">MQTT testen</button></div>
   </section>
 
-  <section id="cardsGrid" class="cards-grid"></section>
+  <section id="cardsGrid" class="cards-grid">{{ cards_html | safe }}</section>
 </main>
 
 <dialog id="wizardDialog" class="modal">
@@ -244,7 +244,7 @@ function metric(v,s=''){ return v === null || v === undefined || v === '' ? '—
 function cardHtml(card){
   return `<article class="vehicle-card"><div class="vehicle-head"><div><div class="vehicle-title">${card.label}</div><div class="vehicle-subtitle">${card.manufacturer} · ${card.license_plate}</div></div><span class="status-badge ${card.status}">${statusLabel(card.status)}</span></div><div class="vehicle-metrics"><div class="metric"><span>SoC</span><strong>${metric(card.metrics.soc,' %')}</strong></div><div class="metric"><span>Reichweite</span><strong>${metric(card.metrics.range,' km')}</strong></div><div class="metric"><span>Lädt</span><strong>${yesNo(card.metrics.charging)}</strong></div><div class="metric"><span>Angesteckt</span><strong>${yesNo(card.metrics.plugged)}</strong></div><div class="metric"><span>Kilometer</span><strong>${metric(card.metrics.odometer,' km')}</strong></div><div class="metric"><span>Ladelimit</span><strong>${metric(card.metrics.limitSoc,' %')}</strong></div></div><div class="card-footer"><div>${card.enabled === false ? 'Fahrzeug inaktiv — kein Remote-Login und kein Streaming.' : (card.status_detail || '')}</div><div class="topic-row">raw: ${card.topic}</div><div class="topic-row">mapped: ${card.mapped_topic}</div>${card.live?.mqtt_username ? `<div class="topic-row">BMW MQTT Username: ${card.live.mqtt_username}</div>` : ''}<div class="muted">${card.last_update || 'Noch keine Live-Daten'}</div><div class="card-actions"><button class="tiny-btn" onclick="editVehicle('${card.id}')">Bearbeiten</button><button class="danger-btn" onclick="deleteVehicle('${card.id}')">Löschen</button></div></div></article>`;
 }
-function renderCards(){ field('cardsGrid').innerHTML = cards.map(cardHtml).join('') + `<button class="add-card" id="openWizardBtn"><span>＋</span><strong>Fahrzeug hinzufügen</strong></button>`; field('openWizardBtn').onclick = openWizard; }
+function renderCards(){ field('cardsGrid').innerHTML = cards.map(cardHtml).join('') + `<button class="add-card" id="openWizardBtn"><span>＋</span><strong>Fahrzeug hinzufügen</strong></button>`; const btn = field('openWizardBtn'); if(btn) btn.onclick = openWizard; }
 function renderProviderList(){ const select = field('createManufacturer'); select.innerHTML = `<option value="">Bitte Hersteller wählen</option>` + providers.map(provider => `<option value="${provider.id}">${provider.name}</option>`).join(''); select.value = createState.manufacturer || ''; }
 function fillManufacturerSelect(){ field('editManufacturer').innerHTML = providers.map(p => `<option value="${p.id}">${p.name}</option>`).join(''); }
 
