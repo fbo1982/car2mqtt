@@ -89,6 +89,7 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         "last_update": (runtime_state or {}).get("last_update", ""),
         "enabled": vehicle.enabled,
         "manufacturer_note": "ORA Runner vorbereitet" if vehicle.manufacturer == "gwm" else "",
+        "verify_needed": (vehicle.manufacturer == "gwm" and runtime.connection_state == "waiting_for_code"),
         "source_topic_base": vehicle.provider_config.get("source_topic_base", "") if vehicle.manufacturer == "gwm" else "",
     }
 
@@ -127,7 +128,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.5.3",
+                "version": "0.5.4",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -339,6 +340,21 @@ def create_app() -> FastAPI:
         log_store.append(vehicle_id, "BMW Re-Auth gestartet")
         return session.model_dump(mode="json")
 
+
+
+    @app.post("/api/vehicles/{vehicle_id}/gwm/request-code")
+    async def gwm_request_code(vehicle_id: str):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle or vehicle.manufacturer != "gwm":
+            raise HTTPException(status_code=404, detail="ORA Fahrzeug nicht gefunden")
+        vehicle.provider_config["verification_code"] = ""
+        vehicle.provider_state.auth_message = "Verifikationscode wird angefordert"
+        store.upsert_vehicle(vehicle)
+        log_store.append(vehicle_id, "ORA Verify-Prozess gestartet")
+        settings = load_runtime_mqtt_settings()
+        if vehicle.enabled and settings.host:
+            worker_manager.start_or_restart_vehicle(vehicle.id, settings)
+        return {"status": "ok", "vehicle_id": vehicle_id}
 
     @app.post("/api/vehicles/{vehicle_id}/gwm/submit-code")
     async def gwm_submit_code(vehicle_id: str, payload: GwmVerificationPayload):
