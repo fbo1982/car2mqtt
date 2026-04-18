@@ -317,7 +317,7 @@ field('clearLogsBtn').onclick = async()=>{
   if(!editState.vehicleId) return;
   if(!confirm('Aktuelle Fahrzeug-Logs wirklich löschen?')) return;
   try{
-    const res = await fetch(`./api/vehicles/${editState.vehicleId}/logs`, { method:'DELETE' });
+    const res = await fetch(`./api/vehicles/${editState.vehicleId}/logs/clear`, { method:'POST' });
     if(!res.ok){
       const txt = await res.text();
       throw new Error(txt || `HTTP ${res.status}`);

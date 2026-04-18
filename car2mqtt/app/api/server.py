@@ -127,7 +127,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.6.1",
+                "version": "0.6.2",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -154,6 +154,13 @@ def create_app() -> FastAPI:
         if not store.get_vehicle(vehicle_id):
             raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
         return log_store.read(vehicle_id)
+
+    @app.post("/api/vehicles/{vehicle_id}/logs/clear")
+    async def clear_vehicle_logs(vehicle_id: str):
+        if not store.get_vehicle(vehicle_id):
+            raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+        log_store.delete(vehicle_id)
+        return {"status": "ok", "vehicle_id": vehicle_id}
 
     @app.get("/api/vehicles/{vehicle_id}/ora/config", response_class=PlainTextResponse)
     async def get_ora_config(vehicle_id: str):
