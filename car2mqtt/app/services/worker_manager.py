@@ -139,6 +139,14 @@ class WorkerManager:
             ref[parts[-1]] = metric_data
         return nested
 
+    def _deep_merge_dict(self, target: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any]:
+        for key, value in source.items():
+            if isinstance(value, dict) and isinstance(target.get(key), dict):
+                self._deep_merge_dict(target[key], value)
+            else:
+                target[key] = value
+        return target
+
     def _handle_bmw_payload(self, vehicle_id: str, callback_topic: str, data: Dict[str, Any], mqtt_settings) -> None:
         vehicle = self.config_store.get_vehicle(vehicle_id)
         if not vehicle:
@@ -148,7 +156,10 @@ class WorkerManager:
         try:
             client.connect()
             nested = self._flatten_publish(client, raw_topic_base, data)
-            mapped_payload = map_bmw_payload(nested)
+            cached = self._bmw_raw_cache.get(vehicle_id, {})
+            merged = self._deep_merge_dict(cached, nested)
+            self._bmw_raw_cache[vehicle_id] = merged
+            mapped_payload = map_bmw_payload(merged)
             for key, value in mapped_payload.items():
                 client.publish(f"{mapped}/{key}", value)
         finally:
@@ -169,7 +180,7 @@ class WorkerManager:
         }
         self.state_store.upsert(runtime)
         count = len((data or {}).get("data", {}))
-        self.log_store.append(vehicle_id, f"Live-Daten empfangen: {count} Datenpunkte -> {callback_topic}")
+        self.log_store.append(vehicle_id, f"Live-Daten empfangen: {count} Datenpunkte -> {callback_topic} (Mapping aus kumuliertem Snapshot)")
         self._publish_meta(vehicle, runtime, mqtt_settings)
 
 
