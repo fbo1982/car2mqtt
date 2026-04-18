@@ -111,6 +111,7 @@ select, option {
   <div class="panel">
     <div class="modal-head"><div><div class="eyebrow">Fahrzeug</div><h3>Fahrzeug bearbeiten</h3></div><button id="closeEditBtn" class="icon-btn">✕</button></div>
     <div id="editError" class="notice"></div>
+    <div style="display:flex;justify-content:flex-end;margin:0 28px 10px"><button id="copyEvccBtn" class="ghost-btn">Copy Car to Custom EVCC</button></div>
     <div class="modal-body grid">
       <div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
@@ -191,6 +192,92 @@ const field = (id) => document.getElementById(id);
 
 function normalizeVehicleIdFromPlate(plate){
   return String(plate || '').toUpperCase().replace(/[^A-Z0-9]/g,'');
+}
+
+function yamlEscape(value){
+  return String(value ?? '').replace(/"/g, '\"');
+}
+function manufacturerTopicPrefix(manufacturer){
+  return String(manufacturer || '').toLowerCase();
+}
+function getCurrentEditCard(){
+  return cards.find(card => card.id === editState.vehicleId) || null;
+}
+function buildEvccCustomTemplate(){
+  const manufacturer = field('editManufacturer').value || 'car';
+  const id = normalizeVehicleIdFromPlate(field('editPlate').value.trim());
+  const title = field('editLabel').value.trim() || id;
+  let capacity = '';
+  if(manufacturer === 'gwm'){
+    capacity = String(field('editGwmCapacity').value || '').trim();
+  }
+  const topicBase = `car/${manufacturerTopicPrefix(manufacturer)}/${id}/mapped`;
+  const capacityLine = capacity ? `capacity: ${capacity}` : 'capacity: 0 #<- Auf die Batteriekapazität anpassen';
+  return `###########################################
+###### CAR2MQTT Custom EVCC Template ######
+###########################################
+
+title: ${yamlEscape(title)} #<- Angezeigter Fahrzeugname
+${capacityLine}
+phases: 3 #<- Wieviele Phasen werden verwendet 1,3 zulässig
+icon: car
+identifiers:
+  - ${id}
+soc:
+  source: mqtt
+  topic: ${topicBase}/soc
+  timeout: 24h
+
+onIdentify: #<- es darf nur eine Lademodus aktiv sein.
+  mode: pv # PV Only
+  #mode: now # Schnell
+  #mode: minpv # Minimum + PV
+  #mode: off # Aus
+
+range:
+  source: mqtt
+  topic: ${topicBase}/range
+  timeout: 24h
+
+odometer:
+  source: mqtt
+  topic: ${topicBase}/odometer
+  timeout: 24h
+
+limitsoc:
+  source: mqtt
+  topic: ${topicBase}/limitSoc
+  timeout: 24h
+
+status:
+  source: combined
+  plugged:
+    source: mqtt
+    topic: ${topicBase}/plugged
+    timeout: 24h
+  charging:
+    source: mqtt
+    topic: ${topicBase}/charging
+    timeout: 24h
+`;
+}
+async function copyCurrentCarToEvcc(){
+  try{
+    const content = buildEvccCustomTemplate();
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(content);
+    }else{
+      const ta = document.createElement('textarea');
+      ta.value = content;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    alert('EVCC-Vorlage in die Zwischenablage kopiert.');
+  }catch(err){
+    alert('EVCC-Vorlage konnte nicht kopiert werden: ' + (err.message || err));
+  }
 }
 
 function showNotice(id, msg='') { const el = field(id); el.textContent = msg; el.style.display = msg ? 'block' : 'none'; }
