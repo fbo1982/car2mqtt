@@ -24,6 +24,7 @@ class WorkerManager:
         self.state_store = state_store
         self.log_store = VehicleLogStore(data_dir)
         self.workers: dict[str, object] = {}
+        self._bmw_raw_cache: dict[str, dict] = {}
 
     def start_all(self) -> None:
         settings = load_runtime_mqtt_settings()
@@ -33,6 +34,7 @@ class WorkerManager:
 
     def stop_vehicle(self, vehicle_id: str) -> None:
         worker = self.workers.pop(vehicle_id, None)
+        self._bmw_raw_cache.pop(vehicle_id, None)
         if worker:
             worker.stop()
             self.log_store.append(vehicle_id, "Worker gestoppt")
@@ -162,6 +164,10 @@ class WorkerManager:
             mapped_payload = map_bmw_payload(merged)
             for key, value in mapped_payload.items():
                 client.publish(f"{mapped}/{key}", value)
+            self.log_store.append(
+                vehicle_id,
+                f"BMW Mapping aktualisiert: soc={mapped_payload.get('soc')} range={mapped_payload.get('range')} odometer={mapped_payload.get('odometer')} capacityKwh={mapped_payload.get('capacityKwh')}"
+            )
         finally:
             client.disconnect()
 
