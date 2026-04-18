@@ -317,11 +317,16 @@ field('clearLogsBtn').onclick = async()=>{
   if(!editState.vehicleId) return;
   if(!confirm('Aktuelle Fahrzeug-Logs wirklich löschen?')) return;
   try{
-    await fetch(`./api/vehicles/${editState.vehicleId}/logs`, { method:'DELETE' });
+    const res = await fetch(`./api/vehicles/${editState.vehicleId}/logs`, { method:'DELETE' });
+    if(!res.ok){
+      const txt = await res.text();
+      throw new Error(txt || `HTTP ${res.status}`);
+    }
     editState.lastLogText = '';
+    field('vehicleLogViewer').textContent = 'Noch keine fahrzeugspezifischen Logs vorhanden.';
     await refreshVehicleLogs();
   }catch(err){
-    alert('Logs konnten nicht gelöscht werden.');
+    alert('Logs konnten nicht gelöscht werden: ' + (err.message || err));
   }
 };
 field('toggleLiveLogsBtn').onclick = ()=>{ if(editState.liveLogsEnabled) stopLiveLogs(); else startLiveLogs(); };
