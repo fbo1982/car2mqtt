@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 
 def _extract(raw: Dict[str, Any], path: str, default=None):
@@ -13,10 +13,11 @@ def _extract(raw: Dict[str, Any], path: str, default=None):
     return node
 
 
-def _metric(raw: Dict[str, Any], base_path: str, default=None):
-    value = _extract(raw, f"{base_path}.value", default)
-    ts = _extract(raw, f"{base_path}.timestamp", None)
-    return value, ts
+def _metric(raw: Dict[str, Any], base_path: str, default=None) -> Tuple[Any, Any]:
+    return (
+        _extract(raw, f"{base_path}.value", default),
+        _extract(raw, f"{base_path}.timestamp", None),
+    )
 
 
 def _to_bool_from_status(value: Any, false_values: set[str]) -> bool:
@@ -34,6 +35,12 @@ def _to_float_or_none(value: Any):
         return float(value)
     except Exception:
         return value
+
+
+def _ts_or_now(ts: Any) -> str:
+    if ts:
+        return ts
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def map_bmw_payload(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -55,31 +62,34 @@ def map_bmw_payload(raw: Dict[str, Any]) -> Dict[str, Any]:
     if capacity in (None, "", 0, "0", "0.0"):
         capacity, capacity_ts = _metric(raw, "vehicle.drivetrain.batteryManagement.batterySizeMax", None)
 
-    now_iso = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    last_update_ts = (
+        soc_ts or plugged_ts or odometer_ts or range_ts or limit_soc_ts or charging_ts
+        or longitude_ts or latitude_ts or altitude_ts or preconditioning_ts or capacity_ts
+    )
 
     mapped = {
         "soc": soc,
-        "soc_ts": soc_ts,
+        "soc_ts": _ts_or_now(soc_ts),
         "plugged": _to_bool_from_status(plugged_raw, {"DISCONNECTED", "FALSE", "0", "NO", "OFF"}),
-        "plugged_ts": plugged_ts,
+        "plugged_ts": _ts_or_now(plugged_ts),
         "odometer": odometer,
-        "odometer_ts": odometer_ts,
+        "odometer_ts": _ts_or_now(odometer_ts),
         "range": ev_range,
-        "range_ts": range_ts,
+        "range_ts": _ts_or_now(range_ts),
         "limitSoc": limit_soc,
-        "limitSoc_ts": limit_soc_ts,
+        "limitSoc_ts": _ts_or_now(limit_soc_ts),
         "charging": _to_bool_from_status(charging_raw, {"NOCHARGING", "FALSE", "0", "NO", "OFF"}),
-        "charging_ts": charging_ts,
+        "charging_ts": _ts_or_now(charging_ts),
         "longitude": _to_float_or_none(longitude),
-        "longitude_ts": longitude_ts,
+        "longitude_ts": _ts_or_now(longitude_ts),
         "latitude": _to_float_or_none(latitude),
-        "latitude_ts": latitude_ts,
+        "latitude_ts": _ts_or_now(latitude_ts),
         "altitude": _to_float_or_none(altitude),
-        "altitude_ts": altitude_ts,
+        "altitude_ts": _ts_or_now(altitude_ts),
         "preconditioning": preconditioning,
-        "preconditioning_ts": preconditioning_ts,
+        "preconditioning_ts": _ts_or_now(preconditioning_ts),
         "capacityKwh": _to_float_or_none(capacity),
-        "capacityKwh_ts": capacity_ts,
-        "lastUpdate": now_iso,
+        "capacityKwh_ts": _ts_or_now(capacity_ts),
+        "lastUpdate": _ts_or_now(last_update_ts),
     }
     return mapped
