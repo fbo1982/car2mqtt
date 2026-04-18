@@ -136,7 +136,18 @@ select, option {
             <small>Wenn deaktiviert, wird die BMW-Verbindung in einem festen Intervall neu aufgebaut.</small>
             <div id="editBmwManualReconnectWrap" class="hidden" style="margin-top:10px">
               <label style="display:block;margin-bottom:8px;font-weight:700;color:#edf1ff">Manueller Reconnect (Minuten)</label>
-              <input id="editBmwManualReconnectMinutes" type="number" min="15" max="60" value="15" />
+              <select id="editBmwManualReconnectMinutes">
+                <option value="15">15 Minuten</option>
+                <option value="20">20 Minuten</option>
+                <option value="25">25 Minuten</option>
+                <option value="30">30 Minuten</option>
+                <option value="35">35 Minuten</option>
+                <option value="40">40 Minuten</option>
+                <option value="45">45 Minuten</option>
+                <option value="50">50 Minuten</option>
+                <option value="55">55 Minuten</option>
+                <option value="60">60 Minuten</option>
+              </select>
             </div>
           </div>
         </div>
@@ -477,6 +488,8 @@ async function deleteVehicle(vehicleId){ if(!confirm('Fahrzeug wirklich löschen
 window.deleteVehicle = deleteVehicle;
 
 field('copyEvccBtn').onclick = copyCurrentCarToEvcc;
+field('editBmwAutoReconnect').onchange = toggleBmwReconnectMode;
+toggleBmwReconnectMode();
 field('createManufacturer').onchange = toggleCreateSections; setLiveLogUi(); renderCards(); renderProviderList(); fillManufacturerSelect(); setInterval(loadDashboard, 15000);
 </script>
 </body>
