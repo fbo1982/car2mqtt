@@ -127,7 +127,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.5.10",
+                "version": "0.6.0",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -302,8 +302,12 @@ def create_app() -> FastAPI:
         if payload.manufacturer == "bmw" and mqtt_settings.host and vehicle.provider_state.auth_state == "authorized":
             worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
         if payload.manufacturer == "gwm":
-            log_store.append(vehicle.id, "ORA Fahrzeug gespeichert - kein automatischer Start. Bitte Verifikationscode senden, um fortzufahren.")
-            worker_manager.publish_vehicle_saved_meta(vehicle.id)
+            if vehicle.enabled and mqtt_settings.host:
+                log_store.append(vehicle.id, "ORA Fahrzeug gespeichert - automatischer Start aktiviert")
+                worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
+            else:
+                log_store.append(vehicle.id, "ORA Fahrzeug gespeichert - kein automatischer Start")
+                worker_manager.publish_vehicle_saved_meta(vehicle.id)
         return {"status": "ok", "vehicle_id": vehicle.id}
 
     @app.post("/api/vehicles")
