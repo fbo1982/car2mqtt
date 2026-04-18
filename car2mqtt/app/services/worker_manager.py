@@ -83,7 +83,6 @@ class WorkerManager:
         self.workers[vehicle_id].start()
 
     def _runtime_topics(self, vehicle, settings, callback_topic: str = "") -> tuple[str, str]:
-        vin = callback_topic.split('/')[-1] if callback_topic else vehicle.provider_config.get("vin", "")
         raw_topic = raw_vehicle_topic(
             settings.base_topic,
             vehicle.manufacturer,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import re
 from pathlib import Path
 from typing import Any, Dict
 
@@ -18,7 +19,7 @@ from app.core.runtime_settings import load_runtime_mqtt_settings
 from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
 from app.mqtt.client import test_connection
-from app.mqtt.topic_builder import derive_vehicle_id, mapped_topic, raw_vehicle_topic
+from app.mqtt.topic_builder import mapped_topic, raw_vehicle_topic
 from app.providers.bmw.oauth import poll_device_flow, save_token_file, start_device_flow
 from app.providers.registry import ProviderRegistry
 from app.providers.gwm_config import render_ora2mqtt_yaml
@@ -49,10 +50,9 @@ class GwmVerificationPayload(BaseModel):
     verification_code: str
 
 
-def _normalize_vehicle_payload(payload: VehiclePayload) -> VehiclePayload:
-    payload.license_plate = payload.license_plate.strip().upper()
-    payload.id = derive_vehicle_id(payload.license_plate)
-    return payload
+def _normalize_vehicle_id(license_plate: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9]", "", (license_plate or "").upper())
+    return cleaned
 
 
 
@@ -63,8 +63,6 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         base_topic,
         vehicle.manufacturer,
         vehicle.license_plate,
-        vehicle.provider_config.get("vin", ""),
-        bool(vehicle.provider_config.get("append_vin", False)),
     )
     return {
         "id": vehicle.id,
@@ -95,7 +93,7 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         },
         "last_update": (runtime_state or {}).get("last_update", ""),
         "enabled": vehicle.enabled,
-        "manufacturer_note": ("ORA Runner vorbereitet" if vehicle.manufacturer == "gwm" else ("Provider vorbereitet" if vehicle.manufacturer not in ["bmw","gwm"] else "")),
+        "manufacturer_note": "ORA Runner vorbereitet" if vehicle.manufacturer == "gwm" else "",
         "source_topic_base": vehicle.provider_config.get("source_topic_base", "") if vehicle.manufacturer == "gwm" else "",
     }
 
@@ -134,7 +132,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.7.1",
+                "version": "0.7.2",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -326,19 +324,23 @@ def create_app() -> FastAPI:
 
     @app.post("/api/vehicles")
     async def create_vehicle(payload: VehiclePayload):
-        payload = _normalize_vehicle_payload(payload)
+        payload.id = _normalize_vehicle_id(payload.license_plate)
+        if not payload.id:
+            raise HTTPException(status_code=400, detail="Kennzeichen konnte nicht in eine interne ID umgewandelt werden.")
         if store.get_vehicle(payload.id):
-            raise HTTPException(status_code=400, detail="Für dieses Kennzeichen existiert bereits ein Fahrzeug.")
+            raise HTTPException(status_code=400, detail="Fahrzeug existiert bereits. Bitte bearbeiten oder anderes Kennzeichen verwenden.")
         return _save_vehicle(payload)
 
     @app.put("/api/vehicles/{vehicle_id}")
     async def update_vehicle(vehicle_id: str, payload: VehiclePayload):
         if not store.get_vehicle(vehicle_id):
             raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
-        payload = _normalize_vehicle_payload(payload)
-        existing_for_plate = store.get_vehicle(payload.id)
-        if existing_for_plate and existing_for_plate.id != vehicle_id:
-            raise HTTPException(status_code=400, detail="Für dieses Kennzeichen existiert bereits ein anderes Fahrzeug.")
+        payload.id = _normalize_vehicle_id(payload.license_plate)
+        if not payload.id:
+            raise HTTPException(status_code=400, detail="Kennzeichen konnte nicht in eine interne ID umgewandelt werden.")
+        existing = store.get_vehicle(payload.id)
+        if existing and payload.id != vehicle_id:
+            raise HTTPException(status_code=400, detail="Ein anderes Fahrzeug mit diesem Kennzeichen existiert bereits.")
         return _save_vehicle(payload, vehicle_id_to_replace=vehicle_id)
 
     @app.post("/api/vehicles/{vehicle_id}/reauth/start")

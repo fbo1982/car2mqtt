@@ -26,7 +26,6 @@ class BmwProvider(BaseProvider):
                 {"name": "mqtt_username", "label": "BMW MQTT Username / GCID", "type": "text", "required": False},
                 {"name": "vin", "label": "VIN", "type": "text", "required": True},
                 {"name": "region", "label": "Region", "type": "text", "required": False, "default": "EU"},
-                {"name": "append_vin", "label": "VIN an Raw-Topic anhängen", "type": "checkbox", "required": False, "default": False},
             ],
         )
 
@@ -43,7 +42,6 @@ class BmwProvider(BaseProvider):
             "mqtt_username": mqtt_username,
             "vin": vin,
             "region": str(provider_config.get("region", "EU")).strip() or "EU",
-            "append_vin": bool(provider_config.get("append_vin", False)),
             "required_data_points": [
                 "vehicle.body.chargingPort.status",
                 "vehicle.cabin.infotainment.navigation.currentLocation.latitude",
