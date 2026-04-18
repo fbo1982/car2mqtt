@@ -13,31 +13,73 @@ def _extract(raw: Dict[str, Any], path: str, default=None):
     return node
 
 
-def map_bmw_payload(raw: Dict[str, Any]) -> Dict[str, Any]:
-    charging_status = _extract(raw, "vehicle.drivetrain.electricEngine.charging.status.value", "")
-    charging_port = _extract(raw, "vehicle.body.chargingPort.status.value", "")
-    comfort = _extract(raw, "vehicle.vehicle.preConditioning.status.value", None)
-    capacity = _extract(raw, "vehicle.drivetrain.batteryManagement.maxEnergy.value", None)
-    if capacity in (None, "", 0, "0", "0.0"):
-        capacity = _extract(raw, "vehicle.drivetrain.batteryManagement.batterySizeMax.value", None)
+def _metric(raw: Dict[str, Any], base_path: str, default=None):
+    value = _extract(raw, f"{base_path}.value", default)
+    ts = _extract(raw, f"{base_path}.timestamp", None)
+    return value, ts
+
+
+def _to_bool_from_status(value: Any, false_values: set[str]) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    return str(value).upper() not in false_values
+
+
+def _to_float_or_none(value: Any):
+    if value in (None, "", "null"):
+        return None
     try:
-        if capacity not in (None, ""):
-            capacity = float(capacity)
+        return float(value)
     except Exception:
-        pass
+        return value
+
+
+def map_bmw_payload(raw: Dict[str, Any]) -> Dict[str, Any]:
+    soc, soc_ts = _metric(raw, "vehicle.drivetrain.batteryManagement.header", 0)
+    plugged_raw, plugged_ts = _metric(raw, "vehicle.body.chargingPort.status", None)
+    odometer, odometer_ts = _metric(raw, "vehicle.vehicle.travelledDistance", 0)
+    ev_range, range_ts = _metric(raw, "vehicle.drivetrain.electricEngine.kombiRemainingElectricRange", 0)
+    limit_soc, limit_soc_ts = _metric(raw, "vehicle.powertrain.electric.battery.stateOfCharge.target", 100)
+    charging_raw, charging_ts = _metric(raw, "vehicle.drivetrain.electricEngine.charging.status", None)
+    longitude, longitude_ts = _metric(raw, "vehicle.cabin.infotainment.navigation.currentLocation.longitude", None)
+    latitude, latitude_ts = _metric(raw, "vehicle.cabin.infotainment.navigation.currentLocation.latitude", None)
+    altitude, altitude_ts = _metric(raw, "vehicle.cabin.infotainment.navigation.currentLocation.altitude", None)
+
+    preconditioning, preconditioning_ts = _metric(raw, "vehicle.vehicle.preConditioning.activity", None)
+    if preconditioning is None:
+        preconditioning, preconditioning_ts = _metric(raw, "vehicle.vehicle.preConditioning.status", None)
+
+    capacity, capacity_ts = _metric(raw, "vehicle.drivetrain.batteryManagement.maxEnergy", None)
+    if capacity in (None, "", 0, "0", "0.0"):
+        capacity, capacity_ts = _metric(raw, "vehicle.drivetrain.batteryManagement.batterySizeMax", None)
+
+    now_iso = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
     mapped = {
-        "soc": _extract(raw, "vehicle.drivetrain.batteryManagement.header.value", 0),
-        "plugged": charging_port not in (None, "", "DISCONNECTED"),
-        "odometer": _extract(raw, "vehicle.vehicle.travelledDistance.value", 0),
-        "range": _extract(raw, "vehicle.drivetrain.electricEngine.kombiRemainingElectricRange.value", 0),
-        "limitSoc": _extract(raw, "vehicle.powertrain.electric.battery.stateOfCharge.target.value", 100),
-        "charging": charging_status not in (None, "", "NOCHARGING"),
-        "longitude": _extract(raw, "vehicle.cabin.infotainment.navigation.currentLocation.longitude.value", None),
-        "latitude": _extract(raw, "vehicle.cabin.infotainment.navigation.currentLocation.latitude.value", None),
-        "altitude": _extract(raw, "vehicle.cabin.infotainment.navigation.currentLocation.altitude.value", None),
-        "preconditioning": comfort,
-        "capacityKwh": capacity,
-        "lastUpdate": datetime.now(timezone.utc).isoformat(),
+        "soc": soc,
+        "soc_ts": soc_ts,
+        "plugged": _to_bool_from_status(plugged_raw, {"DISCONNECTED", "FALSE", "0", "NO", "OFF"}),
+        "plugged_ts": plugged_ts,
+        "odometer": odometer,
+        "odometer_ts": odometer_ts,
+        "range": ev_range,
+        "range_ts": range_ts,
+        "limitSoc": limit_soc,
+        "limitSoc_ts": limit_soc_ts,
+        "charging": _to_bool_from_status(charging_raw, {"NOCHARGING", "FALSE", "0", "NO", "OFF"}),
+        "charging_ts": charging_ts,
+        "longitude": _to_float_or_none(longitude),
+        "longitude_ts": longitude_ts,
+        "latitude": _to_float_or_none(latitude),
+        "latitude_ts": latitude_ts,
+        "altitude": _to_float_or_none(altitude),
+        "altitude_ts": altitude_ts,
+        "preconditioning": preconditioning,
+        "preconditioning_ts": preconditioning_ts,
+        "capacityKwh": _to_float_or_none(capacity),
+        "capacityKwh_ts": capacity_ts,
+        "lastUpdate": now_iso,
     }
     return mapped
