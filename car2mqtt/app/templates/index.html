@@ -11,7 +11,7 @@
     .topbar{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:28px}.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:#8bb4ff}.topbar h1{font-size:46px;line-height:1.05;margin:6px 0 10px}.topbar h1 span{font-size:20px;color:#98a6dc}.topbar p{margin:0;color:var(--muted);max-width:760px}
     .mqtt-pill{min-width:280px;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:26px;padding:18px 20px;box-shadow:var(--shadow)}.pill-title{font-size:12px;color:#8bb4ff;text-transform:uppercase;letter-spacing:.14em}.pill-main{font-weight:800;font-size:20px;margin-top:6px}.pill-sub{margin-top:8px;color:var(--muted);font-size:14px}
     .section-header{display:flex;justify-content:space-between;align-items:end;margin:18px 0}.section-header h2{margin:4px 0 0;font-size:28px}.toolbar{display:flex;gap:12px}
-    .ghost-btn,.primary-btn,.tiny-btn,.danger-btn{border-radius:14px;padding:12px 16px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text)}.primary-btn{background:var(--ok);color:#05210f;font-weight:800;border-color:transparent}.danger-btn{background:rgba(255,93,108,.12);color:#ffdbe0}.tiny-btn{padding:9px 12px}.icon-btn{background:transparent;border:0;color:var(--text);font-size:28px;padding:6px 10px}
+    .ghost-btn,.primary-btn,.tiny-btn,.danger-btn{border-radius:14px;padding:12px 16px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text)}.primary-btn{background:var(--ok);color:#05210f;font-weight:800;border-color:transparent}.danger-btn{background:rgba(255,93,108,.12);color:#ffdbe0}.tiny-btn{padding:9px 12px}.icon-btn{background:transparent;border:0;color:var(--text);font-size:28px;padding:6px 10px}.check-lg{transform:scale(1.35);transform-origin:left center;margin-right:12px;accent-color:var(--ok)}.collapsible{border:1px solid var(--line);border-radius:22px;background:rgba(255,255,255,.04);padding:0;overflow:hidden}.collapsible summary{list-style:none;cursor:pointer;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;font-weight:700}.collapsible summary::-webkit-details-marker{display:none}.collapsible .collapsible-body{padding:0 18px 18px}.chip-warn{display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;background:rgba(255,177,66,.16);color:#ffd899;font-size:12px;font-weight:700;letter-spacing:.03em}.hidden{display:none !important}
     .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:22px}.vehicle-card,.add-card{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow)}.vehicle-card{overflow:hidden}.vehicle-head{display:flex;justify-content:space-between;gap:14px;padding:22px 24px 18px;border-bottom:1px solid var(--line)}.vehicle-title{font-size:18px;font-weight:800;margin-bottom:6px}.vehicle-subtitle{color:var(--muted);font-size:14px}.status-badge{padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px;text-transform:uppercase;letter-spacing:.08em;height:max-content}.status-badge.connected{color:#042d14;background:var(--ok)}.status-badge.error,.status-badge.disconnected{color:white;background:rgba(255,93,108,.9)}.status-badge.starting,.status-badge.saved{background:rgba(0,183,255,.18);color:#7ed5ff}.status-badge.inactive{background:rgba(255,255,255,.12);color:#d6dbf6}
     .vehicle-metrics{display:grid;grid-template-columns:1fr 1fr;gap:16px 26px;padding:22px 24px}.metric{display:flex;justify-content:space-between;gap:18px}.metric span{color:var(--muted)}.metric strong{color:var(--ok);font-size:19px}.card-footer{border-top:1px solid var(--line);padding:16px 24px 22px;color:var(--muted);font-size:14px}.topic-row{margin-top:8px;font-size:12px;color:#93b3ff;word-break:break-all}.card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.add-card{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:258px;color:var(--text);background:transparent}.add-card span{font-size:44px;line-height:1}.add-card strong{font-size:24px;margin-top:10px}
     dialog{border:0;padding:0;background:transparent}.modal::backdrop{background:rgba(0,0,0,.6);backdrop-filter:blur(8px)}.panel{width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:30px;box-shadow:var(--shadow)}.panel.wide{width:min(900px,calc(100vw - 32px))}.modal-head,.modal-foot{display:flex;align-items:center;gap:16px;padding:24px 28px}.modal-head{justify-content:space-between;border-bottom:1px solid var(--line)}.modal-head h3{margin:4px 0 0;font-size:24px}.modal-body{padding:24px 28px 28px}.notice{display:none;margin:0 28px 18px;padding:14px 16px;border-radius:14px;background:rgba(255,93,108,.14);color:#ffd8dd;border:1px solid rgba(255,93,108,.28)}
@@ -115,7 +115,7 @@ select, option {
     <div id="editError" class="notice"></div>
     <div class="modal-body grid">
       <div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
-      <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" type="checkbox" style="width:auto;margin-right:8px"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
+      <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
       <div class="grid three">
         <div class="field"><label>Titel</label><input id="editLabel" /></div>
         <div class="field"><label>Interne ID</label><input id="editId" /></div>
@@ -129,7 +129,7 @@ select, option {
         </div>
         <div class="grid two">
           <div class="field"><label>VIN</label><input id="editBmwVin" /></div>
-          <div class="field"><label style="margin-bottom:0">append_vin</label><div><input id="editBmwAppendVin" type="checkbox" style="width:auto;margin-right:8px"> VIN ans Raw-Topic anhängen</div></div>
+          <div class="field"><label style="margin-bottom:0">append_vin</label><div><input id="editBmwAppendVin" class="check-lg" type="checkbox" style="width:auto"> VIN ans Raw-Topic anhängen</div></div>
         </div>
         <div class="auth-box">
           <div style="display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap">
@@ -162,7 +162,7 @@ select, option {
           </div>
           <div class="field" style="margin-top:16px"><label>Akkukapazität (kWh)</label><input id="editGwmCapacity" type="number" step="0.1" /></div>
           <div class="field" style="margin-top:16px"><label>Source Topic Base</label><input id="editGwmSourceTopicBase" /></div>
-          <div class="field" style="margin-top:16px"><label>Verifikationscode</label><input id="editGwmVerificationCode" placeholder="z. B. 3719" /><div class="log-actions" style="margin-top:10px"><button id="submitGwmCodeBtn" class="tiny-btn">Code senden</button></div></div>
+          
         </div>
         <div class="log-box">
           <div class="log-toolbar"><strong>ora2mqtt.yml Vorschau (automatisch vom Runner genutzt)</strong><div class="log-actions"><button id="refreshOraConfigBtn" class="tiny-btn">Vorschau aktualisieren</button></div></div>
@@ -170,9 +170,17 @@ select, option {
         </div>
       </div>
       <div class="log-box">
-        <div class="log-toolbar"><strong>Fahrzeug-Log</strong><div class="log-actions"><span id="liveLogState" class="live-chip">Live aus</span><button id="toggleLiveLogsBtn" class="tiny-btn">Live-Log einschalten</button><button id="refreshLogsBtn" class="tiny-btn">Logs aktualisieren</button></div></div>
+        <div class="log-toolbar"><strong>Fahrzeug-Log</strong><div class="log-actions"><span id="liveLogState" class="live-chip">Live aus</span><button id="toggleLiveLogsBtn" class="tiny-btn">Live-Log einschalten</button><button id="refreshLogsBtn" class="tiny-btn">Logs aktualisieren</button><button id="clearLogsBtn" class="danger-btn">Logs löschen</button></div></div>
         <div id="vehicleLogViewer" class="log-viewer">Noch keine Logs geladen.</div>
       </div>
+      <details id="gwmVerifyPanel" class="collapsible hidden" style="margin-top:18px">
+        <summary><span>Verifikationscode senden</span><span id="gwmVerifyHint" class="chip-warn">Code erforderlich</span></summary>
+        <div class="collapsible-body">
+          <div class="muted" style="margin-bottom:10px">Dieser Bereich öffnet sich nur, wenn ORA/GWM einen 4-stelligen Verifikationscode anfordert.</div>
+          <div class="field"><label>Verifikationscode</label><input id="editGwmVerificationCode" maxlength="4" placeholder="z. B. 3719" inputmode="numeric" /></div>
+          <div class="log-actions" style="margin-top:12px"><button id="submitGwmCodeBtn" class="tiny-btn">Code senden</button></div>
+        </div>
+      </details>
     </div>
     <div class="modal-foot"><button id="cancelEditBtn" class="ghost-btn">Abbrechen</button><div class="spacer"></div><button id="saveEditKeepOpenBtn" class="ghost-btn">Speichern</button><button id="saveEditBtn" class="primary-btn">Speichern &amp; schließen</button></div>
   </div>
@@ -182,13 +190,21 @@ select, option {
 const providers = {{ providers | tojson }};
 let cards = {{ cards_json | safe }};
 const createState = { manufacturer: null, authSessionId: null, authReady: false };
-const editState = { vehicleId: null, reauthSessionId: null, authReady: true, liveLogTimer: null, liveLogsEnabled: false, lastLogText: '' };
+const editState = { vehicleId: null, reauthSessionId: null, authReady: true, liveLogTimer: null, liveLogsEnabled: false, lastLogText: '', needsVerification: false };
 const field = (id) => document.getElementById(id);
 
 function showNotice(id, msg='') { const el = field(id); el.textContent = msg; el.style.display = msg ? 'block' : 'none'; }
 function statusLabel(v){ return v || 'idle'; }
 function yesNo(v){ return v === true ? 'ja' : (v === false ? 'nein' : '—'); }
 function metric(v,s=''){ return v === null || v === undefined || v === '' ? '—' : `${v}${s}`; }
+function setGwmVerifyVisibility(show, autoOpen=false){
+  editState.needsVerification = !!show;
+  const panel = field('gwmVerifyPanel');
+  if(!panel) return;
+  panel.classList.toggle('hidden', !show);
+  if(show && autoOpen) panel.open = true;
+  if(!show) panel.open = false;
+}
 
 function cardHtml(card){
   return `<article class="vehicle-card"><div class="vehicle-head"><div><div class="vehicle-title">${card.label}</div><div class="vehicle-subtitle">${card.manufacturer} · ${card.license_plate}</div></div><span class="status-badge ${card.status}">${statusLabel(card.status)}</span></div><div class="vehicle-metrics"><div class="metric"><span>SoC</span><strong>${metric(card.metrics.soc,' %')}</strong></div><div class="metric"><span>Reichweite</span><strong>${metric(card.metrics.range,' km')}</strong></div><div class="metric"><span>Lädt</span><strong>${yesNo(card.metrics.charging)}</strong></div><div class="metric"><span>Angesteckt</span><strong>${yesNo(card.metrics.plugged)}</strong></div><div class="metric"><span>Kilometer</span><strong>${metric(card.metrics.odometer,' km')}</strong></div><div class="metric"><span>Ladelimit</span><strong>${metric(card.metrics.limitSoc,' %')}</strong></div></div><div class="card-footer"><div>${card.enabled === false ? 'Fahrzeug inaktiv — kein Remote-Login und kein Streaming.' : (card.status_detail || '')}</div><div class="topic-row">raw: ${card.topic}</div><div class="topic-row">mapped: ${card.mapped_topic}</div>${card.live?.mqtt_username ? `<div class="topic-row">BMW MQTT Username: ${card.live.mqtt_username}</div>` : ''}<div class="muted">${card.last_update || 'Noch keine Live-Daten'}</div><div class="card-actions"><button class="tiny-btn" onclick="editVehicle('${card.id}')">Bearbeiten</button><button class="danger-btn" onclick="deleteVehicle('${card.id}')">Löschen</button></div></div></article>`;
@@ -267,7 +283,7 @@ async function editVehicle(vehicleId){
   field('editGwmAccount').value = vehicle.provider_config.account || ''; field('editGwmPassword').value = vehicle.provider_config.password || ''; field('editGwmCountry').value = vehicle.provider_config.country || 'DE'; field('editGwmLanguage').value = vehicle.provider_config.language || 'de'; field('editGwmPollInterval').value = vehicle.provider_config.poll_interval || 60; field('editGwmVehicleId').value = vehicle.provider_config.vehicle_id || vehicle.id; field('editGwmCapacity').value = vehicle.provider_config.capacity_kwh || ''; field('editGwmSourceTopicBase').value = vehicle.provider_config.source_topic_base || ''; field('editGwmVerificationCode').value = '';
   field('editAuthState').textContent = vehicle.enabled === false ? 'Fahrzeug ist inaktiv.' : (vehicle.status === 'waiting_for_code' ? 'Verifikationscode erforderlich.' : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'Anmeldung prüfen.'));
   field('editReauthStartBtn').disabled = vehicle.enabled === false || vehicle.manufacturer !== 'bmw';
-  field('editAuthInfo').classList.add('hidden'); setEditManufacturerLayout(vehicle.manufacturer); await refreshVehicleLogs(); if(vehicle.manufacturer === 'gwm'){ await refreshOraConfig(); } else { field('oraConfigViewer').textContent = 'Für dieses Fahrzeug nicht relevant.'; } field('editDialog').showModal();
+  field('editAuthInfo').classList.add('hidden'); setEditManufacturerLayout(vehicle.manufacturer); const verifyNeeded = vehicle.manufacturer === 'gwm' && (vehicle.status === 'waiting_for_code' || /verification|verifikationscode|code erforderlich/i.test(vehicle.status_detail || '')); setGwmVerifyVisibility(verifyNeeded, verifyNeeded); await refreshVehicleLogs(); if(vehicle.manufacturer === 'gwm'){ await refreshOraConfig(); } else { field('oraConfigViewer').textContent = 'Für dieses Fahrzeug nicht relevant.'; setGwmVerifyVisibility(false, false); } field('editDialog').showModal();
 }
 window.editVehicle = editVehicle;
 
@@ -291,11 +307,23 @@ async function submitGwmCode(){
     await refreshDashboard();
     await refreshVehicleLogs();
     field('editGwmVerificationCode').value = '';
+    setGwmVerifyVisibility(false, false);
   }catch(err){
     alert(err.message);
   }
 }
 field('submitGwmCodeBtn').onclick = submitGwmCode;
+field('clearLogsBtn').onclick = async()=>{ 
+  if(!editState.vehicleId) return;
+  if(!confirm('Aktuelle Fahrzeug-Logs wirklich löschen?')) return;
+  try{
+    await fetch(`./api/vehicles/${editState.vehicleId}/logs`, { method:'DELETE' });
+    editState.lastLogText = '';
+    await refreshVehicleLogs();
+  }catch(err){
+    alert('Logs konnten nicht gelöscht werden.');
+  }
+};
 field('toggleLiveLogsBtn').onclick = ()=>{ if(editState.liveLogsEnabled) stopLiveLogs(); else startLiveLogs(); };
 field('editManufacturer').onchange = toggleEditSections;
 field('closeEditBtn').onclick = field('cancelEditBtn').onclick = () => { stopLiveLogs(); field('editDialog').close(); };
