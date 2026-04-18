@@ -28,6 +28,7 @@ class GwmIntegratedWorker:
             "username or password is incorrect",
             "account will be locked",
             "verification code request is too frequently",
+            "you have acquired verification code too many times",
             "sharprompt requires an interactive environment",
             "ora verification code required",
         ]
@@ -108,6 +109,12 @@ class GwmIntegratedWorker:
         env["ORA_COUNTRY"] = str(self.vehicle.provider_config.get("country", "DE"))
         code_file = self.vehicle_dir / "verification_code.txt"
         verification_code = code_file.read_text(encoding="utf-8").strip() if code_file.exists() else ""
+        if code_file.exists():
+            try:
+                code_file.unlink()
+                self.log("ORA Verifikationscode-Datei nach einmaliger Verwendung entfernt")
+            except Exception:
+                pass
         env["ORA_VERIFICATION_CODE"] = verification_code
         env["MQTT_HOST"] = self.settings.host
         env["MQTT_USERNAME"] = self.settings.username

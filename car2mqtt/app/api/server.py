@@ -301,9 +301,8 @@ def create_app() -> FastAPI:
 
         if payload.manufacturer == "bmw" and mqtt_settings.host and vehicle.provider_state.auth_state == "authorized":
             worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
-        if payload.manufacturer == "gwm" and mqtt_settings.host:
-            worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
-        elif payload.manufacturer == "gwm":
+        if payload.manufacturer == "gwm":
+            log_store.append(vehicle.id, "ORA Fahrzeug gespeichert - kein automatischer Start. Bitte Verifikationscode senden, um fortzufahren.")
             worker_manager.publish_vehicle_saved_meta(vehicle.id)
         return {"status": "ok", "vehicle_id": vehicle.id}
 
@@ -353,7 +352,7 @@ def create_app() -> FastAPI:
         (target_dir / "verification_code.txt").write_text(code, encoding="utf-8")
         vehicle.provider_state.auth_message = "Verifikationscode übernommen"
         store.upsert_vehicle(vehicle)
-        log_store.append(vehicle_id, "ORA Verifikationscode übernommen (temporär)")
+        log_store.append(vehicle_id, "ORA Verifikationscode übernommen (temporär) - Worker wird manuell fortgesetzt")
         settings = load_runtime_mqtt_settings()
         if vehicle.enabled and settings.host:
             worker_manager.start_or_restart_vehicle(vehicle.id, settings)
