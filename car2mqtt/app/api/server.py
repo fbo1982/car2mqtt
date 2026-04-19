@@ -133,7 +133,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.8.4",
+                "version": "0.8.5",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -301,7 +301,7 @@ def create_app() -> FastAPI:
             vehicle.provider_state.auth_state = "authorized"
             vehicle.provider_state.auth_message = "ORA Runner vorbereitet"
             if not vehicle.provider_config.get("source_topic_base"):
-                vehicle.provider_config["source_topic_base"] = f"GWM/{vehicle.provider_config.get("vehicle_id") or vehicle.id}"
+                vehicle.provider_config["source_topic_base"] = "GWM"
             log_store.append(vehicle.id, "ORA Konfiguration erzeugt: providers/%s/ora2mqtt.yml" % vehicle.id)
 
         if vehicle_id_to_replace and vehicle_id_to_replace != vehicle.id:
@@ -377,6 +377,18 @@ def create_app() -> FastAPI:
         log_store.append(vehicle_id, "BMW Re-Auth gestartet")
         return session.model_dump(mode="json")
 
+
+
+    @app.post("/api/vehicles/{vehicle_id}/gwm/test-map")
+    async def gwm_test_map(vehicle_id: str):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle or vehicle.manufacturer != "gwm":
+            raise HTTPException(status_code=404, detail="ORA Fahrzeug nicht gefunden")
+        settings = load_runtime_mqtt_settings()
+        if not settings.host:
+            raise HTTPException(status_code=400, detail="MQTT ist nicht konfiguriert")
+        result = worker_manager.test_map_gwm_from_upstream(vehicle_id, settings)
+        return {"status": "ok", "processed": result["count"], "vehicle_id": vehicle_id}
 
     @app.post("/api/vehicles/{vehicle_id}/gwm/submit-code")
     async def gwm_submit_code(vehicle_id: str, payload: GwmVerificationPayload):

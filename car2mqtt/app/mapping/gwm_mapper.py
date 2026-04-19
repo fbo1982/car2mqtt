@@ -58,9 +58,18 @@ def apply_gwm_metric(mapped: dict[str, Any], item_id: str, value: Any, field_nam
         if boo:
             mapped["plugged"] = True
             mapped["plugged_ts"] = ts
-    elif item_id == "2042082" and boo is not None:
+    elif item_id in {"2042082", "2210012"} and boo is not None:
         mapped["plugged"] = boo
         mapped["plugged_ts"] = ts
+    elif item_id in {"2210001", "2013022"} and num is not None:
+        mapped["range"] = num
+        mapped["range_ts"] = ts
+    elif item_id in {"2210002", "2103010"} and num is not None:
+        mapped["odometer"] = num
+        mapped["odometer_ts"] = ts
+    elif item_id in {"2210005"} and num is not None:
+        mapped["limitSoc"] = num
+        mapped["limitSoc_ts"] = ts
 
     name = (field_name or "").strip().lower()
     if name == "latitude" and num is not None:
@@ -75,5 +84,8 @@ def apply_gwm_metric(mapped: dict[str, Any], item_id: str, value: Any, field_nam
     elif name == "updatetime" and num is not None:
         mapped["lastUpdateTimeRaw"] = num
         mapped["lastUpdateTimeRaw_ts"] = ts
+    elif name == "location":
+        # ignored composite JSON string
+        pass
 
     return mapped

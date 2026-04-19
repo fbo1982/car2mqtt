@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import time
 from pathlib import Path
 from typing import Any, Dict
 
@@ -11,6 +12,7 @@ from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
 from app.mapping.bmw_mapper import map_bmw_payload
 from app.mapping.gwm_mapper import apply_gwm_metric
+import paho.mqtt.client as paho_mqtt
 from app.mqtt.client import LocalMqttClient
 from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic
 from app.providers.bmw.streaming import BMWStreamWorker
@@ -242,9 +244,11 @@ class WorkerManager:
             "configured_source_topic_base": configured_source_base,
             "discovered_source_id": discovered_source_id,
             "source_topic": source_topic,
+            "normalized_target_root": raw_topic_base,
         }
 
         from datetime import datetime, timezone
+import time
         runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         self.state_store.upsert(runtime)
 
@@ -268,6 +272,42 @@ class WorkerManager:
             return
         self._set_runtime_state(vehicle_id, "saved", "Fahrzeug gespeichert")
         self.log_store.append(vehicle_id, "Fahrzeugkonfiguration gespeichert")
+
+
+    def test_map_gwm_from_upstream(self, vehicle_id: str, mqtt_settings, wait_seconds: int = 6) -> dict:
+        vehicle = self.config_store.get_vehicle(vehicle_id)
+        if not vehicle or vehicle.manufacturer != "gwm":
+            raise ValueError("ORA Fahrzeug nicht gefunden")
+
+        seen = {"count": 0}
+        topic = "GWM/+/status/#"
+
+        client = paho_mqtt.Client(client_id=f"car2mqtt-gwmtest-{vehicle_id[:8]}")
+        if mqtt_settings.username:
+            client.username_pw_set(mqtt_settings.username, mqtt_settings.password)
+
+        def on_connect(c, _u, _f, rc, _p=None):
+            if rc == 0:
+                c.subscribe(topic, qos=mqtt_settings.qos)
+
+        def on_message(_c, _u, msg):
+            try:
+                payload = msg.payload.decode("utf-8", errors="ignore")
+                self._handle_gwm_payload(vehicle_id, msg.topic, payload, mqtt_settings)
+                seen["count"] += 1
+            except Exception as exc:
+                self.log_store.append(vehicle_id, f"ORA Test-Mapping Fehler: {exc}")
+
+        client.on_connect = on_connect
+        client.on_message = on_message
+        client.connect(mqtt_settings.host, mqtt_settings.port, 30)
+        client.loop_start()
+        self.log_store.append(vehicle_id, f"ORA Test-Mapping gestartet: {topic}")
+        time.sleep(wait_seconds)
+        client.loop_stop()
+        client.disconnect()
+        self.log_store.append(vehicle_id, f"ORA Test-Mapping beendet: {seen['count']} MQTT-Nachrichten verarbeitet")
+        return seen
 
     def delete_vehicle(self, vehicle_id: str) -> None:
         self.stop_vehicle(vehicle_id)
