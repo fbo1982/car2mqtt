@@ -1,9 +1,12 @@
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 import time
 from pathlib import Path
 from typing import Any, Dict
+
+import paho.mqtt.client as paho_mqtt
 
 from app.core.config_store import ConfigStore
 from app.core.models import VehicleRuntimeState
@@ -12,7 +15,6 @@ from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
 from app.mapping.bmw_mapper import map_bmw_payload
 from app.mapping.gwm_mapper import apply_gwm_metric
-import paho.mqtt.client as paho_mqtt
 from app.mqtt.client import LocalMqttClient
 from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic
 from app.providers.bmw.streaming import BMWStreamWorker
@@ -29,134 +31,133 @@ class WorkerManager:
         self._bmw_raw_cache: dict[str, dict] = {}
 
     def start_all(self) -> None:
-        settings = load_runtime_mqtt_settings()
-        for vehicle in self.config_store.load().vehicles:
-            if vehicle.manufacturer in {"bmw", "gwm"} and vehicle.enabled and vehicle.provider_state.auth_state == "authorized":
-                self.start_or_restart_vehicle(vehicle.id, settings)
+        config = self.config_store.load()
+        for vehicle in config.vehicles:
+            if vehicle.enabled:
+                self.start_or_restart_vehicle(vehicle.id)
+            else:
+                self._set_runtime_state(vehicle.id, "inactive", "Fahrzeug ist inaktiv")
 
     def stop_vehicle(self, vehicle_id: str) -> None:
         worker = self.workers.pop(vehicle_id, None)
         self._bmw_raw_cache.pop(vehicle_id, None)
         if worker:
-            worker.stop()
-            self.log_store.append(vehicle_id, "Worker gestoppt")
+            try:
+                worker.stop()
+            finally:
+                self.log_store.append(vehicle_id, "Worker gestoppt")
 
-    def start_or_restart_vehicle(self, vehicle_id: str, mqtt_settings=None) -> None:
-        mqtt_settings = mqtt_settings or load_runtime_mqtt_settings()
+    def start_or_restart_vehicle(self, vehicle_id: str) -> None:
         vehicle = self.config_store.get_vehicle(vehicle_id)
-        if not vehicle or vehicle.manufacturer not in {"bmw", "gwm"}:
+        if not vehicle:
             return
+
+        self.stop_vehicle(vehicle_id)
+
         if not vehicle.enabled:
             self._set_runtime_state(vehicle_id, "inactive", "Fahrzeug ist inaktiv")
-            self.log_store.append(vehicle_id, "Fahrzeug ist inaktiv - kein Remote-Login, kein Streaming")
             return
-        self.stop_vehicle(vehicle_id)
-        if vehicle.manufacturer == "gwm":
-            vehicle_dir = self.data_dir / 'providers' / vehicle.id
-            self.workers[vehicle_id] = GwmIntegratedWorker(
+
+        mqtt_settings = load_runtime_mqtt_settings()
+        if vehicle.manufacturer == "bmw":
+            worker = BMWStreamWorker(
                 vehicle=vehicle,
                 mqtt_settings=mqtt_settings,
-                vehicle_dir=vehicle_dir,
-                on_connect=lambda vid=vehicle_id: self._set_runtime_state(vid, "connected", "ORA Runner aktiv und lokaler MQTT Stream verbunden"),
-                on_disconnect=lambda rc, vid=vehicle_id: self._set_runtime_state(vid, "disconnected", f"ORA Verbindung getrennt (rc={rc})"),
-                on_error=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "error", message),
-                on_waiting=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "waiting_for_code", message),
-                on_detail=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "starting", message),
-                on_message=lambda topic, payload, vid=vehicle_id: self._handle_gwm_payload(vid, topic, payload, mqtt_settings),
-                log_callback=lambda message, vid=vehicle_id: self.log_store.append(vid, message),
+                on_data=lambda data, callback_topic: self._handle_bmw_payload(vehicle_id, data, callback_topic, mqtt_settings),
+                on_status=lambda state, detail: self._set_runtime_state(vehicle_id, state, detail),
+                on_log=lambda message: self.log_store.append(vehicle_id, message),
             )
-            self.log_store.append(vehicle_id, "ORA Workerstart angefordert")
-            self._set_runtime_state(vehicle_id, "starting", "ORA Worker startet")
-            self.workers[vehicle_id].start()
+        elif vehicle.manufacturer == "gwm":
+            worker = GwmIntegratedWorker(
+                vehicle=vehicle,
+                settings=mqtt_settings,
+                on_status=lambda state, detail: self._set_runtime_state(vehicle_id, state, detail),
+                on_log=lambda message: self.log_store.append(vehicle_id, message),
+                on_payload=lambda topic, payload: self._handle_gwm_payload(vehicle_id, topic, payload, mqtt_settings),
+            )
+        else:
+            self._set_runtime_state(vehicle_id, "unsupported", f"Hersteller {vehicle.manufacturer} wird noch nicht unterstützt")
             return
 
-        self.workers[vehicle_id] = BMWStreamWorker(
-            vehicle=vehicle,
-            mqtt_settings=mqtt_settings,
-            state_store=self.state_store,
-            local_mqtt_client_factory=LocalMqttClient,
-            on_payload=lambda topic, data, vid=vehicle_id: self._handle_bmw_payload(vid, topic, data, mqtt_settings),
-            on_connect=lambda vid=vehicle_id: self._set_runtime_state(vid, "connected", "Mit BMW Streaming-Server verbunden"),
-            on_disconnect=lambda rc, vid=vehicle_id: self._set_runtime_state(vid, "disconnected", f"BMW Verbindung getrennt (rc={rc})"),
-            on_error=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "error", message),
-            on_detail=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "starting", message),
-            log_callback=lambda message, vid=vehicle_id: self.log_store.append(vid, message),
-        )
+        self.workers[vehicle_id] = worker
         self.log_store.append(vehicle_id, "Workerstart angefordert")
-        self._set_runtime_state(vehicle_id, "starting", "Worker startet")
-        self.workers[vehicle_id].start()
+        worker.start()
 
-    def _runtime_topics(self, vehicle, settings, callback_topic: str = "") -> tuple[str, str]:
-        raw_topic = raw_vehicle_topic(
-            settings.base_topic,
-            vehicle.manufacturer,
-            vehicle.license_plate,
-        )
-        return raw_topic, mapped_topic(settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
+    def _runtime_topics(self, vehicle, mqtt_settings) -> tuple[str, str]:
+        raw_topic_base = raw_vehicle_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
+        mapped = mapped_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
+        return raw_topic_base, mapped
 
     def _set_runtime_state(self, vehicle_id: str, state: str, detail: str) -> None:
         vehicle = self.config_store.get_vehicle(vehicle_id)
-        if not vehicle:
-            return
-        settings = load_runtime_mqtt_settings()
-        raw_topic, mapped = self._runtime_topics(vehicle, settings)
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
-    runtime.connection_state = state
-    runtime.connection_detail = detail
-    runtime.auth_state = vehicle.provider_state.auth_state
-    runtime.raw_topic = raw_topic
-    runtime.mapped_topic = mapped
+        runtime.connection_state = state
+        runtime.connection_detail = detail
+        runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        if vehicle:
+            runtime.auth_state = vehicle.provider_state.auth_state
         self.state_store.upsert(runtime)
-        self.log_store.append(vehicle_id, f"Status -> {state}: {detail}")
-        self._publish_meta(vehicle, runtime, settings)
 
-    def _publish_meta(self, vehicle, runtime: VehicleRuntimeState, settings) -> None:
-        if not settings.host:
-            return
-        topic = meta_topic(settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
-        client = LocalMqttClient(settings)
+        mqtt_settings = load_runtime_mqtt_settings()
+        if vehicle and mqtt_settings.host:
+            self._publish_meta(vehicle, runtime, mqtt_settings)
+
+    def _publish_meta(self, vehicle, runtime: VehicleRuntimeState, mqtt_settings) -> None:
+        client = LocalMqttClient(mqtt_settings)
+        topic = meta_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
         try:
             client.connect()
-            client.publish(f"{topic}/status", runtime.connection_state)
-            client.publish(f"{topic}/detail", runtime.connection_detail)
-            client.publish(f"{topic}/auth_state", runtime.auth_state)
-            client.publish(f"{topic}/raw_topic", runtime.raw_topic)
-            client.publish(f"{topic}/mapped_topic", runtime.mapped_topic)
-            if runtime.last_update:
-                client.publish(f"{topic}/last_update", runtime.last_update)
+            client.publish(f"{topic}/status", runtime.connection_state or "unknown")
+            client.publish(f"{topic}/detail", runtime.connection_detail or "")
+            client.publish(f"{topic}/auth_state", runtime.auth_state or "unknown")
+            if runtime.raw_topic:
+                client.publish(f"{topic}/raw_topic", runtime.raw_topic)
+            if runtime.mapped_topic:
+                client.publish(f"{topic}/mapped_topic", runtime.mapped_topic)
         finally:
             client.disconnect()
 
-    def _flatten_publish(self, client: LocalMqttClient, base_topic_prefix: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        data_points = data.get("data", {})
-        nested: Dict[str, Any] = {}
-        for metric_name, metric_data in data_points.items():
-            metric_topic = f"{base_topic_prefix}/{metric_name.replace('.', '/')}"
-            client.publish(metric_topic, metric_data)
-            if isinstance(metric_data, dict):
-                for key, value in metric_data.items():
-                    client.publish(f"{metric_topic}/{key}", value)
-            parts = metric_name.split('.')
-            ref = nested
-            for part in parts[:-1]:
-                ref = ref.setdefault(part, {})
-            ref[parts[-1]] = metric_data
+    def _flatten_publish(self, client: LocalMqttClient, base_topic: str, data: Any) -> dict:
+        nested: dict[str, Any] = {}
+
+        def rec(prefix: str, value: Any):
+            if isinstance(value, dict):
+                for k, v in value.items():
+                    new_prefix = f"{prefix}/{k}" if prefix else k
+                    rec(new_prefix, v)
+            elif isinstance(value, list):
+                for idx, v in enumerate(value):
+                    new_prefix = f"{prefix}/{idx}" if prefix else str(idx)
+                    rec(new_prefix, v)
+            else:
+                topic = f"{base_topic}/{prefix}" if prefix else base_topic
+                client.publish(topic, value)
+                parts = [p for p in prefix.split("/") if p]
+                cur = nested
+                for p in parts[:-1]:
+                    cur = cur.setdefault(p, {})
+                if parts:
+                    cur[parts[-1]] = value
+
+        rec("", data)
         return nested
 
-    def _deep_merge_dict(self, target: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any]:
-        for key, value in source.items():
-            if isinstance(value, dict) and isinstance(target.get(key), dict):
-                self._deep_merge_dict(target[key], value)
+    def _deep_merge_dict(self, left: dict, right: dict) -> dict:
+        merged = dict(left)
+        for key, value in right.items():
+            if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+                merged[key] = self._deep_merge_dict(merged[key], value)
             else:
-                target[key] = value
-        return target
+                merged[key] = value
+        return merged
 
-    def _handle_bmw_payload(self, vehicle_id: str, callback_topic: str, data: Dict[str, Any], mqtt_settings) -> None:
+    def _handle_bmw_payload(self, vehicle_id: str, data: dict, callback_topic: str, mqtt_settings) -> None:
         vehicle = self.config_store.get_vehicle(vehicle_id)
         if not vehicle:
             return
+
+        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
         client = LocalMqttClient(mqtt_settings)
-        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings, callback_topic)
         try:
             client.connect()
             nested = self._flatten_publish(client, raw_topic_base, data)
@@ -174,14 +175,14 @@ class WorkerManager:
             client.disconnect()
 
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
-    runtime.connection_state = "connected"
-    runtime.connection_detail = "Streaming aktiv"
-    runtime.auth_state = vehicle.provider_state.auth_state
-    runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
-    runtime.raw_topic = raw_topic_base
-    runtime.mapped_topic = mapped
-    runtime.metrics = mapped_payload
-    runtime.provider_meta = {
+        runtime.connection_state = "connected"
+        runtime.connection_detail = "Streaming aktiv"
+        runtime.auth_state = vehicle.provider_state.auth_state
+        runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        runtime.raw_topic = raw_topic_base
+        runtime.mapped_topic = mapped
+        runtime.metrics = mapped_payload
+        runtime.provider_meta = {
             "vin": vehicle.provider_config.get("vin", ""),
             "mqtt_username": vehicle.provider_state.mqtt_username or vehicle.provider_config.get("mqtt_username", ""),
             "gcid": vehicle.provider_state.mqtt_username or vehicle.provider_config.get("mqtt_username", ""),
@@ -191,23 +192,19 @@ class WorkerManager:
         self.log_store.append(vehicle_id, f"Live-Daten empfangen: {count} Datenpunkte -> {callback_topic} (Mapping aus kumuliertem Snapshot)")
         self._publish_meta(vehicle, runtime, mqtt_settings)
 
-
     def _handle_gwm_payload(self, vehicle_id: str, source_topic: str, payload: str, mqtt_settings) -> None:
         vehicle = self.config_store.get_vehicle(vehicle_id)
         if not vehicle:
             return
+
         configured_source_base = str(vehicle.provider_config.get("source_topic_base", "")).strip() or "GWM"
         parts = source_topic.split("/")
 
-        # Normalize ORA/GWM upstream topics:
-        # GWM/<opaque-id>/status/items/<item-id>/value
-        # GWM/<opaque-id>/status/Latitude
+        discovered_source_id = ""
+        relative_parts = parts
         if len(parts) >= 3 and parts[0] == "GWM":
             discovered_source_id = parts[1]
-            relative_parts = parts[2:]  # starts with status/...
-        else:
-            discovered_source_id = ""
-            relative_parts = parts
+            relative_parts = parts[2:]
 
         relative = "/".join(relative_parts)
         raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
@@ -222,34 +219,32 @@ class WorkerManager:
 
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
         metrics = dict(runtime.metrics or {})
-        parts = source_topic.split("/")
-        item_id = ""
+
         field_name = parts[-1] if parts else ""
+        item_id = ""
         if "items" in parts:
             idx = parts.index("items")
             if len(parts) > idx + 1:
                 item_id = parts[idx + 1]
             if len(parts) > idx + 2:
                 field_name = parts[idx + 2]
+
         metrics = apply_gwm_metric(metrics, item_id, payload, field_name)
 
-    runtime.connection_state = "connected"
-    runtime.connection_detail = "ORA Stream aktiv"
-    runtime.auth_state = vehicle.provider_state.auth_state
-    runtime.raw_topic = raw_topic_base
-    runtime.mapped_topic = mapped
-    runtime.metrics = metrics
-    runtime.provider_meta = {
+        runtime.connection_state = "connected"
+        runtime.connection_detail = "ORA Stream aktiv"
+        runtime.auth_state = vehicle.provider_state.auth_state
+        runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        runtime.raw_topic = raw_topic_base
+        runtime.mapped_topic = mapped
+        runtime.metrics = metrics
+        runtime.provider_meta = {
             "vehicle_id": vehicle.provider_config.get("vehicle_id", vehicle.id),
             "configured_source_topic_base": configured_source_base,
             "discovered_source_id": discovered_source_id,
             "source_topic": source_topic,
             "normalized_target_root": raw_topic_base,
         }
-
-        from datetime import datetime, timezone
-import time
-    runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         self.state_store.upsert(runtime)
 
         if metrics:
@@ -272,7 +267,6 @@ import time
             return
         self._set_runtime_state(vehicle_id, "saved", "Fahrzeug gespeichert")
         self.log_store.append(vehicle_id, "Fahrzeugkonfiguration gespeichert")
-
 
     def test_map_gwm_from_upstream(self, vehicle_id: str, mqtt_settings, wait_seconds: int = 6) -> dict:
         vehicle = self.config_store.get_vehicle(vehicle_id)
@@ -311,6 +305,5 @@ import time
 
     def delete_vehicle(self, vehicle_id: str) -> None:
         self.stop_vehicle(vehicle_id)
-        self.state_store.delete(vehicle_id)
-        self.log_store.append(vehicle_id, "Fahrzeug gelöscht")
-        self.log_store.delete(vehicle_id)
+        self.state_store.remove(vehicle_id)
+        self.log_store.clear(vehicle_id)
