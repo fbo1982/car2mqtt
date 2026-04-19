@@ -2,8 +2,7 @@ from __future__ import annotations
 
 
 def normalize_plate(license_plate: str) -> str:
-    value = "".join(ch for ch in license_plate.upper().strip() if ch.isalnum())
-    return value
+    return "".join(ch for ch in license_plate.upper().strip() if ch.isalnum())
 
 
 def vehicle_root_topic(base_topic: str, manufacturer: str, license_plate: str) -> str:

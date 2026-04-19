@@ -55,18 +55,9 @@ class GwmMonitorWorker:
 
     def _build_source_topics(self) -> tuple[str, str]:
         configured_base = str(self.vehicle.provider_config.get("source_topic_base", "")).strip()
-        vehicle_id = str(self.vehicle.provider_config.get("vehicle_id", "")).strip() or self.vehicle.id
-
-        # ORA/GWM uses runtime-generated broker ids below GWM/<opaque-id>/status/...
-        # Subscribe broadly and let the handler normalize/map the real paths.
-        if not configured_base or configured_base.startswith("GWM/"):
-            base = "GWM/+"
-            topic = "GWM/+/status/#"
-        else:
-            base = configured_base
-            topic = f"{configured_base}/status/#"
-
-        return topic, base
+        if not configured_base or configured_base.upper().startswith("GWM"):
+            return "GWM/+/status/#", "GWM/+"
+        return f"{configured_base}/status/#", configured_base
 
     def _run(self) -> None:
         backoff = 5

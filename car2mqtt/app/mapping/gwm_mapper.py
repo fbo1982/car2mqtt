@@ -84,8 +84,19 @@ def apply_gwm_metric(mapped: dict[str, Any], item_id: str, value: Any, field_nam
     elif name == "updatetime" and num is not None:
         mapped["lastUpdateTimeRaw"] = num
         mapped["lastUpdateTimeRaw_ts"] = ts
-    elif name == "location":
-        # ignored composite JSON string
-        pass
+
+    name = (field_name or "").strip().lower()
+    if name == "latitude" and num is not None:
+        mapped["latitude"] = num
+        mapped["latitude_ts"] = ts
+    elif name == "longitude" and num is not None:
+        mapped["longitude"] = num
+        mapped["longitude_ts"] = ts
+    elif name == "acquisitiontime" and num is not None:
+        mapped["lastAcquisitionTime"] = num
+        mapped["lastAcquisitionTime_ts"] = ts
+    elif name == "updatetime" and num is not None:
+        mapped["lastUpdateTimeRaw"] = num
+        mapped["lastUpdateTimeRaw_ts"] = ts
 
     return mapped

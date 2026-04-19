@@ -252,20 +252,11 @@ class GwmIntegratedWorker:
 
             try:
                 config_path = self._prepare_runtime_files()
-                code_file = self.vehicle_dir / "verification_code.txt"
-                session_present = config_path.exists() and (
-                    bool(self.vehicle.provider_config.get("access_token"))
-                    or bool(self.vehicle.provider_config.get("refresh_token"))
-                    or "AccessToken:" in config_path.read_text(encoding="utf-8", errors="ignore")
-                )
-                if code_file.exists():
-                    self.on_detail("ORA Konfiguration und Login wird mit Verifikationscode fortgesetzt")
-                    self._run_configure(config_path)
-                elif session_present:
-                    self.log("ORA Bestehende Session/Config erkannt - configure wird übersprungen")
-                else:
+                if not self.vehicle.provider_config.get("access_token") or not self.vehicle.provider_config.get("refresh_token"):
                     self.on_detail("ORA Konfiguration und Login wird aufgebaut")
                     self._run_configure(config_path)
+                else:
+                    self.log("ORA Tokens bereits vorhanden - configure wird übersprungen")
                 source_topic, source_base = self._source_topics()
                 self._start_monitor(source_topic, source_base)
                 self._start_run(config_path)
