@@ -133,7 +133,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.8.13",
+                "version": "0.8.14",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -293,6 +293,9 @@ def create_app() -> FastAPI:
                     vehicle.provider_config[key] = existing.provider_config.get(key)
 
         if payload.manufacturer == "gwm":
+            source_base = str(vehicle.provider_config.get("source_topic_base", "")).strip()
+            if (not source_base) or source_base.upper().startswith("GWM/"):
+                vehicle.provider_config["source_topic_base"] = "GWM"
             target_dir = Path(data_dir) / "providers" / vehicle.id
             target_dir.mkdir(parents=True, exist_ok=True)
             settings = load_runtime_mqtt_settings()

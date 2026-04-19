@@ -209,7 +209,10 @@ class WorkerManager:
 
         relative = "/".join(relative_parts)
         raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
-        target_topic = f"{raw_topic_base}/{relative}"
+        if discovered_source_id:
+            target_topic = f"{raw_topic_base}/{discovered_source_id}/{relative}"
+        else:
+            target_topic = f"{raw_topic_base}/{relative}"
 
         client = LocalMqttClient(mqtt_settings)
         try:
@@ -243,6 +246,7 @@ class WorkerManager:
             "discovered_source_id": discovered_source_id,
             "source_topic": source_topic,
             "normalized_target_root": raw_topic_base,
+            "raw_target_topic": target_topic,
         }
 
         runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
@@ -297,7 +301,7 @@ class WorkerManager:
         client.on_message = on_message
         client.connect(mqtt_settings.host, mqtt_settings.port, 30)
         client.loop_start()
-        self.log_store.append(vehicle_id, f"ORA Test-Mapping gestartet: {topic}")
+        self.log_store.append(vehicle_id, f"ORA Test-Mapping gestartet: {topic} -> Zielwurzel cartest/gwm/{vehicle.license_plate}")
         time.sleep(wait_seconds)
         client.loop_stop()
         client.disconnect()
