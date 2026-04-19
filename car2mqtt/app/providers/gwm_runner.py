@@ -98,7 +98,19 @@ class GwmIntegratedWorker:
     def _prepare_runtime_files(self) -> Path:
         self.vehicle_dir.mkdir(parents=True, exist_ok=True)
         config_path = self.vehicle_dir / "ora2mqtt.yml"
-        runtime = ensure_ora_runtime_config(self.vehicle.provider_config, self.settings)
+
+        # Reuse already persisted ORA tokens/session data before overwriting the config file.
+        if config_path.exists() and (
+            not self.vehicle.provider_config.get("access_token")
+            or not self.vehicle.provider_config.get("refresh_token")
+        ):
+            try:
+                merge_ora_tokens(self.vehicle.provider_config, config_path)
+                self.log("ORA Tokens aus bestehender ora2mqtt.yml übernommen")
+            except Exception as exc:
+                self.log(f"ORA Token-Übernahme aus bestehender Config fehlgeschlagen: {exc}")
+
+        ensure_ora_runtime_config(self.vehicle.provider_config, self.settings)
         config_path.write_text(render_ora2mqtt_yaml(self.vehicle.provider_config, self.settings), encoding="utf-8")
         return config_path
 

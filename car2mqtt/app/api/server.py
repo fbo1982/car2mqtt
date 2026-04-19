@@ -133,7 +133,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.8.3",
+                "version": "0.8.4",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -286,6 +286,12 @@ def create_app() -> FastAPI:
                     if src.resolve() != dst.resolve():
                         dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
 
+        if payload.manufacturer == "gwm" and existing and existing.manufacturer == "gwm":
+            # Preserve persisted ORA session/token data so saving the form does not trigger a new verify each time.
+            for key in ("access_token", "refresh_token", "gw_id", "bean_id", "device_id"):
+                if not vehicle.provider_config.get(key) and existing.provider_config.get(key):
+                    vehicle.provider_config[key] = existing.provider_config.get(key)
+
         if payload.manufacturer == "gwm":
             target_dir = Path(data_dir) / "providers" / vehicle.id
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -299,6 +305,13 @@ def create_app() -> FastAPI:
             log_store.append(vehicle.id, "ORA Konfiguration erzeugt: providers/%s/ora2mqtt.yml" % vehicle.id)
 
         if vehicle_id_to_replace and vehicle_id_to_replace != vehicle.id:
+            if payload.manufacturer == "gwm":
+                src_cfg = Path(data_dir) / "providers" / vehicle_id_to_replace / "ora2mqtt.yml"
+                dst_cfg = Path(data_dir) / "providers" / vehicle.id / "ora2mqtt.yml"
+                if src_cfg.exists():
+                    dst_cfg.parent.mkdir(parents=True, exist_ok=True)
+                    if src_cfg.resolve() != dst_cfg.resolve():
+                        dst_cfg.write_text(src_cfg.read_text(encoding="utf-8"), encoding="utf-8")
             config = store.load()
             config.vehicles = [v for v in config.vehicles if v.id != vehicle_id_to_replace]
             store.save(config)
