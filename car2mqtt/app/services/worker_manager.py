@@ -179,7 +179,7 @@ class WorkerManager:
         runtime.connection_detail = "Streaming aktiv"
         runtime.auth_state = vehicle.provider_state.auth_state
         runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
-        runtime.raw_topic = raw_topic_base
+        runtime.raw_topic = target_topic if "target_topic" in locals() else raw_topic_base
         runtime.mapped_topic = mapped
         runtime.metrics = mapped_payload
         runtime.provider_meta = {
@@ -237,7 +237,7 @@ class WorkerManager:
         runtime.connection_state = "connected"
         runtime.connection_detail = "ORA Stream aktiv"
         runtime.auth_state = vehicle.provider_state.auth_state
-        runtime.raw_topic = raw_topic_base
+        runtime.raw_topic = target_topic if "target_topic" in locals() else raw_topic_base
         runtime.mapped_topic = mapped
         runtime.metrics = metrics
         runtime.provider_meta = {
@@ -261,7 +261,7 @@ class WorkerManager:
             finally:
                 client.disconnect()
 
-        self.log_store.append(vehicle_id, f"ORA Datenpunkt empfangen: {source_topic} = {payload}")
+        self.log_store.append(vehicle_id, f"ORA Datenpunkt empfangen: {source_topic} -> {target_topic} = {payload}")
         self._publish_meta(vehicle, runtime, mqtt_settings)
 
     def publish_vehicle_saved_meta(self, vehicle_id: str) -> None:
