@@ -156,7 +156,7 @@ class WorkerManager:
         if not vehicle:
             return
 
-        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
+        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings or self.settings)
         client = LocalMqttClient(mqtt_settings)
         try:
             client.connect()
@@ -207,7 +207,7 @@ class WorkerManager:
             relative_parts = parts[2:]
 
         relative = "/".join(relative_parts)
-        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
+        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings or self.settings)
         target_topic = f"{raw_topic_base}/{relative}"
 
         client = LocalMqttClient(mqtt_settings)
