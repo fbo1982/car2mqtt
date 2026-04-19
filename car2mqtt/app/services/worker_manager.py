@@ -101,11 +101,11 @@ class WorkerManager:
         settings = load_runtime_mqtt_settings()
         raw_topic, mapped = self._runtime_topics(vehicle, settings)
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
-        runtime.connection_state = state
-        runtime.connection_detail = detail
-        runtime.auth_state = vehicle.provider_state.auth_state
-        runtime.raw_topic = raw_topic
-        runtime.mapped_topic = mapped
+    runtime.connection_state = state
+    runtime.connection_detail = detail
+    runtime.auth_state = vehicle.provider_state.auth_state
+    runtime.raw_topic = raw_topic
+    runtime.mapped_topic = mapped
         self.state_store.upsert(runtime)
         self.log_store.append(vehicle_id, f"Status -> {state}: {detail}")
         self._publish_meta(vehicle, runtime, settings)
@@ -174,14 +174,14 @@ class WorkerManager:
             client.disconnect()
 
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
-        runtime.connection_state = "connected"
-        runtime.connection_detail = "Streaming aktiv"
-        runtime.auth_state = vehicle.provider_state.auth_state
+    runtime.connection_state = "connected"
+    runtime.connection_detail = "Streaming aktiv"
+    runtime.auth_state = vehicle.provider_state.auth_state
     runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
-        runtime.raw_topic = raw_topic_base
-        runtime.mapped_topic = mapped
-        runtime.metrics = mapped_payload
-        runtime.provider_meta = {
+    runtime.raw_topic = raw_topic_base
+    runtime.mapped_topic = mapped
+    runtime.metrics = mapped_payload
+    runtime.provider_meta = {
             "vin": vehicle.provider_config.get("vin", ""),
             "mqtt_username": vehicle.provider_state.mqtt_username or vehicle.provider_config.get("mqtt_username", ""),
             "gcid": vehicle.provider_state.mqtt_username or vehicle.provider_config.get("mqtt_username", ""),
@@ -233,13 +233,13 @@ class WorkerManager:
                 field_name = parts[idx + 2]
         metrics = apply_gwm_metric(metrics, item_id, payload, field_name)
 
-        runtime.connection_state = "connected"
-        runtime.connection_detail = "ORA Stream aktiv"
-        runtime.auth_state = vehicle.provider_state.auth_state
-        runtime.raw_topic = raw_topic_base
-        runtime.mapped_topic = mapped
-        runtime.metrics = metrics
-        runtime.provider_meta = {
+    runtime.connection_state = "connected"
+    runtime.connection_detail = "ORA Stream aktiv"
+    runtime.auth_state = vehicle.provider_state.auth_state
+    runtime.raw_topic = raw_topic_base
+    runtime.mapped_topic = mapped
+    runtime.metrics = metrics
+    runtime.provider_meta = {
             "vehicle_id": vehicle.provider_config.get("vehicle_id", vehicle.id),
             "configured_source_topic_base": configured_source_base,
             "discovered_source_id": discovered_source_id,
