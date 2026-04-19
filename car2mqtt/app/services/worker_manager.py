@@ -30,6 +30,11 @@ class WorkerManager:
         self.workers: dict[str, object] = {}
         self._bmw_raw_cache: dict[str, dict] = {}
 
+
+    def _create_local_mqtt_client(self):
+        mqtt_settings = load_runtime_mqtt_settings()
+        return LocalMqttClient(mqtt_settings)
+
     def start_all(self) -> None:
         config = self.config_store.load()
         for vehicle in config.vehicles:
