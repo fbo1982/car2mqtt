@@ -177,7 +177,7 @@ class WorkerManager:
         runtime.connection_state = "connected"
         runtime.connection_detail = "Streaming aktiv"
         runtime.auth_state = vehicle.provider_state.auth_state
-        runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+    runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         runtime.raw_topic = raw_topic_base
         runtime.mapped_topic = mapped
         runtime.metrics = mapped_payload
@@ -249,7 +249,7 @@ class WorkerManager:
 
         from datetime import datetime, timezone
 import time
-        runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+    runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         self.state_store.upsert(runtime)
 
         if metrics:
