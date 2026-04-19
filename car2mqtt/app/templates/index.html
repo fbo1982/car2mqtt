@@ -488,6 +488,7 @@ async function deleteVehicle(vehicleId){ if(!confirm('Fahrzeug wirklich löschen
 window.deleteVehicle = deleteVehicle;
 
 field('copyEvccBtn').onclick = copyCurrentCarToEvcc;
+if (field('editOraSendVerificationBtn')) field('editOraSendVerificationBtn').onclick = sendOraVerificationCode;
 field('editBmwAutoReconnect').onchange = toggleBmwReconnectMode;
 toggleBmwReconnectMode();
 field('createManufacturer').onchange = toggleCreateSections; setLiveLogUi(); renderCards(); renderProviderList(); fillManufacturerSelect(); setInterval(loadDashboard, 15000);
