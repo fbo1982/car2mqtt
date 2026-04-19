@@ -199,10 +199,20 @@ class GwmIntegratedWorker:
     def _start_run(self, config_path: Path) -> None:
         env = os.environ.copy()
         env["OPENSSL_CONF"] = "/opt/ora2mqtt/openssl.cnf"
+        polling_enabled = self.vehicle.provider_config.get("polling_enabled", True)
         interval = str(int(self.vehicle.provider_config.get("poll_interval", 60) or 60))
-        self.log(f"ORA Runner wird gestartet (Intervall {interval}s)")
+        cmd = [str(self._ora_bin()), "run", "-c", str(config_path)]
+        if polling_enabled:
+            cmd.extend(["-i", interval])
+            self.log(f"ORA Runner wird gestartet (Polling aktiv, Intervall {interval}s)")
+        else:
+            self.log("ORA Runner wird gestartet (Polling deaktiviert, nur Event-/Live-basiert)")
+        if self.vehicle.provider_config.get("fallback_on_silence", True):
+            self.log("ORA Fallback bei ausbleibenden Events: aktiv")
+        else:
+            self.log("ORA Fallback bei ausbleibenden Events: deaktiviert")
         self._proc = subprocess.Popen(
-            [str(self._ora_bin()), "run", "-c", str(config_path), "-i", interval],
+            cmd,
             cwd="/opt/ora2mqtt",
             env=env,
             stdout=subprocess.PIPE,
@@ -221,9 +231,13 @@ class GwmIntegratedWorker:
             self.log(f"[ora2mqtt run] {line.rstrip()}")
 
     def _run(self) -> None:
-        backoff = 30
         while not self._stop.is_set():
-            try:
+            auto_reconnect = self.vehicle.provider_config.get("auto_reconnect", True)
+            delayed_retry_enabled = self.vehicle.provider_config.get("delayed_retry_enabled", True)
+            retry_delay_minutes = int(self.vehicle.provider_config.get("retry_delay_minutes", 55) or 55)
+            retry_delay_minutes = max(15, min(60, retry_delay_minutes))
+            backoff = retry_delay_minutes * 60 if delayed_retry_enabled else 30
+                    try:
                 config_path = self._prepare_runtime_files()
                 if not self.vehicle.provider_config.get("access_token") or not self.vehicle.provider_config.get("refresh_token"):
                     self.on_detail("ORA Konfiguration und Login wird aufgebaut")
@@ -253,6 +267,9 @@ class GwmIntegratedWorker:
                     self.log("ORA Fatalfehler erkannt - kein automatischer Retry")
                     break
                 self.on_error(message)
+                if not auto_reconnect:
+                    self.log("ORA Auto-Reconnect ist deaktiviert - Worker wird beendet")
+                    break
             finally:
                 if self._monitor_client:
                     try:
@@ -262,6 +279,12 @@ class GwmIntegratedWorker:
                         pass
                     self._monitor_client = None
                 self._proc = None
+            if not auto_reconnect:
+                break
+            if delayed_retry_enabled:
+                self.log(f"ORA Retry mit Delay aktiv - nächster Versuch in {retry_delay_minutes} Minuten")
+            else:
+                self.log("ORA Retry ohne Delay aktiv - nächster Versuch in 30 Sekunden")
             if self._stop.wait(backoff):
                 break
             self.on_detail("ORA Verbindung wird erneut aufgebaut")
