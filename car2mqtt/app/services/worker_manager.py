@@ -194,12 +194,20 @@ class WorkerManager:
         vehicle = self.config_store.get_vehicle(vehicle_id)
         if not vehicle:
             return
-        source_base = str(vehicle.provider_config.get("source_topic_base", "")).strip() or f"GWM/{vehicle.provider_config.get('vehicle_id', vehicle.id)}"
-        if source_topic.startswith(source_base + "/"):
-            relative = source_topic[len(source_base) + 1:]
-        else:
-            relative = source_topic
+        configured_source_base = str(vehicle.provider_config.get("source_topic_base", "")).strip() or "GWM"
+        parts = source_topic.split("/")
 
+        # Normalize ORA/GWM upstream topics:
+        # GWM/<opaque-id>/status/items/<item-id>/value
+        # GWM/<opaque-id>/status/Latitude
+        if len(parts) >= 3 and parts[0] == "GWM":
+            discovered_source_id = parts[1]
+            relative_parts = parts[2:]  # starts with status/...
+        else:
+            discovered_source_id = ""
+            relative_parts = parts
+
+        relative = "/".join(relative_parts)
         raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
         target_topic = f"{raw_topic_base}/{relative}"
 
@@ -214,11 +222,14 @@ class WorkerManager:
         metrics = dict(runtime.metrics or {})
         parts = source_topic.split("/")
         item_id = ""
+        field_name = parts[-1] if parts else ""
         if "items" in parts:
             idx = parts.index("items")
             if len(parts) > idx + 1:
                 item_id = parts[idx + 1]
-        metrics = apply_gwm_metric(metrics, item_id, payload)
+            if len(parts) > idx + 2:
+                field_name = parts[idx + 2]
+        metrics = apply_gwm_metric(metrics, item_id, payload, field_name)
 
         runtime.connection_state = "connected"
         runtime.connection_detail = "ORA Stream aktiv"
@@ -228,7 +239,9 @@ class WorkerManager:
         runtime.metrics = metrics
         runtime.provider_meta = {
             "vehicle_id": vehicle.provider_config.get("vehicle_id", vehicle.id),
-            "source_topic_base": source_base,
+            "configured_source_topic_base": configured_source_base,
+            "discovered_source_id": discovered_source_id,
+            "source_topic": source_topic,
         }
 
         from datetime import datetime, timezone

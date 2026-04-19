@@ -34,7 +34,7 @@ def _timestamp() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def apply_gwm_metric(mapped: dict[str, Any], item_id: str, value: Any) -> dict[str, Any]:
+def apply_gwm_metric(mapped: dict[str, Any], item_id: str, value: Any, field_name: str | None = None) -> dict[str, Any]:
     ts = _timestamp()
     num = _to_number(value)
     boo = _to_bool(value)
@@ -61,5 +61,19 @@ def apply_gwm_metric(mapped: dict[str, Any], item_id: str, value: Any) -> dict[s
     elif item_id == "2042082" and boo is not None:
         mapped["plugged"] = boo
         mapped["plugged_ts"] = ts
+
+    name = (field_name or "").strip().lower()
+    if name == "latitude" and num is not None:
+        mapped["latitude"] = num
+        mapped["latitude_ts"] = ts
+    elif name == "longitude" and num is not None:
+        mapped["longitude"] = num
+        mapped["longitude_ts"] = ts
+    elif name == "acquisitiontime" and num is not None:
+        mapped["lastAcquisitionTime"] = num
+        mapped["lastAcquisitionTime_ts"] = ts
+    elif name == "updatetime" and num is not None:
+        mapped["lastUpdateTimeRaw"] = num
+        mapped["lastUpdateTimeRaw_ts"] = ts
 
     return mapped
