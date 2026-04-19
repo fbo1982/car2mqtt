@@ -63,16 +63,21 @@ class WorkerManager:
             worker = BMWStreamWorker(
                 vehicle=vehicle,
                 mqtt_settings=mqtt_settings,
-                on_data=lambda data, callback_topic: self._handle_bmw_payload(vehicle_id, data, callback_topic, mqtt_settings),
-                on_status=lambda state, detail: self._set_runtime_state(vehicle_id, state, detail),
-                on_log=lambda message: self.log_store.append(vehicle_id, message),
+                state_store=self.state_store,
+                local_mqtt_client_factory=self._create_local_mqtt_client,
+                on_payload=lambda callback_topic, data: self._handle_bmw_payload(vehicle_id, callback_topic, data, mqtt_settings),
+                on_connect=lambda: self._set_runtime_state(vehicle_id, "connected", "Mit BMW Streaming-Server verbunden"),
+                on_disconnect=lambda rc: self._set_runtime_state(vehicle_id, "disconnected", f"BMW Verbindung getrennt (rc={rc})"),
+                on_error=lambda message: self._handle_error(vehicle_id, message),
+                on_detail=lambda detail: self._set_runtime_state(vehicle_id, "starting", detail),
+                log_callback=lambda message: self.log_store.append(vehicle_id, message),
             )
         elif vehicle.manufacturer == "gwm":
             worker = GwmIntegratedWorker(
                 vehicle=vehicle,
                 settings=mqtt_settings,
-                on_status=lambda state, detail: self._set_runtime_state(vehicle_id, state, detail),
-                on_log=lambda message: self.log_store.append(vehicle_id, message),
+                on_connect=lambda state, detail: self._set_runtime_state(vehicle_id, state, detail),
+                log_callback=lambda message: self.log_store.append(vehicle_id, message),
                 on_payload=lambda topic, payload: self._handle_gwm_payload(vehicle_id, topic, payload, mqtt_settings),
             )
         else:
