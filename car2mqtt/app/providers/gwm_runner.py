@@ -237,7 +237,8 @@ class GwmIntegratedWorker:
             retry_delay_minutes = int(self.vehicle.provider_config.get("retry_delay_minutes", 55) or 55)
             retry_delay_minutes = max(15, min(60, retry_delay_minutes))
             backoff = retry_delay_minutes * 60 if delayed_retry_enabled else 30
-                    try:
+
+            try:
                 config_path = self._prepare_runtime_files()
                 if not self.vehicle.provider_config.get("access_token") or not self.vehicle.provider_config.get("refresh_token"):
                     self.on_detail("ORA Konfiguration und Login wird aufgebaut")
@@ -278,7 +279,14 @@ class GwmIntegratedWorker:
                     except Exception:
                         pass
                     self._monitor_client = None
+                if self._proc and self._proc.poll() is None:
+                    try:
+                        self._proc.terminate()
+                        self._proc.wait(timeout=5)
+                    except Exception:
+                        pass
                 self._proc = None
+
             if not auto_reconnect:
                 break
             if delayed_retry_enabled:
