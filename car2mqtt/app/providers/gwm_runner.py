@@ -62,6 +62,10 @@ class GwmIntegratedWorker:
         self._monitor_client: mqtt.Client | None = None
         self._proc: subprocess.Popen | None = None
 
+    def _session_marker_path(self) -> Path:
+        return self.vehicle_dir / ".ora_session_ready"
+
+
     def start(self) -> None:
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, daemon=True, name=f"gwm-{self.vehicle.id}")
@@ -88,9 +92,10 @@ class GwmIntegratedWorker:
             self._thread.join(timeout=2)
 
     def _source_topics(self) -> tuple[str, str]:
-        vehicle_id = str(self.vehicle.provider_config.get("vehicle_id", "")).strip() or self.vehicle.id
-        base = str(self.vehicle.provider_config.get("source_topic_base", "")).strip() or f"GWM/{vehicle_id}"
-        return f"{base}/status/items/+/value", base
+        configured_base = str(self.vehicle.provider_config.get("source_topic_base", "")).strip()
+        if not configured_base or configured_base.upper().startswith("GWM"):
+            return "GWM/+/status/#", "GWM/+"
+        return f"{configured_base}/status/#", configured_base
 
     def _ora_bin(self) -> Path:
         return Path("/opt/ora2mqtt/ora2mqtt")
@@ -252,11 +257,20 @@ class GwmIntegratedWorker:
 
             try:
                 config_path = self._prepare_runtime_files()
-                if not self.vehicle.provider_config.get("access_token") or not self.vehicle.provider_config.get("refresh_token"):
+                code_file = self.vehicle_dir / "verification_code.txt"
+                has_tokens = bool(
+                    str(self.vehicle.provider_config.get("access_token", "")).strip()
+                    and str(self.vehicle.provider_config.get("refresh_token", "")).strip()
+                )
+                session_marker_exists = self._session_marker_path().exists()
+                should_configure = code_file.exists() or (not has_tokens and not session_marker_exists)
+
+                if should_configure:
                     self.on_detail("ORA Konfiguration und Login wird aufgebaut")
                     self._run_configure(config_path)
                 else:
-                    self.log("ORA Tokens bereits vorhanden - configure wird übersprungen")
+                    self.log("ORA Bestehende Session/Tokens erkannt - configure wird übersprungen")
+
                 source_topic, source_base = self._source_topics()
                 self._start_monitor(source_topic, source_base)
                 self._start_run(config_path)
