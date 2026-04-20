@@ -471,7 +471,19 @@ async function editVehicle(vehicleId){
   field('editGwmSourceTopicBase').value = (String(gwmSourceBase).startsWith('GWM/')) ? 'GWM' : gwmSourceBase; field('editGwmVerificationCode').value = ''; field('editGwmPollingEnabled').checked = vehicle.provider_config.polling_enabled !== false; field('editGwmAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editGwmDelayedRetryEnabled').checked = vehicle.provider_config.delayed_retry_enabled !== false; field('editGwmRetryDelayMinutes').value = String(vehicle.provider_config.retry_delay_minutes || 55); field('editGwmFallbackOnSilence').checked = vehicle.provider_config.fallback_on_silence !== false; toggleEditGwmOptions();
   field('editAuthState').textContent = vehicle.enabled === false ? 'Fahrzeug ist inaktiv.' : (vehicle.status === 'waiting_for_code' ? 'Verifikationscode erforderlich.' : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'Anmeldung prüfen.'));
   field('editReauthStartBtn').disabled = vehicle.enabled === false || vehicle.manufacturer !== 'bmw';
-  field('editAuthInfo').classList.add('hidden'); setEditManufacturerLayout(vehicle.manufacturer); const verifyNeeded = vehicle.manufacturer === 'gwm' && (vehicle.status === 'waiting_for_code' || /verification|verifikationscode|code erforderlich/i.test(vehicle.status_detail || '')); setGwmVerifyVisibility(verifyNeeded, verifyNeeded); await refreshVehicleLogs(); if(vehicle.manufacturer === 'gwm'){ await refreshOraConfig(); } else { (field('oraConfigViewer')?field('oraConfigViewer'):{textContent:''}).textContent = 'Für dieses Fahrzeug nicht relevant.'; setGwmVerifyVisibility(false, false); } field('editDialog').showModal();
+  field('editAuthInfo').classList.add('hidden');
+  setEditManufacturerLayout(vehicle.manufacturer);
+  const verifyNeeded = vehicle.manufacturer === 'gwm' && (
+    !vehicle.provider_config?.access_token ||
+    vehicle.status === 'waiting_for_code' ||
+    /verification|verifikationscode|code erforderlich/i.test(vehicle.status_detail || '')
+  );
+  setGwmVerifyVisibility(verifyNeeded, verifyNeeded);
+  await refreshVehicleLogs();
+  if(vehicle.manufacturer !== 'gwm'){
+    setGwmVerifyVisibility(false, false);
+  }
+  field('editDialog').showModal();
 }
 window.editVehicle = editVehicle;
 
