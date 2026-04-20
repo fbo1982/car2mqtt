@@ -112,7 +112,14 @@ class GwmIntegratedWorker:
             try:
                 merge_ora_tokens(self.vehicle.provider_config, config_path)
                 self.log("ORA Tokens aus bestehender ora2mqtt.yml übernommen")
+
             except Exception as exc:
+                message = str(exc)
+                if "ORA_WAITING_FOR_CODE" in message or "ORA_AUTH_FATAL" in message:
+                    try:
+                        self._session_marker_path().unlink(missing_ok=True)
+                    except Exception:
+                        pass
                 self.log(f"ORA Token-Übernahme aus bestehender Config fehlgeschlagen: {exc}")
 
         ensure_ora_runtime_config(self.vehicle.provider_config, self.settings)
@@ -258,18 +265,25 @@ class GwmIntegratedWorker:
             try:
                 config_path = self._prepare_runtime_files()
                 code_file = self.vehicle_dir / "verification_code.txt"
-                has_tokens = bool(
-                    str(self.vehicle.provider_config.get("access_token", "")).strip()
-                    and str(self.vehicle.provider_config.get("refresh_token", "")).strip()
-                )
+                access_token = str(self.vehicle.provider_config.get("access_token", "")).strip()
+                refresh_token = str(self.vehicle.provider_config.get("refresh_token", "")).strip()
+                has_tokens = bool(access_token and refresh_token)
                 session_marker_exists = self._session_marker_path().exists()
+
+                # configure only when explicitly needed:
+                # 1) verification code was manually provided
+                # 2) there are no reusable tokens AND no prior successful session marker
                 should_configure = code_file.exists() or (not has_tokens and not session_marker_exists)
 
                 if should_configure:
+                    if code_file.exists():
+                        self.log("ORA configure nötig - Verifikationscode liegt vor")
+                    else:
+                        self.log("ORA configure nötig - keine gültigen Tokens/Session vorhanden")
                     self.on_detail("ORA Konfiguration und Login wird aufgebaut")
                     self._run_configure(config_path)
                 else:
-                    self.log("ORA Bestehende Session/Tokens erkannt - configure wird übersprungen")
+                    self.log("ORA Start ohne configure - Tokens/Session vorhanden")
 
                 source_topic, source_base = self._source_topics()
                 self._start_monitor(source_topic, source_base)
@@ -280,7 +294,14 @@ class GwmIntegratedWorker:
                 rc = self._proc.wait(timeout=1) if self._proc else -1
                 self.log(f"ORA Runner beendet (rc={rc})")
                 self.on_disconnect(str(rc))
+
             except Exception as exc:
+                message = str(exc)
+                if "ORA_WAITING_FOR_CODE" in message or "ORA_AUTH_FATAL" in message:
+                    try:
+                        self._session_marker_path().unlink(missing_ok=True)
+                    except Exception:
+                        pass
                 self.log(f"ORA Worker Fehler: {exc}")
                 message = str(exc)
                 if message.startswith("ORA_WAITING_FOR_CODE::"):
