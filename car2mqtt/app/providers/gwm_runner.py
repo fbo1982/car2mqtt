@@ -272,18 +272,18 @@ class GwmIntegratedWorker:
 
                 # configure only when explicitly needed:
                 # 1) verification code was manually provided
-                # 2) there are no reusable tokens AND no prior successful session marker
-                should_configure = code_file.exists() or (not has_tokens and not session_marker_exists)
+                # 2) there are no reusable tokens
+                should_configure = code_file.exists() or (not has_tokens)
 
                 if should_configure:
                     if code_file.exists():
                         self.log("ORA configure nötig - Verifikationscode liegt vor")
                     else:
-                        self.log("ORA configure nötig - keine gültigen Tokens/Session vorhanden")
+                        self.log("ORA configure nötig - keine gültigen Tokens vorhanden")
                     self.on_detail("ORA Konfiguration und Login wird aufgebaut")
                     self._run_configure(config_path)
                 else:
-                    self.log("ORA Start ohne configure - Tokens/Session vorhanden")
+                    self.log("ORA Start ohne configure - Tokens vorhanden")
 
                 source_topic, source_base = self._source_topics()
                 self._start_monitor(source_topic, source_base)
