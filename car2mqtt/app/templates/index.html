@@ -15,7 +15,7 @@
     .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:22px}.vehicle-card,.add-card{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow)}.vehicle-card{overflow:hidden}.vehicle-head{display:flex;justify-content:space-between;gap:14px;padding:22px 24px 18px;border-bottom:1px solid var(--line)}.vehicle-title{font-size:18px;font-weight:800;margin-bottom:6px}.vehicle-subtitle{color:var(--muted);font-size:14px}.status-badge{padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px;text-transform:uppercase;letter-spacing:.08em;height:max-content}.status-badge.connected{color:#042d14;background:var(--ok)}.status-badge.error,.status-badge.disconnected{color:white;background:rgba(255,93,108,.9)}.status-badge.starting,.status-badge.saved{background:rgba(0,183,255,.18);color:#7ed5ff}.status-badge.inactive{background:rgba(255,255,255,.12);color:#d6dbf6}
     .vehicle-metrics{display:grid;grid-template-columns:1fr 1fr;gap:16px 26px;padding:22px 24px}.metric{display:flex;justify-content:space-between;gap:18px}.metric span{color:var(--muted)}.metric strong{color:var(--ok);font-size:19px}.card-footer{border-top:1px solid var(--line);padding:16px 24px 22px;color:var(--muted);font-size:14px}.topic-row{margin-top:8px;font-size:12px;color:#93b3ff;word-break:break-all}.card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.add-card{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:258px;color:var(--text);background:transparent}.add-card span{font-size:44px;line-height:1}.add-card strong{font-size:24px;margin-top:10px}
     dialog{border:0;padding:0;background:transparent}.modal::backdrop{background:rgba(0,0,0,.6);backdrop-filter:blur(8px)}.panel{width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow-y:auto;overflow-x:hidden;background:var(--panel);border:1px solid var(--line);border-radius:30px;box-shadow:var(--shadow)}.panel.wide{width:min(900px,calc(100vw - 32px))}.modal-head,.modal-foot{display:flex;align-items:center;gap:16px;padding:24px 28px}.modal-head{justify-content:space-between;border-bottom:1px solid var(--line)}.modal-head h3{margin:4px 0 0;font-size:24px}.modal-body{padding:24px 28px 28px}.notice{display:none;margin:0 28px 18px;padding:14px 16px;border-radius:14px;background:rgba(255,93,108,.14);color:#ffd8dd;border:1px solid rgba(255,93,108,.28)}
-    .field{display:flex;flex-direction:column;gap:8px}.field label{font-weight:700;color:#edf1ff}.field small,.muted{color:var(--muted);word-break:break-word}input,select,textarea{width:100%;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--text);padding:14px 15px}.grid{display:grid;gap:16px}.grid.two{grid-template-columns:1fr 1fr}.grid.three{grid-template-columns:1fr 1fr 1fr}.provider-list{display:grid;gap:14px}.provider-card{padding:20px;border-radius:22px;background:rgba(0,0,0,.12);border:1px solid transparent;overflow:hidden}
+    .field{display:flex;flex-direction:column;gap:8px}.field label{font-weight:700;color:#edf1ff}.field small,.muted{color:var(--muted);word-break:break-word}input,select,textarea{width:100%;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--text);padding:14px 15px;box-sizing:border-box}.grid{display:grid;gap:16px}.grid.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.grid.three{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}.provider-list{display:grid;gap:14px}.provider-card{padding:20px;border-radius:22px;background:rgba(0,0,0,.12);border:1px solid transparent;overflow:hidden}.toggle-field{display:flex;gap:12px;align-items:flex-start}.toggle-field input[type=checkbox]{margin-top:4px;transform:scale(1.25);accent-color:var(--ok)}.toggle-field .toggle-copy{min-width:0}.gwm-edit-box{display:grid;gap:16px}.gwm-edit-box .field,.gwm-edit-box .grid,.gwm-edit-box .toggle-field{min-width:0}
 #gwmCreateSection,#editGwmSection{min-width:0}
 #gwmCreateSection .grid.two,#editGwmSection .grid.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
 #gwmCreateSection .field,#editGwmSection .field{min-width:0}
@@ -194,44 +194,78 @@ select, option {
         </div>
       </div>
 
-      <div id="editGwmSection" class="grid hidden"><div class="field" style="grid-column:1/-1"><div class="eyebrow">ORA / GWM-spezifische Einstellungen</div></div>
-        <div class="info-box">
+      
+<div id="editGwmSection" class="grid hidden">
+        <div class="field" style="grid-column:1/-1"><div class="eyebrow">ORA / GWM-spezifische Einstellungen</div></div>
+        <div class="info-box gwm-edit-box">
           <div class="eyebrow">ORA / GWM Setup</div>
-          <div class="field" style="margin-top:14px"><label>Benutzerkonto</label><input id="editGwmAccount" /></div>
-          <div class="field" style="margin-top:16px"><label>Passwort</label><input id="editGwmPassword" type="password" /></div>
-          <div class="grid two" style="margin-top:16px">
+
+          <div class="field"><label>Benutzerkonto</label><input id="editGwmAccount" /></div>
+          <div class="field"><label>Passwort</label><input id="editGwmPassword" type="password" /></div>
+
+          <div class="grid two">
             <div class="field"><label>Land</label><input id="editGwmCountry" /></div>
             <div class="field"><label>Sprache</label><input id="editGwmLanguage" /></div>
           </div>
-          <div class="grid two" style="margin-top:16px">
+
+          <div class="grid two">
             <div class="field">
-              <label style="display:flex;align-items:center;gap:12px;"><input id="editGwmPollingEnabled" type="checkbox" checked style="transform:scale(1.25)" /> Polling aktivieren</label>
-              <div class="muted" style="margin-top:8px">Wenn deaktiviert, arbeitet ORA nur Event-/Live-basiert.</div>
+              <label>Polling</label>
+              <div class="toggle-field" style="margin-top:6px">
+                <input id="editGwmPollingEnabled" type="checkbox" checked />
+                <div class="toggle-copy">
+                  <div style="font-weight:700;color:#edf1ff">Polling aktivieren</div>
+                  <div class="muted" style="margin-top:6px">Wenn deaktiviert, arbeitet ORA nur Event-/Live-basiert.</div>
+                </div>
+              </div>
             </div>
             <div class="field"><label>Vehicle ID</label><input id="editGwmVehicleId" /></div>
           </div>
-          <div class="field" id="editGwmPollIntervalWrap" style="margin-top:16px"><label>Polling-Intervall (Sekunden)</label><input id="editGwmPollInterval" type="number" min="10" /></div>
-          <div class="grid two" style="margin-top:16px">
+
+          <div class="field" id="editGwmPollIntervalWrap"><label>Polling-Intervall (Sekunden)</label><input id="editGwmPollInterval" type="number" min="10" /></div>
+
+          <div class="grid two">
             <div class="field">
-              <label style="display:flex;align-items:center;gap:12px;"><input id="editGwmAutoReconnect" type="checkbox" checked style="transform:scale(1.25)" /> Automatischer Reconnect aktiv</label>
-              <div class="muted" style="margin-top:8px">Reconnect nur wenn nötig, kein aggressiver Retry.</div>
+              <label>Reconnect</label>
+              <div class="toggle-field" style="margin-top:6px">
+                <input id="editGwmAutoReconnect" type="checkbox" checked />
+                <div class="toggle-copy">
+                  <div style="font-weight:700;color:#edf1ff">Automatischer Reconnect aktiv</div>
+                  <div class="muted" style="margin-top:6px">Reconnect nur wenn nötig, kein aggressiver Retry.</div>
+                </div>
+              </div>
             </div>
             <div class="field">
-              <label style="display:flex;align-items:center;gap:12px;"><input id="editGwmDelayedRetryEnabled" type="checkbox" checked style="transform:scale(1.25)" /> Verzögerter Retry aktiv</label>
+              <label>Retry</label>
+              <div class="toggle-field" style="margin-top:6px">
+                <input id="editGwmDelayedRetryEnabled" type="checkbox" checked />
+                <div class="toggle-copy">
+                  <div style="font-weight:700;color:#edf1ff">Verzögerter Retry aktiv</div>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="field" id="editGwmRetryDelayWrap" style="margin-top:16px"><label>Retry Delay (Minuten)</label>
+
+          <div class="field" id="editGwmRetryDelayWrap"><label>Retry Delay (Minuten)</label>
             <select id="editGwmRetryDelayMinutes"><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option><option value="20">20</option><option value="21">21</option><option value="22">22</option><option value="23">23</option><option value="24">24</option><option value="25">25</option><option value="26">26</option><option value="27">27</option><option value="28">28</option><option value="29">29</option><option value="30">30</option><option value="31">31</option><option value="32">32</option><option value="33">33</option><option value="34">34</option><option value="35">35</option><option value="36">36</option><option value="37">37</option><option value="38">38</option><option value="39">39</option><option value="40">40</option><option value="41">41</option><option value="42">42</option><option value="43">43</option><option value="44">44</option><option value="45">45</option><option value="46">46</option><option value="47">47</option><option value="48">48</option><option value="49">49</option><option value="50">50</option><option value="51">51</option><option value="52">52</option><option value="53">53</option><option value="54">54</option><option value="55" selected>55</option><option value="56">56</option><option value="57">57</option><option value="58">58</option><option value="59">59</option><option value="60">60</option></select>
           </div>
-          <div class="field" style="margin-top:16px">
-            <label style="display:flex;align-items:center;gap:12px;"><input id="editGwmFallbackOnSilence" type="checkbox" checked style="transform:scale(1.25)" /> Fallback bei ausbleibenden Events</label>
-            <div class="muted" style="margin-top:8px">Als Reserve, falls der Live-Stream keine neuen Events liefert.</div>
+
+          <div class="field">
+            <label>Fallback</label>
+            <div class="toggle-field" style="margin-top:6px">
+              <input id="editGwmFallbackOnSilence" type="checkbox" checked />
+              <div class="toggle-copy">
+                <div style="font-weight:700;color:#edf1ff">Fallback bei ausbleibenden Events</div>
+                <div class="muted" style="margin-top:6px">Als Reserve, falls der Live-Stream keine neuen Events liefert.</div>
+              </div>
+            </div>
           </div>
-          <div class="field" style="margin-top:16px"><label>Akkukapazität (kWh)</label><input id="editGwmCapacity" type="number" step="0.1" /></div>
-          <div class="field" style="margin-top:16px"><label>Source Topic Base</label><input id="editGwmSourceTopicBase" /><div class="muted" style="margin-top:8px">Für ORA immer GWM verwenden. Rohdaten landen unter cartest/gwm/&lt;KENNZEICHEN&gt;/&lt;SOURCE-ID&gt;/status/... und werden nach mapped/... normalisiert.</div></div><div class="log-actions" style="margin-top:16px"><button id="runOraTestMapBtn" class="tiny-btn">Temporärer Testbutton Mapping</button></div>
-          
+
+          <div class="field"><label>Akkukapazität (kWh)</label><input id="editGwmCapacity" type="number" step="0.1" /></div>
+          <div class="field"><label>Source Topic Base</label><input id="editGwmSourceTopicBase" /><div class="muted" style="margin-top:8px">Für ORA hier einfach <code>GWM</code> verwenden.</div></div>
+          <div class="log-actions" style="margin-top:4px"><button id="runOraTestMapBtn" class="tiny-btn">Temporärer Testbutton Mapping</button></div>
         </div>
-</div>
+      </div>
       <div class="log-box">
         <div class="log-toolbar"><strong>Fahrzeug-Log</strong><div class="log-actions"><span id="liveLogState" class="live-chip">Live aus</span><button id="toggleLiveLogsBtn" class="tiny-btn">Live-Log einschalten</button><button id="refreshLogsBtn" class="tiny-btn">Logs aktualisieren</button><button id="clearLogsBtn" class="danger-btn">Logs löschen</button></div></div>
         <div id="vehicleLogViewer" class="log-viewer">Noch keine Logs geladen.</div>
