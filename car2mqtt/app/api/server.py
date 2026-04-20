@@ -133,7 +133,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.8.16",
+                "version": "0.8.17",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -172,6 +172,14 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
         log_store.delete(vehicle_id)
         return {"status": "ok", "vehicle_id": vehicle_id}
+
+    @app.get("/api/vehicles/{vehicle_id}/ora/config", response_class=PlainTextResponse)
+    async def get_ora_config(vehicle_id: str):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle or vehicle.manufacturer != "gwm":
+            raise HTTPException(status_code=404, detail="ORA Fahrzeug nicht gefunden")
+        settings = load_runtime_mqtt_settings()
+        return render_ora2mqtt_yaml(vehicle.provider_config, settings)
 
     @app.post("/api/mqtt/test")
     async def mqtt_test():
@@ -295,13 +303,6 @@ def create_app() -> FastAPI:
                 vehicle.provider_config["source_topic_base"] = "GWM"
             target_dir = Path(data_dir) / "providers" / vehicle.id
             target_dir.mkdir(parents=True, exist_ok=True)
-            existing_cfg = target_dir / "ora2mqtt.yml"
-            if existing_cfg.exists():
-                try:
-                    from app.providers.gwm_config import merge_ora_tokens
-                    merge_ora_tokens(vehicle.provider_config, existing_cfg)
-                except Exception:
-                    pass
             settings = load_runtime_mqtt_settings()
             ora_config = render_ora2mqtt_yaml(vehicle.provider_config, settings)
             (target_dir / "ora2mqtt.yml").write_text(ora_config, encoding="utf-8")

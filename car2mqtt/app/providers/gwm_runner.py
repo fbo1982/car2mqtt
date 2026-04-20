@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import ssl
 import subprocess
@@ -89,10 +88,9 @@ class GwmIntegratedWorker:
             self._thread.join(timeout=2)
 
     def _source_topics(self) -> tuple[str, str]:
-        configured_base = str(self.vehicle.provider_config.get("source_topic_base", "")).strip()
-        if not configured_base or configured_base.upper().startswith("GWM"):
-            return "GWM/+/status/#", "GWM/+"
-        return f"{configured_base}/status/#", configured_base
+        vehicle_id = str(self.vehicle.provider_config.get("vehicle_id", "")).strip() or self.vehicle.id
+        base = str(self.vehicle.provider_config.get("source_topic_base", "")).strip() or f"GWM/{vehicle_id}"
+        return f"{base}/status/items/+/value", base
 
     def _ora_bin(self) -> Path:
         return Path("/opt/ora2mqtt/ora2mqtt")
