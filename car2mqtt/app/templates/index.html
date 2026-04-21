@@ -164,7 +164,7 @@ select, option {
   <div class="panel">
     <div class="modal-head"><div><div class="eyebrow">Fahrzeug</div><h3>Fahrzeug bearbeiten</h3></div><button id="closeEditBtn" class="icon-btn">✕</button></div>
     <div id="editError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn">My BMW How to</button><button id="copyEvccBtn" class="ghost-btn">Copy Car to Custom EVCC</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn">My BMW How to</button><button id="copyEvccBtn" type="button" class="ghost-btn">Copy Car to Custom EVCC</button></div>
     <div class="modal-body grid">
       <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
@@ -426,7 +426,7 @@ status:
 `;
 }
 async function copyTextRobust(content){
-  if(navigator.clipboard && window.isSecureContext){
+  if(navigator.clipboard){
     try{
       await navigator.clipboard.writeText(content);
       return true;
@@ -437,16 +437,33 @@ async function copyTextRobust(content){
     ta.value = content;
     ta.setAttribute('readonly','');
     ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    ta.style.left = '-9999px';
+    ta.style.top = '0';
+    ta.style.left = '0';
+    ta.style.width = '1px';
+    ta.style.height = '1px';
+    ta.style.opacity = '0.01';
+    ta.style.zIndex = '99999';
     document.body.appendChild(ta);
     ta.focus();
     ta.select();
+    ta.setSelectionRange(0, ta.value.length);
     const ok = document.execCommand('copy');
-    ta.remove();
+    document.body.removeChild(ta);
     if(ok) return true;
   }catch(err){}
   return false;
+}
+function showCopyFallback(content){
+  const dlg = document.createElement('dialog');
+  dlg.className = 'modal';
+  dlg.innerHTML = `<div class="panel wide"><div class="modal-head"><div><div class="eyebrow">EVCC</div><h3>Vorlage manuell kopieren</h3></div><button type="button" class="icon-btn">✕</button></div><div class="modal-body"><div class="field"><label>Inhalt</label><textarea style="min-height:360px">${content.replace(/</g,'&lt;')}</textarea></div></div><div class="modal-foot"><div class="spacer"></div><button type="button" class="ghost-btn">Schließen</button></div></div>`;
+  document.body.appendChild(dlg);
+  const ta = dlg.querySelector('textarea');
+  const close = ()=>{ try{ dlg.close(); }catch(e){} dlg.remove(); };
+  dlg.querySelector('.icon-btn').onclick = close;
+  dlg.querySelector('.ghost-btn').onclick = close;
+  try{ dlg.showModal(); }catch(e){ dlg.setAttribute('open','open'); dlg.style.display='flex'; }
+  if(ta){ ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length); }
 }
 async function copyCurrentCarToEvcc(){
   try{
@@ -455,7 +472,7 @@ async function copyCurrentCarToEvcc(){
     if(copied){
       alert('EVCC-Vorlage in die Zwischenablage kopiert.');
     }else{
-      window.prompt('Bitte Inhalt manuell kopieren:', content);
+      showCopyFallback(content);
     }
   }catch(err){
     alert('EVCC-Vorlage konnte nicht kopiert werden: ' + (err.message || err));
@@ -730,7 +747,7 @@ field('saveEditBtn').onclick = ()=>saveEdit(true);
 async function deleteVehicle(vehicleId){ if(!confirm('Fahrzeug wirklich löschen?')) return; await fetch(`./api/vehicles/${vehicleId}`,{method:'DELETE'}); await loadDashboard(); }
 window.deleteVehicle = deleteVehicle;
 
-field('copyEvccBtn').onclick = copyCurrentCarToEvcc;
+field('copyEvccBtn').onclick = (ev)=>{ ev.preventDefault(); copyCurrentCarToEvcc(); };
 if (field('editOraSendVerificationBtn')) field('editOraSendVerificationBtn').onclick = sendOraVerificationCode;
 field('editBmwAutoReconnect').onchange = toggleBmwReconnectMode;
 toggleBmwReconnectMode();
