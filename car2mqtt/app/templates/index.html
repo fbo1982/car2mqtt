@@ -97,8 +97,8 @@ select, option {
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:-6px 0 4px"><button id="bmwHowtoCreateBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button></div>
       <div id="createGenericFields">
-      <div class="field"><label>Anzeigename</label><input id="vehicleLabel" placeholder="BMW iX1 xDrive30e" /></div>
-      <div class="field"><label>Kennzeichen</label><input id="vehiclePlate" placeholder="GG-CA-1013E" /></div>
+      <div class="field"><label>Anzeigename</label><input id="vehicleLabel" /></div>
+      <div class="field"><label>Kennzeichen</label><input id="vehiclePlate" /></div>
       </div>
       <div id="bmwCreateSection" class="info-box hidden">
         <input id="bmwMqttUsername" type="hidden" />
@@ -137,7 +137,7 @@ select, option {
             <div class="field"><label>Akkukapazität (kWh)</label><input id="gwmCapacity" type="number" step="0.1" placeholder="z. B. 63" /></div>
             <div class="field"><label>Vehicle ID</label><input id="gwmVehicleId" placeholder="optional, sonst interne ID" /></div>
           </div>
-          <div class="field" style="margin-top:16px"><label>Source Topic Base</label><input id="gwmSourceTopicBase" placeholder="optional, Standard: GWM/&lt;vehicleId&gt;" /></div>
+          <input id="gwmSourceTopicBase" type="hidden" value="GWM" />
           <div class="field" style="margin-top:16px"><label>Verifikationscode</label><input id="gwmVerificationCode" placeholder="z. B. 3719" /></div>
           <div class="auth-box">
             <strong>Hinweis</strong>
@@ -274,7 +274,6 @@ select, option {
               <label class="comm-toggle"><input id="editGwmFallbackOnSilence" type="checkbox" checked /><span><span class="comm-title">Fallback bei ausbleibenden Events</span><div class="comm-help">Als Reserve, falls der Live-Stream keine neuen Events liefert.</div></span></label>
             </div>
           </div>
-          <div class="log-actions" style="margin-top:16px"><button id="runOraTestMapBtn" class="tiny-btn">Temporärer Testbutton Mapping</button></div>
         </div>
       </div>
       <div class="log-box dialog-narrow">
@@ -598,7 +597,7 @@ function toggleEditGwmOptions(){
   field('editGwmPollIntervalWrap')?.classList.toggle('hidden', !pollingEnabled);
   field('editGwmRetryDelayWrap')?.classList.toggle('hidden', !delayedRetryEnabled);
 }
-function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity','gwmSourceTopicBase','gwmVerificationCode'].forEach(id=>field(id).value=''); field('bmwRegion').value='EU'; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('gwmPollingEnabled').checked=true; field('gwmAutoReconnect').checked=true; field('gwmDelayedRetryEnabled').checked=true; field('gwmRetryDelayMinutes').value='55'; field('gwmFallbackOnSilence').checked=true; toggleCreateGwmOptions(); field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; setCreateManufacturerLayout(null); }
+function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity','gwmVerificationCode'].forEach(id=>field(id).value=''); field('gwmSourceTopicBase').value='GWM'; field('bmwRegion').value='EU'; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('gwmPollingEnabled').checked=true; field('gwmAutoReconnect').checked=true; field('gwmDelayedRetryEnabled').checked=true; field('gwmRetryDelayMinutes').value='55'; field('gwmFallbackOnSilence').checked=true; toggleCreateGwmOptions(); field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; setCreateManufacturerLayout(null); }
 function openWizard(){ resetCreate(); field('wizardDialog').showModal(); }
 async function loadDashboard(){ const res = await fetch('./api/dashboard'); const data = await res.json(); cards = data.vehicles || []; renderCards(); }
 async function postJson(url,payload,method='POST'){ const res = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})}); const text = await res.text(); let data={}; try{ data = text ? JSON.parse(text) : {}; }catch{ data = { detail: text }; } if(!res.ok) throw new Error(data.detail || 'Unbekannter Fehler'); return data; }
@@ -707,7 +706,7 @@ field('saveCreateBtn').onclick = async()=>{
       payload.provider_config = { client_id: field('bmwClientId').value.trim(), mqtt_username: field('bmwClientId').value.trim(), vin: field('bmwVin').value.trim(), region: field('bmwRegion').value.trim(), auto_reconnect: true, manual_reconnect_minutes: 15 };
     }
     if(createState.manufacturer === 'gwm'){
-      payload.provider_config = { account: field('gwmAccount').value.trim(), password: field('gwmPassword').value.trim(), country: field('gwmCountry').value.trim(), language: field('gwmLanguage').value.trim(), polling_enabled: field('gwmPollingEnabled').checked, poll_interval: field('gwmPollInterval').value.trim(), vehicle_id: field('gwmVehicleId').value.trim() || derivedId, capacity_kwh: field('gwmCapacity').value.trim(), source_topic_base: field('gwmSourceTopicBase').value.trim(), auto_reconnect: field('gwmAutoReconnect').checked, delayed_retry_enabled: field('gwmDelayedRetryEnabled').checked, retry_delay_minutes: field('gwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('gwmFallbackOnSilence').checked };
+      payload.provider_config = { account: field('gwmAccount').value.trim(), password: field('gwmPassword').value.trim(), country: field('gwmCountry').value.trim(), language: field('gwmLanguage').value.trim(), polling_enabled: field('gwmPollingEnabled').checked, poll_interval: field('gwmPollInterval').value.trim(), vehicle_id: field('gwmVehicleId').value.trim() || derivedId, capacity_kwh: field('gwmCapacity').value.trim(), source_topic_base: field('gwmSourceTopicBase')?.value?.trim() || 'GWM', auto_reconnect: field('gwmAutoReconnect').checked, delayed_retry_enabled: field('gwmDelayedRetryEnabled').checked, retry_delay_minutes: field('gwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('gwmFallbackOnSilence').checked };
       if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.');
     }
     await postJson('./api/vehicles', payload);

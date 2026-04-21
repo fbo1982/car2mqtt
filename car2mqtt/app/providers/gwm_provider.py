@@ -27,7 +27,6 @@ class GwmProvider(BaseProvider):
                 {"name": "poll_interval", "label": "Polling-Intervall", "type": "number", "required": True},
                 {"name": "vehicle_id", "label": "Vehicle ID", "type": "text", "required": False},
                 {"name": "capacity_kwh", "label": "Akkukapazität (kWh)", "type": "number", "required": False},
-                {"name": "source_topic_base", "label": "Source Topic Base", "type": "text", "required": False},
                 {"name": "verification_code", "label": "Verifikationscode", "type": "text", "required": False},
             ],
         )
