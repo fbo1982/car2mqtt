@@ -62,6 +62,10 @@ class GwmIntegratedWorker:
         self._monitor_client: mqtt.Client | None = None
         self._proc: subprocess.Popen | None = None
 
+    def _session_marker_path(self) -> Path:
+        return self.vehicle_dir / ".ora_session_ready"
+
+
     def start(self) -> None:
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, daemon=True, name=f"gwm-{self.vehicle.id}")
@@ -88,9 +92,10 @@ class GwmIntegratedWorker:
             self._thread.join(timeout=2)
 
     def _source_topics(self) -> tuple[str, str]:
-        vehicle_id = str(self.vehicle.provider_config.get("vehicle_id", "")).strip() or self.vehicle.id
-        base = str(self.vehicle.provider_config.get("source_topic_base", "")).strip() or f"GWM/{vehicle_id}"
-        return f"{base}/status/items/+/value", base
+        configured_base = str(self.vehicle.provider_config.get("source_topic_base", "")).strip()
+        if not configured_base or configured_base.upper().startswith("GWM"):
+            return "GWM/+/status/#", "GWM/+"
+        return f"{configured_base}/status/#", configured_base
 
     def _ora_bin(self) -> Path:
         return Path("/opt/ora2mqtt/ora2mqtt")
@@ -107,7 +112,14 @@ class GwmIntegratedWorker:
             try:
                 merge_ora_tokens(self.vehicle.provider_config, config_path)
                 self.log("ORA Tokens aus bestehender ora2mqtt.yml übernommen")
+
             except Exception as exc:
+                message = str(exc)
+                if "ORA_WAITING_FOR_CODE" in message or "ORA_AUTH_FATAL" in message:
+                    try:
+                        self._session_marker_path().unlink(missing_ok=True)
+                    except Exception:
+                        pass
                 self.log(f"ORA Token-Übernahme aus bestehender Config fehlgeschlagen: {exc}")
 
         ensure_ora_runtime_config(self.vehicle.provider_config, self.settings)
@@ -252,11 +264,27 @@ class GwmIntegratedWorker:
 
             try:
                 config_path = self._prepare_runtime_files()
-                if not self.vehicle.provider_config.get("access_token") or not self.vehicle.provider_config.get("refresh_token"):
+                code_file = self.vehicle_dir / "verification_code.txt"
+                access_token = str(self.vehicle.provider_config.get("access_token", "")).strip()
+                refresh_token = str(self.vehicle.provider_config.get("refresh_token", "")).strip()
+                has_tokens = bool(access_token and refresh_token)
+                session_marker_exists = self._session_marker_path().exists()
+
+                # configure only when explicitly needed:
+                # 1) verification code was manually provided
+                # 2) there are no reusable tokens
+                should_configure = code_file.exists() or (not has_tokens)
+
+                if should_configure:
+                    if code_file.exists():
+                        self.log("ORA configure nötig - Verifikationscode liegt vor")
+                    else:
+                        self.log("ORA configure nötig - keine gültigen Tokens vorhanden")
                     self.on_detail("ORA Konfiguration und Login wird aufgebaut")
                     self._run_configure(config_path)
                 else:
-                    self.log("ORA Tokens bereits vorhanden - configure wird übersprungen")
+                    self.log("ORA Start ohne configure - Tokens vorhanden")
+
                 source_topic, source_base = self._source_topics()
                 self._start_monitor(source_topic, source_base)
                 self._start_run(config_path)
@@ -266,7 +294,14 @@ class GwmIntegratedWorker:
                 rc = self._proc.wait(timeout=1) if self._proc else -1
                 self.log(f"ORA Runner beendet (rc={rc})")
                 self.on_disconnect(str(rc))
+
             except Exception as exc:
+                message = str(exc)
+                if "ORA_WAITING_FOR_CODE" in message or "ORA_AUTH_FATAL" in message:
+                    try:
+                        self._session_marker_path().unlink(missing_ok=True)
+                    except Exception:
+                        pass
                 self.log(f"ORA Worker Fehler: {exc}")
                 message = str(exc)
                 if message.startswith("ORA_WAITING_FOR_CODE::"):
