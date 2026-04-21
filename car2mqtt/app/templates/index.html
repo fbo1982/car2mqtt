@@ -88,6 +88,7 @@ select, option {
   <div class="panel wide">
     <div class="modal-head"><div><div class="eyebrow">Neues Fahrzeug</div><h3>Fahrzeug hinzufügen</h3></div><button id="closeWizardBtn" class="icon-btn">✕</button></div>
     <div id="wizardError" class="notice"></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoCreateBtn" class="ghost-btn howto-btn hidden">My BMW How to</button></div>
     <div class="modal-body grid">
       <div class="field">
         <label>Hersteller</label><div id="createManufacturerNote" class="muted" style="margin-top:8px"></div>
@@ -98,9 +99,10 @@ select, option {
       <div class="field"><label>Kennzeichen</label><input id="vehiclePlate" placeholder="GG-CA-1013E" /></div>
       </div>
       <div id="bmwCreateSection" class="info-box hidden">
+        <input id="bmwMqttUsername" type="hidden" />
         <div class="eyebrow">BMW Setup</div>
         <div class="field" style="margin-top:14px"><label>Client ID</label><input id="bmwClientId" /></div>
-        <div class="field" style="margin-top:16px"><label>BMW MQTT Username</label><input id="bmwMqttUsername" /></div>
+        
         <div class="field" style="margin-top:16px"><label>Region</label><input id="bmwRegion" value="EU" /></div>
         <div class="field" style="margin-top:16px"><label>VIN</label><input id="bmwVin" /></div>
                 <div class="auth-box">
@@ -169,10 +171,9 @@ select, option {
         <div class="field"><label>Titel</label><input id="editLabel" /></div>
         <div class="field"><label>Kennzeichen</label><input id="editPlate" /></div>
       </div>
-      <div id="editBmwSection" class="grid hidden"><div class="field" style="grid-column:1/-1"><div class="eyebrow">BMW-spezifische Einstellungen</div></div>
-        <div class="grid three">
+      <div id="editBmwSection" class="grid hidden"><input id="editBmwMqttUsername" type="hidden" /><div class="field" style="grid-column:1/-1"><div class="eyebrow">BMW-spezifische Einstellungen</div></div>
+        <div class="grid two">
           <div class="field"><label>Client ID</label><input id="editBmwClientId" /></div>
-          <div class="field"><label>BMW MQTT Username</label><input id="editBmwMqttUsername" /></div>
           <div class="field"><label>Region</label><input id="editBmwRegion" /></div>
         </div>
         <div class="grid two" style="min-width:0">
@@ -488,6 +489,7 @@ function setCreateManufacturerLayout(manufacturer){
   const note = field('createManufacturerNote');
   const isBmw = manufacturer === 'bmw';
   const isGwm = manufacturer === 'gwm';
+  field('bmwHowtoCreateBtn')?.classList.toggle('hidden', !isBmw);
   const generic = field('createGenericFields');
   if(note){
     note.textContent = isBmw ? 'BMW-spezifische Maske aktiv.' : (isGwm ? 'ORA / GWM-spezifische Maske aktiv.' : '');
@@ -551,7 +553,7 @@ field('saveCreateBtn').onclick = async()=>{
     if(createState.manufacturer === 'bmw'){
       if(!field('bmwClientId').value.trim() || !field('bmwVin').value.trim()) throw new Error('Bitte BMW Client ID und VIN eintragen.');
       if(!createState.authReady) throw new Error('Bitte BMW Authentifizierung abschließen.');
-      payload.provider_config = { client_id: field('bmwClientId').value.trim(), mqtt_username: field('bmwMqttUsername').value.trim(), vin: field('bmwVin').value.trim(), region: field('bmwRegion').value.trim(), auto_reconnect: true, manual_reconnect_minutes: 15 };
+      payload.provider_config = { client_id: field('bmwClientId').value.trim(), mqtt_username: field('bmwClientId').value.trim(), vin: field('bmwVin').value.trim(), region: field('bmwRegion').value.trim(), auto_reconnect: true, manual_reconnect_minutes: 15 };
     }
     if(createState.manufacturer === 'gwm'){
       payload.provider_config = { account: field('gwmAccount').value.trim(), password: field('gwmPassword').value.trim(), country: field('gwmCountry').value.trim(), language: field('gwmLanguage').value.trim(), polling_enabled: field('gwmPollingEnabled').checked, poll_interval: field('gwmPollInterval').value.trim(), vehicle_id: field('gwmVehicleId').value.trim() || derivedId, capacity_kwh: field('gwmCapacity').value.trim(), source_topic_base: field('gwmSourceTopicBase').value.trim(), auto_reconnect: field('gwmAutoReconnect').checked, delayed_retry_enabled: field('gwmDelayedRetryEnabled').checked, retry_delay_minutes: field('gwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('gwmFallbackOnSilence').checked };
@@ -570,7 +572,7 @@ async function editVehicle(vehicleId){
   stopLiveLogs(); editState.vehicleId = vehicleId; editState.reauthSessionId = null; editState.authReady = vehicle.provider_state?.auth_state === 'authorized'; editState.lastLogText = ''; setLiveLogUi();
   field('editManufacturer').value = vehicle.manufacturer; field('editLabel').value = vehicle.label; field('editPlate').value = vehicle.license_plate;
   field('editEnabled').checked = vehicle.enabled !== false;
-  field('editBmwClientId').value = vehicle.provider_config.client_id || ''; field('editBmwMqttUsername').value = vehicle.provider_config.mqtt_username || ''; field('editBmwVin').value = vehicle.provider_config.vin || ''; field('editBmwRegion').value = vehicle.provider_config.region || 'EU'; field('editBmwAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editBmwManualReconnectMinutes').value = vehicle.provider_config.manual_reconnect_minutes || 15; toggleBmwReconnectMode();
+  field('editBmwClientId').value = vehicle.provider_config.client_id || ''; field('editBmwMqttUsername').value = vehicle.provider_config.client_id || vehicle.provider_config.mqtt_username || ''; field('editBmwVin').value = vehicle.provider_config.vin || ''; field('editBmwRegion').value = vehicle.provider_config.region || 'EU'; field('editBmwAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editBmwManualReconnectMinutes').value = vehicle.provider_config.manual_reconnect_minutes || 15; toggleBmwReconnectMode();
   field('editGwmAccount').value = vehicle.provider_config.account || ''; field('editGwmPassword').value = vehicle.provider_config.password || ''; field('editGwmCountry').value = vehicle.provider_config.country || 'DE'; field('editGwmLanguage').value = vehicle.provider_config.language || 'de'; field('editGwmPollInterval').value = vehicle.provider_config.poll_interval || 60; field('editGwmVehicleId').value = vehicle.provider_config.vehicle_id || vehicle.id; field('editGwmCapacity').value = vehicle.provider_config.capacity_kwh || ''; const gwmSourceBase = vehicle.provider_config.source_topic_base || 'GWM';
   field('editGwmSourceTopicBase').value = (String(gwmSourceBase).startsWith('GWM/')) ? 'GWM' : gwmSourceBase; field('editGwmVerificationCode').value = ''; field('editGwmPollingEnabled').checked = vehicle.provider_config.polling_enabled !== false; field('editGwmAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editGwmDelayedRetryEnabled').checked = vehicle.provider_config.delayed_retry_enabled !== false; field('editGwmRetryDelayMinutes').value = String(vehicle.provider_config.retry_delay_minutes || 55); field('editGwmFallbackOnSilence').checked = vehicle.provider_config.fallback_on_silence !== false; toggleEditGwmOptions();
   field('editAuthState').textContent = vehicle.enabled === false ? 'Fahrzeug ist inaktiv.' : (vehicle.status === 'waiting_for_code' ? 'Verifikationscode erforderlich.' : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'Anmeldung prüfen.'));
@@ -662,7 +664,7 @@ field('editReauthStartBtn').onclick = async()=>{ if(!editState.vehicleId) return
 field('editPollAuthBtn').onclick = async()=>{ if(!editState.reauthSessionId) return showNotice('editError','Bitte zuerst Re-Auth starten.'); try{ const d = await postJson('./api/providers/bmw/auth/poll',{ session_id: editState.reauthSessionId }); if(d.state === 'authorized'){ editState.authReady = true; field('editAuthState').textContent = 'BMW Re-Auth erfolgreich abgeschlossen.'; await refreshVehicleLogs(); } else { field('editAuthState').textContent = d.message || d.state; } }catch(err){ showNotice('editError', err.message); } };
 async function saveEdit(closeAfter){ try{ const manufacturer = field('editManufacturer').value; const derivedId = normalizeVehicleIdFromPlate(field('editPlate').value.trim()); const payload = { id: derivedId, label: field('editLabel').value.trim(), manufacturer, license_plate: field('editPlate').value.trim(), enabled: field('editEnabled').checked, provider_config: {}, auth_session_id: editState.reauthSessionId || null };
   if(!payload.label || !payload.license_plate || !derivedId) throw new Error('Bitte Titel und Kennzeichen ausfüllen.');
-  if(manufacturer === 'bmw'){ payload.provider_config = { client_id: field('editBmwClientId').value.trim(), mqtt_username: field('editBmwMqttUsername').value.trim(), vin: field('editBmwVin').value.trim(), region: field('editBmwRegion').value.trim(), auto_reconnect: field('editBmwAutoReconnect').checked, manual_reconnect_minutes: Math.max(15, Math.min(60, parseInt(field('editBmwManualReconnectMinutes').value || '15', 10))) }; if(!payload.provider_config.client_id || !payload.provider_config.vin) throw new Error('Bitte BMW Client ID und VIN eintragen.'); }
+  if(manufacturer === 'bmw'){ payload.provider_config = { client_id: field('editBmwClientId').value.trim(), mqtt_username: field('editBmwClientId').value.trim(), vin: field('editBmwVin').value.trim(), region: field('editBmwRegion').value.trim(), auto_reconnect: field('editBmwAutoReconnect').checked, manual_reconnect_minutes: Math.max(15, Math.min(60, parseInt(field('editBmwManualReconnectMinutes').value || '15', 10))) }; if(!payload.provider_config.client_id || !payload.provider_config.vin) throw new Error('Bitte BMW Client ID und VIN eintragen.'); }
   if(manufacturer === 'gwm'){ payload.provider_config = { account: field('editGwmAccount').value.trim(), password: field('editGwmPassword').value.trim(), country: field('editGwmCountry').value.trim(), language: field('editGwmLanguage').value.trim(), polling_enabled: field('editGwmPollingEnabled').checked, poll_interval: field('editGwmPollInterval').value.trim(), vehicle_id: field('editGwmVehicleId').value.trim() || derivedId, capacity_kwh: field('editGwmCapacity').value.trim(), source_topic_base: field('editGwmSourceTopicBase').value.trim(), auto_reconnect: field('editGwmAutoReconnect').checked, delayed_retry_enabled: field('editGwmDelayedRetryEnabled').checked, retry_delay_minutes: field('editGwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('editGwmFallbackOnSilence').checked }; if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.'); }
   await postJson(`./api/vehicles/${editState.vehicleId}`, payload, 'PUT'); await loadDashboard(); if(closeAfter){ field('editDialog').close(); } } catch(err){ showNotice('editError', err.message); } }
 field('saveEditKeepOpenBtn').onclick = ()=>saveEdit(false);
