@@ -39,7 +39,8 @@
 #gwmCreateSection .muted,#editGwmSection .muted{max-width:100%}
 @media (max-width: 900px){
   #gwmCreateSection .grid.two,#editGwmSection .grid.two{grid-template-columns:minmax(0,1fr)}
-}.provider-card.selected{border-color:var(--accent)}.provider-card strong{display:block;font-size:20px;margin:8px 0}.provider-card span{color:var(--muted)}.info-box,.auth-box,.log-box{background:rgba(0,0,0,.14);border:1px solid var(--line);border-radius:22px;padding:18px}.auth-box{margin-top:18px}.auth-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.auth-link{word-break:break-all;color:#8ad7ff}.howto-btn{padding:10px 14px;border-radius:12px;font-size:14px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}.howto-content{display:grid;gap:14px}.howto-card{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:18px;padding:16px}.howto-card h4{margin:0 0 10px;font-size:16px}.howto-card ol,.howto-card ul{margin:8px 0 0 18px;padding:0}.howto-card li{margin:6px 0}.howto-note{color:var(--muted);font-size:14px}.log-viewer{background:#0a1024;border:1px solid rgba(138,215,255,.18);border-radius:18px;padding:16px;min-height:220px;max-height:360px;overflow:auto;white-space:pre-wrap;color:#d9f2ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.7;box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}
+}.provider-card.selected{border-color:var(--accent)}.provider-card strong{display:block;font-size:20px;margin:8px 0}.provider-card span{color:var(--muted)}.info-box,.auth-box,.log-box{background:rgba(0,0,0,.14);border:1px solid var(--line);border-radius:22px;padding:18px}.auth-box{margin-top:18px}.auth-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.auth-link{word-break:break-all;color:#8ad7ff}.howto-btn{padding:10px 14px;border-radius:12px;font-size:14px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+#bmwHowtoDialog[open]{display:flex}.howto-content{display:grid;gap:14px}.howto-card{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:18px;padding:16px}.howto-card h4{margin:0 0 10px;font-size:16px}.howto-card ol,.howto-card ul{margin:8px 0 0 18px;padding:0}.howto-card li{margin:6px 0}.howto-note{color:var(--muted);font-size:14px}.log-viewer{background:#0a1024;border:1px solid rgba(138,215,255,.18);border-radius:18px;padding:16px;min-height:220px;max-height:360px;overflow:auto;white-space:pre-wrap;color:#d9f2ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.7;box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}
     .live-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.05);font-size:13px;color:var(--muted)}
     .live-chip.active{color:#03190c;background:var(--ok);border-color:transparent;font-weight:800}
     .log-toolbar{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
@@ -88,7 +89,7 @@ select, option {
   <div class="panel wide">
     <div class="modal-head"><div><div class="eyebrow">Neues Fahrzeug</div><h3>Fahrzeug hinzufügen</h3></div><button id="closeWizardBtn" class="icon-btn">✕</button></div>
     <div id="wizardError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoCreateBtn" class="ghost-btn howto-btn">My BMW How to</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoCreateBtn" type="button" class="ghost-btn howto-btn">My BMW How to</button></div>
     <div class="modal-body grid">
       <div class="field">
         <label>Hersteller</label><div id="createManufacturerNote" class="muted" style="margin-top:8px"></div>
@@ -163,7 +164,7 @@ select, option {
   <div class="panel">
     <div class="modal-head"><div><div class="eyebrow">Fahrzeug</div><h3>Fahrzeug bearbeiten</h3></div><button id="closeEditBtn" class="icon-btn">✕</button></div>
     <div id="editError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" class="ghost-btn howto-btn">My BMW How to</button><button id="copyEvccBtn" class="ghost-btn">Copy Car to Custom EVCC</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn">My BMW How to</button><button id="copyEvccBtn" class="ghost-btn">Copy Car to Custom EVCC</button></div>
     <div class="modal-body grid">
       <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
@@ -282,7 +283,7 @@ select, option {
   <div class="panel wide">
     <div class="modal-head">
       <div><div class="eyebrow">BMW CarData</div><h3>My BMW How to</h3></div>
-      <button id="closeBmwHowtoBtn" class="icon-btn">✕</button>
+      <button id="closeBmwHowtoBtn" type="button" class="icon-btn">✕</button>
     </div>
     <div class="modal-body">
       <div class="howto-content">
@@ -338,7 +339,7 @@ select, option {
         </div>
       </div>
     </div>
-    <div class="modal-foot"><div class="spacer"></div><button id="closeBmwHowtoBottomBtn" class="ghost-btn">Schließen</button></div>
+    <div class="modal-foot"><div class="spacer"></div><button id="closeBmwHowtoBottomBtn" type="button" class="ghost-btn">Schließen</button></div>
   </div>
 </dialog>
 
@@ -540,6 +541,32 @@ async function postJson(url,payload,method='POST'){ const res = await fetch(url,
 async function fetchText(url){ const res = await fetch(url); const text = await res.text(); if(!res.ok) throw new Error(text || 'Unbekannter Fehler'); return text; }
 
 field('closeWizardBtn').onclick = field('cancelWizardBtn').onclick = () => field('wizardDialog').close();
+
+function openBmwHowto(){
+  const dlg = field('bmwHowtoDialog');
+  if(!dlg) return;
+  try {
+    if (typeof dlg.showModal === 'function') dlg.showModal();
+    else dlg.setAttribute('open','open');
+  } catch (e) {
+    dlg.setAttribute('open','open');
+  }
+}
+function closeBmwHowto(){
+  const dlg = field('bmwHowtoDialog');
+  if(!dlg) return;
+  try {
+    if (typeof dlg.close === 'function') dlg.close();
+    else dlg.removeAttribute('open');
+  } catch (e) {
+    dlg.removeAttribute('open');
+  }
+}
+field('bmwHowtoBtn').onclick = openBmwHowto;
+field('bmwHowtoCreateBtn').onclick = openBmwHowto;
+field('closeBmwHowtoBtn').onclick = closeBmwHowto;
+field('closeBmwHowtoBottomBtn').onclick = closeBmwHowto;
+
 field('mqttTestBtn').onclick = async()=>{ try{ const d = await postJson('./api/mqtt/test'); alert(`MQTT ok: ${d.topic}`); } catch(err){ alert(err.message); } };
 field('startAuthBtn').onclick = async()=>{ showNotice('wizardError'); try{ const d = await postJson('./api/providers/bmw/auth/start',{ client_id: field('bmwClientId').value.trim(), vin: field('bmwVin').value.trim(), license_plate: field('vehiclePlate').value.trim() }); createState.authSessionId = d.session_id; field('authState').textContent = d.message || 'BMW Login-Link erstellt.'; field('userCode').textContent = d.user_code; field('verificationUrl').href = d.verification_uri_complete; field('verificationUrl').textContent = d.verification_uri_complete; field('authInfo').classList.remove('hidden'); window.open(d.verification_uri_complete,'_blank'); } catch(err){ showNotice('wizardError', err.message); } };
 field('pollAuthBtn').onclick = async()=>{ if(!createState.authSessionId) return showNotice('wizardError','Bitte zuerst Login-Link erzeugen.'); try{ const d = await postJson('./api/providers/bmw/auth/poll',{ session_id: createState.authSessionId }); if(d.state === 'authorized'){ createState.authReady = true; field('authState').textContent = 'BMW erfolgreich verbunden.'; } else { field('authState').textContent = d.message || d.state; } } catch(err){ showNotice('wizardError', err.message); } };
