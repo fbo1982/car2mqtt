@@ -15,7 +15,22 @@
     .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:22px}.vehicle-card,.add-card{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow)}.vehicle-card{overflow:hidden}.vehicle-head{display:flex;justify-content:space-between;gap:14px;padding:22px 24px 18px;border-bottom:1px solid var(--line)}.vehicle-title{font-size:18px;font-weight:800;margin-bottom:6px}.vehicle-subtitle{color:var(--muted);font-size:14px}.status-badge{padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px;text-transform:uppercase;letter-spacing:.08em;height:max-content}.status-badge.connected{color:#042d14;background:var(--ok)}.status-badge.error,.status-badge.disconnected{color:white;background:rgba(255,93,108,.9)}.status-badge.starting,.status-badge.saved{background:rgba(0,183,255,.18);color:#7ed5ff}.status-badge.inactive{background:rgba(255,255,255,.12);color:#d6dbf6}
     .vehicle-metrics{display:grid;grid-template-columns:1fr 1fr;gap:16px 26px;padding:22px 24px}.metric{display:flex;justify-content:space-between;gap:18px}.metric span{color:var(--muted)}.metric strong{color:var(--ok);font-size:19px}.card-footer{border-top:1px solid var(--line);padding:16px 24px 22px;color:var(--muted);font-size:14px}.topic-row{margin-top:8px;font-size:12px;color:#93b3ff;word-break:break-all}.card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.add-card{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:258px;color:var(--text);background:transparent}.add-card span{font-size:44px;line-height:1}.add-card strong{font-size:24px;margin-top:10px}
     dialog{border:0;padding:0;background:transparent}.modal::backdrop{background:rgba(0,0,0,.6);backdrop-filter:blur(8px)}.panel{width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow-y:auto;overflow-x:hidden;background:var(--panel);border:1px solid var(--line);border-radius:30px;box-shadow:var(--shadow)}.panel.wide{width:min(900px,calc(100vw - 32px))}.modal-head,.modal-foot{display:flex;align-items:center;gap:16px;padding:24px 28px}.modal-head{justify-content:space-between;border-bottom:1px solid var(--line)}.modal-head h3{margin:4px 0 0;font-size:24px}.modal-body{padding:24px 28px 28px}.notice{display:none;margin:0 28px 18px;padding:14px 16px;border-radius:14px;background:rgba(255,93,108,.14);color:#ffd8dd;border:1px solid rgba(255,93,108,.28)}
-    .field{display:flex;flex-direction:column;gap:8px}.field label{font-weight:700;color:#edf1ff}.field small,.muted{color:var(--muted);word-break:break-word}input,select,textarea{width:100%;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--text);padding:14px 15px;box-sizing:border-box}.grid{display:grid;gap:16px}.grid.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.grid.three{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}.provider-list{display:grid;gap:14px}.provider-card{padding:20px;border-radius:22px;background:rgba(0,0,0,.12);border:1px solid transparent;overflow:hidden}.toggle-field{display:flex;gap:12px;align-items:flex-start}.toggle-field input[type=checkbox]{margin-top:4px;transform:scale(1.25);accent-color:var(--ok)}.toggle-field .toggle-copy{min-width:0}.gwm-edit-box{display:grid;gap:16px}.gwm-edit-box .field,.gwm-edit-box .grid,.gwm-edit-box .toggle-field{min-width:0}
+    .field{display:flex;flex-direction:column;gap:8px}.field label{font-weight:700;color:#edf1ff}.field small,.muted{color:var(--muted);word-break:break-word;overflow-wrap:anywhere}input,select,textarea{width:100%;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--text);padding:14px 15px;box-sizing:border-box}.grid{display:grid;gap:16px}.grid.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.grid.three{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}.provider-list{display:grid;gap:14px}.provider-card{padding:20px;border-radius:22px;background:rgba(0,0,0,.12);border:1px solid transparent;overflow:hidden}
+.dialog-narrow{max-width:860px;margin:0 auto;width:100%;min-width:0}
+.dialog-narrow > .info-box,
+.dialog-narrow > .log-box,
+.dialog-narrow > .verify-box{max-width:100%;width:100%;box-sizing:border-box}
+#editDialog .dialog-narrow input,
+#editDialog .dialog-narrow select,
+#editDialog .dialog-narrow textarea{max-width:100%;width:100%;box-sizing:border-box}
+#editDialog .dialog-narrow .grid.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+#editDialog .dialog-narrow .field{min-width:0}
+#editDialog .dialog-narrow .log-actions{display:flex;flex-wrap:wrap;gap:12px}
+#editDialog .dialog-narrow .muted{overflow-wrap:anywhere;word-break:break-word}
+@media (max-width: 900px){
+  #editDialog .dialog-narrow .grid.two{grid-template-columns:minmax(0,1fr)}
+}
+.toggle-field{display:flex;gap:12px;align-items:flex-start}.toggle-field input[type=checkbox]{margin-top:4px;transform:scale(1.25);accent-color:var(--ok)}.toggle-field .toggle-copy{min-width:0}.gwm-edit-box{display:grid;gap:16px}.gwm-edit-box .field,.gwm-edit-box .grid,.gwm-edit-box .toggle-field{min-width:0}
 #gwmCreateSection,#editGwmSection{min-width:0}
 #gwmCreateSection .grid.two,#editGwmSection .grid.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
 #gwmCreateSection .field,#editGwmSection .field{min-width:0}
@@ -24,11 +39,21 @@
 #gwmCreateSection .muted,#editGwmSection .muted{max-width:100%}
 @media (max-width: 900px){
   #gwmCreateSection .grid.two,#editGwmSection .grid.two{grid-template-columns:minmax(0,1fr)}
-}.provider-card.selected{border-color:var(--accent)}.provider-card strong{display:block;font-size:20px;margin:8px 0}.provider-card span{color:var(--muted)}.info-box,.auth-box,.log-box{background:rgba(0,0,0,.14);border:1px solid var(--line);border-radius:22px;padding:18px}.auth-box{margin-top:18px}.auth-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.auth-link{word-break:break-all;color:#8ad7ff}.log-viewer{background:#0a1024;border:1px solid rgba(138,215,255,.18);border-radius:18px;padding:16px;min-height:220px;max-height:360px;overflow:auto;white-space:pre-wrap;color:#d9f2ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.7;box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}
+}.provider-card.selected{border-color:var(--accent)}.provider-card strong{display:block;font-size:20px;margin:8px 0}.provider-card span{color:var(--muted)}.info-box,.auth-box,.log-box{background:rgba(0,0,0,.14);border:1px solid var(--line);border-radius:22px;padding:18px}.auth-box{margin-top:18px}.auth-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.auth-link{word-break:break-all;color:#8ad7ff}.howto-btn{padding:10px 14px;border-radius:12px;font-size:14px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+#bmwHowtoDialog[open]{display:flex}
+#evccConfigDialog[open]{display:flex}.howto-content{display:grid;gap:14px}.howto-card{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:18px;padding:16px}.howto-card h4{margin:0 0 10px;font-size:16px}.howto-card ol,.howto-card ul{margin:8px 0 0 18px;padding:0}.howto-card li{margin:6px 0}.howto-note{color:var(--muted);font-size:14px}.log-viewer{background:#0a1024;border:1px solid rgba(138,215,255,.18);border-radius:18px;padding:16px;min-height:220px;max-height:360px;overflow:auto;white-space:pre-wrap;color:#d9f2ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.7;box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}
     .live-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.05);font-size:13px;color:var(--muted)}
     .live-chip.active{color:#03190c;background:var(--ok);border-color:transparent;font-weight:800}
     .log-toolbar{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
-    .log-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.review-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.review-row,.meta-item{padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.05)}.review-row span,.meta-item span{display:block;color:var(--muted);margin-bottom:6px}.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}.spacer{flex:1}.hidden{display:none!important}
+    .log-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.comm-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.comm-card{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:18px;padding:14px 16px}
+.comm-toggle{display:flex;align-items:flex-start;gap:12px}
+.comm-toggle input[type=checkbox]{margin-top:4px;transform:scale(1.2)}
+.comm-title{font-weight:700;color:#edf1ff}
+.comm-help{margin-top:8px;color:var(--muted)}
+@media (max-width: 900px){.comm-grid{grid-template-columns:minmax(0,1fr)}}
+.review-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.review-row,.meta-item{padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.05)}.review-row span,.meta-item span{display:block;color:var(--muted);margin-bottom:6px}.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}.spacer{flex:1}.hidden{display:none!important}
     @media(max-width:900px){.topbar,.section-header,.modal-head,.modal-foot{flex-direction:column;align-items:stretch}.grid.two,.grid.three,.review-grid,.meta-grid{grid-template-columns:1fr}.topbar h1{font-size:34px}}
   
 select, option {
@@ -70,14 +95,16 @@ select, option {
         <label>Hersteller</label><div id="createManufacturerNote" class="muted" style="margin-top:8px"></div>
         <select id="createManufacturer"></select>
       </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:-6px 0 4px"><button id="bmwHowtoCreateBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button></div>
       <div id="createGenericFields">
       <div class="field"><label>Anzeigename</label><input id="vehicleLabel" placeholder="BMW iX1 xDrive30e" /></div>
       <div class="field"><label>Kennzeichen</label><input id="vehiclePlate" placeholder="GG-CA-1013E" /></div>
       </div>
       <div id="bmwCreateSection" class="info-box hidden">
+        <input id="bmwMqttUsername" type="hidden" />
         <div class="eyebrow">BMW Setup</div>
         <div class="field" style="margin-top:14px"><label>Client ID</label><input id="bmwClientId" /></div>
-        <div class="field" style="margin-top:16px"><label>BMW MQTT Username</label><input id="bmwMqttUsername" /></div>
+        
         <div class="field" style="margin-top:16px"><label>Region</label><input id="bmwRegion" value="EU" /></div>
         <div class="field" style="margin-top:16px"><label>VIN</label><input id="bmwVin" /></div>
                 <div class="auth-box">
@@ -138,18 +165,17 @@ select, option {
   <div class="panel">
     <div class="modal-head"><div><div class="eyebrow">Fahrzeug</div><h3>Fahrzeug bearbeiten</h3></div><button id="closeEditBtn" class="icon-btn">✕</button></div>
     <div id="editError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;margin:0 28px 10px"><button id="copyEvccBtn" class="ghost-btn">Copy Car to Custom EVCC</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyEvccBtn" type="button" class="ghost-btn">EVCC Custom Config</button></div>
     <div class="modal-body grid">
-      <div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
+      <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
       <div class="grid three">
         <div class="field"><label>Titel</label><input id="editLabel" /></div>
         <div class="field"><label>Kennzeichen</label><input id="editPlate" /></div>
       </div>
-      <div id="editBmwSection" class="grid hidden"><div class="field" style="grid-column:1/-1"><div class="eyebrow">BMW-spezifische Einstellungen</div></div>
-        <div class="grid three">
+      <div id="editBmwSection" class="grid hidden"><input id="editBmwMqttUsername" type="hidden" /><div class="field" style="grid-column:1/-1"><div class="eyebrow">BMW-spezifische Einstellungen</div></div>
+        <div class="grid two">
           <div class="field"><label>Client ID</label><input id="editBmwClientId" /></div>
-          <div class="field"><label>BMW MQTT Username</label><input id="editBmwMqttUsername" /></div>
           <div class="field"><label>Region</label><input id="editBmwRegion" /></div>
         </div>
         <div class="grid two" style="min-width:0">
@@ -197,80 +223,52 @@ select, option {
       
 <div id="editGwmSection" class="grid hidden">
         <div class="field" style="grid-column:1/-1"><div class="eyebrow">ORA / GWM-spezifische Einstellungen</div></div>
-        <div class="info-box gwm-edit-box">
+
+        <div class="info-box dialog-narrow">
           <div class="eyebrow">ORA / GWM Setup</div>
-
-          <div class="field"><label>Benutzerkonto</label><input id="editGwmAccount" /></div>
-          <div class="field"><label>Passwort</label><input id="editGwmPassword" type="password" /></div>
-
-          <div class="grid two">
+          <div class="field" style="margin-top:14px"><label>Benutzerkonto</label><input id="editGwmAccount" /></div>
+          <div class="field" style="margin-top:16px"><label>Passwort</label><input id="editGwmPassword" type="password" /></div>
+          <div class="grid two" style="margin-top:16px">
             <div class="field"><label>Land</label><input id="editGwmCountry" /></div>
             <div class="field"><label>Sprache</label><input id="editGwmLanguage" /></div>
           </div>
-
-          <div class="grid two">
-            <div class="field">
-              <label>Polling</label>
-              <div class="toggle-field" style="margin-top:6px">
-                <input id="editGwmPollingEnabled" type="checkbox" checked />
-                <div class="toggle-copy">
-                  <div style="font-weight:700;color:#edf1ff">Polling aktivieren</div>
-                  <div class="muted" style="margin-top:6px">Wenn deaktiviert, arbeitet ORA nur Event-/Live-basiert.</div>
-                </div>
-              </div>
-            </div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="field"><label>Akkukapazität (kWh)</label><input id="editGwmCapacity" type="number" step="0.1" /></div>
             <div class="field"><label>Vehicle ID</label><input id="editGwmVehicleId" /></div>
           </div>
+          <input id="editGwmSourceTopicBase" type="hidden" value="GWM" />
+        </div>
 
-          <div class="field" id="editGwmPollIntervalWrap"><label>Polling-Intervall (Sekunden)</label><input id="editGwmPollInterval" type="number" min="10" /></div>
-
-          <div class="grid two">
-            <div class="field">
-              <label>Reconnect</label>
-              <div class="toggle-field" style="margin-top:6px">
-                <input id="editGwmAutoReconnect" type="checkbox" checked />
-                <div class="toggle-copy">
-                  <div style="font-weight:700;color:#edf1ff">Automatischer Reconnect aktiv</div>
-                  <div class="muted" style="margin-top:6px">Reconnect nur wenn nötig, kein aggressiver Retry.</div>
-                </div>
-              </div>
+        <div class="info-box dialog-narrow" style="margin-top:18px">
+          <div class="eyebrow">Kommunikationssettings</div>
+          <div class="comm-grid" style="margin-top:14px">
+            <div class="comm-card">
+              <label class="comm-toggle"><input id="editGwmPollingEnabled" type="checkbox" checked /><span><span class="comm-title">Polling aktivieren</span><div class="comm-help">Wenn deaktiviert, arbeitet ORA nur Event-/Live-basiert.</div></span></label>
             </div>
-            <div class="field">
-              <label>Retry</label>
-              <div class="toggle-field" style="margin-top:6px">
-                <input id="editGwmDelayedRetryEnabled" type="checkbox" checked />
-                <div class="toggle-copy">
-                  <div style="font-weight:700;color:#edf1ff">Verzögerter Retry aktiv</div>
-                </div>
-              </div>
+            <div class="field"><label>Polling-Intervall (Sekunden)</label><input id="editGwmPollInterval" type="number" min="10" /></div>
+
+            <div class="comm-card">
+              <label class="comm-toggle"><input id="editGwmAutoReconnect" type="checkbox" checked /><span><span class="comm-title">Automatischer Reconnect aktiv</span><div class="comm-help">Reconnect nur wenn nötig, kein aggressiver Retry.</div></span></label>
             </div>
-          </div>
+            <div class="comm-card">
+              <label class="comm-toggle"><input id="editGwmDelayedRetryEnabled" type="checkbox" checked /><span><span class="comm-title">Verzögerter Retry aktiv</span></span></label>
+            </div>
 
-          <div class="field" id="editGwmRetryDelayWrap"><label>Retry Delay (Minuten)</label>
-            <select id="editGwmRetryDelayMinutes"><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option><option value="20">20</option><option value="21">21</option><option value="22">22</option><option value="23">23</option><option value="24">24</option><option value="25">25</option><option value="26">26</option><option value="27">27</option><option value="28">28</option><option value="29">29</option><option value="30">30</option><option value="31">31</option><option value="32">32</option><option value="33">33</option><option value="34">34</option><option value="35">35</option><option value="36">36</option><option value="37">37</option><option value="38">38</option><option value="39">39</option><option value="40">40</option><option value="41">41</option><option value="42">42</option><option value="43">43</option><option value="44">44</option><option value="45">45</option><option value="46">46</option><option value="47">47</option><option value="48">48</option><option value="49">49</option><option value="50">50</option><option value="51">51</option><option value="52">52</option><option value="53">53</option><option value="54">54</option><option value="55" selected>55</option><option value="56">56</option><option value="57">57</option><option value="58">58</option><option value="59">59</option><option value="60">60</option></select>
-          </div>
-
-          <div class="field">
-            <label>Fallback</label>
-            <div class="toggle-field" style="margin-top:6px">
-              <input id="editGwmFallbackOnSilence" type="checkbox" checked />
-              <div class="toggle-copy">
-                <div style="font-weight:700;color:#edf1ff">Fallback bei ausbleibenden Events</div>
-                <div class="muted" style="margin-top:6px">Als Reserve, falls der Live-Stream keine neuen Events liefert.</div>
-              </div>
+            <div class="field"><label>Retry Delay (Minuten)</label>
+              <select id="editGwmRetryDelayMinutes"><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option><option value="20">20</option><option value="21">21</option><option value="22">22</option><option value="23">23</option><option value="24">24</option><option value="25">25</option><option value="26">26</option><option value="27">27</option><option value="28">28</option><option value="29">29</option><option value="30">30</option><option value="31">31</option><option value="32">32</option><option value="33">33</option><option value="34">34</option><option value="35">35</option><option value="36">36</option><option value="37">37</option><option value="38">38</option><option value="39">39</option><option value="40">40</option><option value="41">41</option><option value="42">42</option><option value="43">43</option><option value="44">44</option><option value="45">45</option><option value="46">46</option><option value="47">47</option><option value="48">48</option><option value="49">49</option><option value="50">50</option><option value="51">51</option><option value="52">52</option><option value="53">53</option><option value="54">54</option><option value="55" selected>55</option><option value="56">56</option><option value="57">57</option><option value="58">58</option><option value="59">59</option><option value="60">60</option></select>
+            </div>
+            <div class="comm-card">
+              <label class="comm-toggle"><input id="editGwmFallbackOnSilence" type="checkbox" checked /><span><span class="comm-title">Fallback bei ausbleibenden Events</span><div class="comm-help">Als Reserve, falls der Live-Stream keine neuen Events liefert.</div></span></label>
             </div>
           </div>
-
-          <div class="field"><label>Akkukapazität (kWh)</label><input id="editGwmCapacity" type="number" step="0.1" /></div>
-          <div class="field"><label>Source Topic Base</label><input id="editGwmSourceTopicBase" /><div class="muted" style="margin-top:8px">Für ORA hier einfach <code>GWM</code> verwenden.</div></div>
-          <div class="log-actions" style="margin-top:4px"><button id="runOraTestMapBtn" class="tiny-btn">Temporärer Testbutton Mapping</button></div>
+          <div class="log-actions" style="margin-top:16px"><button id="runOraTestMapBtn" class="tiny-btn">Temporärer Testbutton Mapping</button></div>
         </div>
       </div>
-      <div class="log-box">
+      <div class="log-box dialog-narrow">
         <div class="log-toolbar"><strong>Fahrzeug-Log</strong><div class="log-actions"><span id="liveLogState" class="live-chip">Live aus</span><button id="toggleLiveLogsBtn" class="tiny-btn">Live-Log einschalten</button><button id="refreshLogsBtn" class="tiny-btn">Logs aktualisieren</button><button id="clearLogsBtn" class="danger-btn">Logs löschen</button></div></div>
         <div id="vehicleLogViewer" class="log-viewer">Noch keine Logs geladen.</div>
       </div>
-      <div id="gwmVerifyPanel" class="provider-card hidden" style="margin-top:18px">
+      <div id="gwmVerifyPanel" class="provider-card hidden dialog-narrow" style="margin-top:18px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;"><strong>Verifikationscode senden</strong><span id="gwmVerifyHint" class="chip-warn">Code erforderlich</span></div><div style="margin-top:12px">
           <div class="muted" style="margin-bottom:10px">Dieser Bereich öffnet sich nur, wenn ORA/GWM einen 4-stelligen Verifikationscode anfordert.</div>
           <div class="field"><label>Verifikationscode</label><input id="editGwmVerificationCode" maxlength="4" placeholder="z. B. 3719" inputmode="numeric" /></div>
@@ -281,6 +279,92 @@ select, option {
     <div class="modal-foot"><button id="cancelEditBtn" class="ghost-btn">Abbrechen</button><div class="spacer"></div><button id="saveEditKeepOpenBtn" class="ghost-btn">Speichern</button><button id="saveEditBtn" class="primary-btn">Speichern &amp; schließen</button></div>
   </div>
 </dialog>
+
+<dialog id="bmwHowtoDialog" class="modal">
+  <div class="panel wide">
+    <div class="modal-head">
+      <div><div class="eyebrow">BMW CarData</div><h3>My BMW How to</h3></div>
+      <button id="closeBmwHowtoBtn" type="button" class="icon-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="howto-content">
+        <div class="howto-card">
+          <h4>1. Client ID in My BMW anlegen</h4>
+          <ol>
+            <li>Im My BMW Fahrzeugbereich den Bereich <strong>BMW CarData</strong> öffnen. Direktlink: <a class="auth-link" href="https://customer.bmwgroup.com/oneid/#/login?client=bmwwebcom&country=DE&language=de&brand=bmw&scope=svds%20remote_services%20vehicle_data%20authenticate_user%20smacc%20fupo%20cesim%20perseus%20gcdm%3Acil%3Acardata%3Acreate%20gcdm%3Acil%3Acardata%3Adelete%20gcdm%3Acil%3Acardata%3Aread%20gcdm%3Acil%3Acardata%3Aupdate&response_type=code&redirect_uri=https%3A%2F%2Fwww.bmw.de%2Fstatic%2Flogin%2Ftoken-handler&state=eyJyZXR1cm5VUkwiOiJodHRwczovL3d3dy5ibXcuZGUvZGUvaW5kZXguaHRtbD9jbGM9MWExYWN2MDFkYW8xYjAxYmFzYWFmJmdjbHNyYz1hdy5kcyZ0bD1zZWEtZ2wtREVfQk1XX05DX0JSQU5EK0VYVEVOU0lPTl9ERVVfQkdfQUxPX0JNVytWMjAyM0RFK0xPK0JSKzAyNF9DT05WXytfU0VBQURXLW1peC1taXktLi1zZWNoLUJSQV9CR19CUkFORCtFWFRFTlNJT05fTVVMX05PTkUtLi1wLWJtdythdXRvLS4tLiZnYWRfc291cmNlPTEmZ2FkX2NhbXBhaWduaWQ9MTkyMTY5MDAyJmdicmFpZD0wQUFBQUFCam9FZzZlZVNFR003OWNEVjZNdDhodUQ4R2V6JmdjbGlkPUVBSWFJUW9iQ2hNSXBZZl9oOW4ta3dNVjU2YURCeDN1UFF5SkVBQVlBU0FBRWdJQ0F2RF9Cd0UmZmx5b3V0PW9wZW4iLCJkYXRhIjp7Imxhbmd1YWdlIjoiZGUiLCJjb3VudHJ5IjoiREUiLCJicmFuZCI6ImJtdyJ9fQ%3D%3D" target="_blank" rel="noopener noreferrer">CarData Customer Portal</a></li>
+            <li>Unter dem technischen Zugang einen <strong>CarData Client</strong> erstellen.</li>
+            <li>Die erzeugte <strong>Client ID</strong> kopieren und in Car2MQTT bei BMW eintragen.</li>
+            <li>Im BMW Portal sowohl den API-Zugriff als auch den Streaming-Zugriff aktivieren.</li>
+          </ol>
+          <div class="howto-note">Ohne gültige Client ID und aktivierten Stream kommen keine Live-Daten an.</div>
+        </div>
+
+        <div class="howto-card">
+          <h4>2. Diese Datenpunkte mindestens freischalten</h4>
+          <ul>
+            <li><code>vehicle.body.chargingPort.status</code></li>
+            <li><code>vehicle.cabin.infotainment.navigation.currentLocation.latitude</code></li>
+            <li><code>vehicle.cabin.infotainment.navigation.currentLocation.longitude</code></li>
+            <li><code>vehicle.cabin.hvac.preconditioning.status.comfortState</code></li>
+            <li><code>vehicle.drivetrain.batteryManagement.header</code></li>
+            <li><code>vehicle.drivetrain.electricEngine.charging.hvStatus</code></li>
+            <li><code>vehicle.drivetrain.electricEngine.charging.status</code></li>
+            <li><code>vehicle.drivetrain.electricEngine.charging.timeRemaining</code></li>
+            <li><code>vehicle.drivetrain.electricEngine.kombiRemainingElectricRange</code></li>
+            <li><code>vehicle.powertrain.electric.battery.stateOfCharge.target</code></li>
+            <li><code>vehicle.vehicle.preConditioning.activity</code></li>
+            <li><code>vehicle.vehicle.travelledDistance</code></li>
+          </ul>
+        </div>
+
+        <div class="howto-card">
+          <h4>3. Wofür diese Daten in Car2MQTT verwendet werden</h4>
+          <ul>
+            <li><strong>SoC</strong> aus <code>vehicle.drivetrain.batteryManagement.header</code></li>
+            <li><strong>Reichweite</strong> aus <code>vehicle.drivetrain.electricEngine.kombiRemainingElectricRange</code></li>
+            <li><strong>Ladezustand</strong> aus <code>vehicle.drivetrain.electricEngine.charging.status</code></li>
+            <li><strong>Angesteckt</strong> aus <code>vehicle.body.chargingPort.status</code></li>
+            <li><strong>Ladelimit</strong> aus <code>vehicle.powertrain.electric.battery.stateOfCharge.target</code></li>
+            <li><strong>Preconditioning</strong> aus <code>vehicle.vehicle.preConditioning.activity</code></li>
+            <li><strong>Odometer</strong> aus <code>vehicle.vehicle.travelledDistance</code></li>
+            <li><strong>Position</strong> aus <code>...currentLocation.latitude</code> und <code>...longitude</code></li>
+          </ul>
+        </div>
+
+        <div class="howto-card">
+          <h4>4. Wichtig</h4>
+          <ul>
+            <li>Nach Änderungen im BMW Portal kann es etwas dauern, bis der Stream stabil Daten liefert.</li>
+            <li>Wenn trotz Client ID nichts kommt, zuerst prüfen, ob die Streaming-Freigabe aktiv ist und die obigen Datenpunkte wirklich gesetzt sind.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot"><div class="spacer"></div><button id="closeBmwHowtoBottomBtn" type="button" class="ghost-btn">Schließen</button></div>
+  </div>
+</dialog>
+
+
+
+<dialog id="evccConfigDialog" class="modal">
+  <div class="panel wide">
+    <div class="modal-head">
+      <div><div class="eyebrow">EVCC</div><h3>EVCC Custom Config</h3></div>
+      <button id="closeEvccConfigBtn" type="button" class="icon-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Fahrzeugspezifische Konfiguration</label>
+        <textarea id="evccConfigTextarea" style="min-height:360px"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <div class="spacer"></div>
+      <button id="closeEvccConfigBottomBtn" type="button" class="ghost-btn">Schließen</button>
+    </div>
+  </div>
+</dialog>
+
 
 <script>
 const providers = {{ providers | tojson }};
@@ -303,24 +387,23 @@ function getCurrentEditCard(){
   return cards.find(card => card.id === editState.vehicleId) || null;
 }
 function buildEvccCustomTemplate(){
-  const manufacturer = field('editManufacturer').value || 'car';
+  const manufacturer = field('editManufacturer').value || 'bmw';
   const id = normalizeVehicleIdFromPlate(field('editPlate').value.trim());
   const title = field('editLabel').value.trim() || id;
   let capacity = '';
   if(manufacturer === 'gwm'){
-    capacity = String(field('editGwmCapacity').value || '').trim();
+    capacity = String(field('editGwmCapacity')?.value || '').trim();
   } else if (manufacturer === 'bmw') {
     const current = getCurrentEditCard();
     capacity = String((current && current.metrics && current.metrics.capacityKwh != null ? current.metrics.capacityKwh : '') || '').trim();
   }
   const topicBase = `car/${manufacturerTopicPrefix(manufacturer)}/${id}/mapped`;
-  const capacityLine = capacity ? `capacity: ${capacity}` : 'capacity: 0 #<- Auf die Batteriekapazität anpassen';
   return `###########################################
 ###### CAR2MQTT Custom EVCC Template ######
 ###########################################
 
 title: ${yamlEscape(title)} #<- Angezeigter Fahrzeugname
-${capacityLine}
+capacity: ${capacity || '0'} #<- Auf die Batteriekapazität anpassen
 phases: 3 #<- Wieviele Phasen werden verwendet 1,3 zulässig
 icon: car
 identifiers:
@@ -364,7 +447,7 @@ status:
 `;
 }
 async function copyTextRobust(content){
-  if(navigator.clipboard && window.isSecureContext){
+  if(navigator.clipboard){
     try{
       await navigator.clipboard.writeText(content);
       return true;
@@ -375,28 +458,53 @@ async function copyTextRobust(content){
     ta.value = content;
     ta.setAttribute('readonly','');
     ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    ta.style.left = '-9999px';
+    ta.style.top = '0';
+    ta.style.left = '0';
+    ta.style.width = '1px';
+    ta.style.height = '1px';
+    ta.style.opacity = '0.01';
+    ta.style.zIndex = '99999';
     document.body.appendChild(ta);
     ta.focus();
     ta.select();
+    ta.setSelectionRange(0, ta.value.length);
     const ok = document.execCommand('copy');
-    ta.remove();
+    document.body.removeChild(ta);
     if(ok) return true;
   }catch(err){}
   return false;
 }
-async function copyCurrentCarToEvcc(){
+function showEvccConfigDialog(content){
+  const dlg = field('evccConfigDialog');
+  const ta = field('evccConfigTextarea');
+  if(!dlg || !ta) return;
+  ta.value = content;
+  try{
+    dlg.showModal();
+  }catch(e){
+    dlg.setAttribute('open','open');
+    dlg.style.display='flex';
+  }
+  ta.focus();
+  ta.select();
+  ta.setSelectionRange(0, ta.value.length);
+}
+function closeEvccConfigDialog(){
+  const dlg = field('evccConfigDialog');
+  if(!dlg) return;
+  try{
+    dlg.close();
+  }catch(e){
+    dlg.removeAttribute('open');
+    dlg.style.display='none';
+  }
+}
+function copyCurrentCarToEvcc(){
   try{
     const content = buildEvccCustomTemplate();
-    const copied = await copyTextRobust(content);
-    if(copied){
-      alert('EVCC-Vorlage in die Zwischenablage kopiert.');
-    }else{
-      window.prompt('Bitte Inhalt manuell kopieren:', content);
-    }
+    openEvccConfigDialog(content);
   }catch(err){
-    alert('EVCC-Vorlage konnte nicht kopiert werden: ' + (err.message || err));
+    alert('EVCC-Konfiguration konnte nicht erzeugt werden: ' + (err.message || err));
   }
 }
 
@@ -408,8 +516,9 @@ function setGwmVerifyVisibility(show, autoOpen=false){
   editState.needsVerification = !!show;
   const panel = field('gwmVerifyPanel');
   const hint = field('gwmVerifyHint');
+  const isGwm = (field('editManufacturer')?.value === 'gwm');
   if(!panel) return;
-  panel.classList.remove('hidden');
+  panel.classList.toggle('hidden', !isGwm);
   if(hint){
     hint.textContent = show ? 'Code erforderlich' : 'Optional';
     hint.classList.toggle('chip-warn', !!show);
@@ -427,13 +536,16 @@ function setCreateManufacturerLayout(manufacturer){
   const note = field('createManufacturerNote');
   const isBmw = manufacturer === 'bmw';
   const isGwm = manufacturer === 'gwm';
-  const generic = field('createGenericFields');
+  field('bmwHowtoCreateBtn')?.classList.toggle('hidden', !isBmw);
+  field('bmwCreateSection').classList.toggle('hidden', !isBmw);
+  field('gwmCreateSection').classList.toggle('hidden', !isGwm);
   if(note){
-    note.textContent = isBmw ? 'BMW-spezifische Maske aktiv.' : (isGwm ? 'ORA / GWM-spezifische Maske aktiv.' : '');
+    if(!manufacturer){ note.textContent = ''; }
+    else{
+      const provider = providers.find(p => p.id === manufacturer);
+      note.textContent = provider?.notes || '';
+    }
   }
-  if(generic) generic.style.display = manufacturer ? '' : 'none';
-  field('bmwCreateSection')?.classList.toggle('hidden', !isBmw);
-  field('gwmCreateSection')?.classList.toggle('hidden', !isGwm);
 }
 
 function toggleCreateSections(){ createState.manufacturer = field('createManufacturer').value || null; setCreateManufacturerLayout(createState.manufacturer); }
@@ -447,8 +559,11 @@ function setEditManufacturerLayout(manufacturer){
   if(editPlateWrap) editPlateWrap.style.display = '';
   field('editBmwSection')?.classList.toggle('hidden', !isBmw);
   field('editGwmSection')?.classList.toggle('hidden', !isGwm);
-  field('gwmVerifyPanel')?.classList.toggle('hidden', !isGwm);
-  if(isGwm) toggleEditGwmOptions();
+  field('bmwHowtoBtn')?.classList.toggle('hidden', !isBmw);
+  const verifyPanel = field('gwmVerifyPanel');
+  if(verifyPanel){
+    verifyPanel.classList.toggle('hidden', !isGwm);
+  }
 }
 
 function toggleEditSections(){ const man = field('editManufacturer').value; setEditManufacturerLayout(man); }
@@ -477,6 +592,92 @@ async function postJson(url,payload,method='POST'){ const res = await fetch(url,
 async function fetchText(url){ const res = await fetch(url); const text = await res.text(); if(!res.ok) throw new Error(text || 'Unbekannter Fehler'); return text; }
 
 field('closeWizardBtn').onclick = field('cancelWizardBtn').onclick = () => field('wizardDialog').close();
+
+function openBmwHowtoDialog(){
+  const dlg = field('bmwHowtoDialog');
+  if(!dlg) return;
+  try{
+    dlg.showModal();
+  }catch(e){
+    dlg.setAttribute('open','open');
+    dlg.style.display='flex';
+  }
+}
+function closeBmwHowtoDialog(){
+  const dlg = field('bmwHowtoDialog');
+  if(!dlg) return;
+  try{
+    dlg.close();
+  }catch(e){
+    dlg.removeAttribute('open');
+    dlg.style.display='none';
+  }
+}
+const bmwHowtoBtn = field('bmwHowtoBtn');
+if(bmwHowtoBtn) bmwHowtoBtn.onclick = (ev)=>{ ev.preventDefault(); openBmwHowtoDialog(); };
+const bmwHowtoCreateBtn = field('bmwHowtoCreateBtn');
+if(bmwHowtoCreateBtn) bmwHowtoCreateBtn.onclick = (ev)=>{ ev.preventDefault(); openBmwHowtoDialog(); };
+const closeBmwHowtoBtn = field('closeBmwHowtoBtn');
+if(closeBmwHowtoBtn) closeBmwHowtoBtn.onclick = (ev)=>{ ev.preventDefault(); closeBmwHowtoDialog(); };
+const closeBmwHowtoBottomBtn = field('closeBmwHowtoBottomBtn');
+if(closeBmwHowtoBottomBtn) closeBmwHowtoBottomBtn.onclick = (ev)=>{ ev.preventDefault(); closeBmwHowtoDialog(); };
+const evccConfigBtn = field('copyEvccBtn');
+if(evccConfigBtn) evccConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openEvccConfigDialog(buildEvccCustomTemplate()); };
+const closeEvccConfigBtn = field('closeEvccConfigBtn');
+if(closeEvccConfigBtn) closeEvccConfigBtn.onclick = (ev)=>{ ev.preventDefault(); closeEvccConfigDialog(); };
+const closeEvccConfigBottomBtn = field('closeEvccConfigBottomBtn');
+if(closeEvccConfigBottomBtn) closeEvccConfigBottomBtn.onclick = (ev)=>{ ev.preventDefault(); closeEvccConfigDialog(); };
+
+
+
+function openBmwHowto(){
+  const dlg = field('bmwHowtoDialog');
+  if(!dlg) return;
+  try {
+    if (typeof dlg.showModal === 'function') dlg.showModal();
+    else dlg.setAttribute('open','open');
+  } catch (e) {
+    dlg.setAttribute('open','open');
+  }
+}
+
+function openEvccConfigDialog(content){
+  const dlg = field('evccConfigDialog');
+  const ta = field('evccConfigTextarea');
+  if(!dlg || !ta) return;
+  ta.value = content || '';
+  try {
+    dlg.showModal();
+  } catch(e) {
+    dlg.setAttribute('open','open');
+    dlg.style.display = 'flex';
+  }
+  ta.focus();
+  ta.select();
+  ta.setSelectionRange(0, ta.value.length);
+}
+function closeEvccConfigDialog(){
+  const d = field('evccConfigDialog');
+  if(d){
+    try{ d.close(); }catch(e){ d.removeAttribute('open'); d.style.display = 'none'; }
+  }
+}
+
+function closeBmwHowto(){
+  const dlg = field('bmwHowtoDialog');
+  if(!dlg) return;
+  try {
+    if (typeof dlg.close === 'function') dlg.close();
+    else dlg.removeAttribute('open');
+  } catch (e) {
+    dlg.removeAttribute('open');
+  }
+}
+field('bmwHowtoBtn').onclick = openBmwHowto;
+field('bmwHowtoCreateBtn').onclick = openBmwHowto;
+field('closeBmwHowtoBtn').onclick = closeBmwHowto;
+field('closeBmwHowtoBottomBtn').onclick = closeBmwHowto;
+
 field('mqttTestBtn').onclick = async()=>{ try{ const d = await postJson('./api/mqtt/test'); alert(`MQTT ok: ${d.topic}`); } catch(err){ alert(err.message); } };
 field('startAuthBtn').onclick = async()=>{ showNotice('wizardError'); try{ const d = await postJson('./api/providers/bmw/auth/start',{ client_id: field('bmwClientId').value.trim(), vin: field('bmwVin').value.trim(), license_plate: field('vehiclePlate').value.trim() }); createState.authSessionId = d.session_id; field('authState').textContent = d.message || 'BMW Login-Link erstellt.'; field('userCode').textContent = d.user_code; field('verificationUrl').href = d.verification_uri_complete; field('verificationUrl').textContent = d.verification_uri_complete; field('authInfo').classList.remove('hidden'); window.open(d.verification_uri_complete,'_blank'); } catch(err){ showNotice('wizardError', err.message); } };
 field('pollAuthBtn').onclick = async()=>{ if(!createState.authSessionId) return showNotice('wizardError','Bitte zuerst Login-Link erzeugen.'); try{ const d = await postJson('./api/providers/bmw/auth/poll',{ session_id: createState.authSessionId }); if(d.state === 'authorized'){ createState.authReady = true; field('authState').textContent = 'BMW erfolgreich verbunden.'; } else { field('authState').textContent = d.message || d.state; } } catch(err){ showNotice('wizardError', err.message); } };
@@ -490,7 +691,7 @@ field('saveCreateBtn').onclick = async()=>{
     if(createState.manufacturer === 'bmw'){
       if(!field('bmwClientId').value.trim() || !field('bmwVin').value.trim()) throw new Error('Bitte BMW Client ID und VIN eintragen.');
       if(!createState.authReady) throw new Error('Bitte BMW Authentifizierung abschließen.');
-      payload.provider_config = { client_id: field('bmwClientId').value.trim(), mqtt_username: field('bmwMqttUsername').value.trim(), vin: field('bmwVin').value.trim(), region: field('bmwRegion').value.trim(), auto_reconnect: true, manual_reconnect_minutes: 15 };
+      payload.provider_config = { client_id: field('bmwClientId').value.trim(), mqtt_username: field('bmwClientId').value.trim(), vin: field('bmwVin').value.trim(), region: field('bmwRegion').value.trim(), auto_reconnect: true, manual_reconnect_minutes: 15 };
     }
     if(createState.manufacturer === 'gwm'){
       payload.provider_config = { account: field('gwmAccount').value.trim(), password: field('gwmPassword').value.trim(), country: field('gwmCountry').value.trim(), language: field('gwmLanguage').value.trim(), polling_enabled: field('gwmPollingEnabled').checked, poll_interval: field('gwmPollInterval').value.trim(), vehicle_id: field('gwmVehicleId').value.trim() || derivedId, capacity_kwh: field('gwmCapacity').value.trim(), source_topic_base: field('gwmSourceTopicBase').value.trim(), auto_reconnect: field('gwmAutoReconnect').checked, delayed_retry_enabled: field('gwmDelayedRetryEnabled').checked, retry_delay_minutes: field('gwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('gwmFallbackOnSilence').checked };
@@ -509,7 +710,7 @@ async function editVehicle(vehicleId){
   stopLiveLogs(); editState.vehicleId = vehicleId; editState.reauthSessionId = null; editState.authReady = vehicle.provider_state?.auth_state === 'authorized'; editState.lastLogText = ''; setLiveLogUi();
   field('editManufacturer').value = vehicle.manufacturer; field('editLabel').value = vehicle.label; field('editPlate').value = vehicle.license_plate;
   field('editEnabled').checked = vehicle.enabled !== false;
-  field('editBmwClientId').value = vehicle.provider_config.client_id || ''; field('editBmwMqttUsername').value = vehicle.provider_config.mqtt_username || ''; field('editBmwVin').value = vehicle.provider_config.vin || ''; field('editBmwRegion').value = vehicle.provider_config.region || 'EU'; field('editBmwAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editBmwManualReconnectMinutes').value = vehicle.provider_config.manual_reconnect_minutes || 15; toggleBmwReconnectMode();
+  field('editBmwClientId').value = vehicle.provider_config.client_id || ''; field('editBmwMqttUsername').value = vehicle.provider_config.client_id || vehicle.provider_config.mqtt_username || ''; field('editBmwVin').value = vehicle.provider_config.vin || ''; field('editBmwRegion').value = vehicle.provider_config.region || 'EU'; field('editBmwAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editBmwManualReconnectMinutes').value = vehicle.provider_config.manual_reconnect_minutes || 15; toggleBmwReconnectMode();
   field('editGwmAccount').value = vehicle.provider_config.account || ''; field('editGwmPassword').value = vehicle.provider_config.password || ''; field('editGwmCountry').value = vehicle.provider_config.country || 'DE'; field('editGwmLanguage').value = vehicle.provider_config.language || 'de'; field('editGwmPollInterval').value = vehicle.provider_config.poll_interval || 60; field('editGwmVehicleId').value = vehicle.provider_config.vehicle_id || vehicle.id; field('editGwmCapacity').value = vehicle.provider_config.capacity_kwh || ''; const gwmSourceBase = vehicle.provider_config.source_topic_base || 'GWM';
   field('editGwmSourceTopicBase').value = (String(gwmSourceBase).startsWith('GWM/')) ? 'GWM' : gwmSourceBase; field('editGwmVerificationCode').value = ''; field('editGwmPollingEnabled').checked = vehicle.provider_config.polling_enabled !== false; field('editGwmAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editGwmDelayedRetryEnabled').checked = vehicle.provider_config.delayed_retry_enabled !== false; field('editGwmRetryDelayMinutes').value = String(vehicle.provider_config.retry_delay_minutes || 55); field('editGwmFallbackOnSilence').checked = vehicle.provider_config.fallback_on_silence !== false; toggleEditGwmOptions();
   field('editAuthState').textContent = vehicle.enabled === false ? 'Fahrzeug ist inaktiv.' : (vehicle.status === 'waiting_for_code' ? 'Verifikationscode erforderlich.' : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'Anmeldung prüfen.'));
@@ -601,7 +802,7 @@ field('editReauthStartBtn').onclick = async()=>{ if(!editState.vehicleId) return
 field('editPollAuthBtn').onclick = async()=>{ if(!editState.reauthSessionId) return showNotice('editError','Bitte zuerst Re-Auth starten.'); try{ const d = await postJson('./api/providers/bmw/auth/poll',{ session_id: editState.reauthSessionId }); if(d.state === 'authorized'){ editState.authReady = true; field('editAuthState').textContent = 'BMW Re-Auth erfolgreich abgeschlossen.'; await refreshVehicleLogs(); } else { field('editAuthState').textContent = d.message || d.state; } }catch(err){ showNotice('editError', err.message); } };
 async function saveEdit(closeAfter){ try{ const manufacturer = field('editManufacturer').value; const derivedId = normalizeVehicleIdFromPlate(field('editPlate').value.trim()); const payload = { id: derivedId, label: field('editLabel').value.trim(), manufacturer, license_plate: field('editPlate').value.trim(), enabled: field('editEnabled').checked, provider_config: {}, auth_session_id: editState.reauthSessionId || null };
   if(!payload.label || !payload.license_plate || !derivedId) throw new Error('Bitte Titel und Kennzeichen ausfüllen.');
-  if(manufacturer === 'bmw'){ payload.provider_config = { client_id: field('editBmwClientId').value.trim(), mqtt_username: field('editBmwMqttUsername').value.trim(), vin: field('editBmwVin').value.trim(), region: field('editBmwRegion').value.trim(), auto_reconnect: field('editBmwAutoReconnect').checked, manual_reconnect_minutes: Math.max(15, Math.min(60, parseInt(field('editBmwManualReconnectMinutes').value || '15', 10))) }; if(!payload.provider_config.client_id || !payload.provider_config.vin) throw new Error('Bitte BMW Client ID und VIN eintragen.'); }
+  if(manufacturer === 'bmw'){ payload.provider_config = { client_id: field('editBmwClientId').value.trim(), mqtt_username: field('editBmwClientId').value.trim(), vin: field('editBmwVin').value.trim(), region: field('editBmwRegion').value.trim(), auto_reconnect: field('editBmwAutoReconnect').checked, manual_reconnect_minutes: Math.max(15, Math.min(60, parseInt(field('editBmwManualReconnectMinutes').value || '15', 10))) }; if(!payload.provider_config.client_id || !payload.provider_config.vin) throw new Error('Bitte BMW Client ID und VIN eintragen.'); }
   if(manufacturer === 'gwm'){ payload.provider_config = { account: field('editGwmAccount').value.trim(), password: field('editGwmPassword').value.trim(), country: field('editGwmCountry').value.trim(), language: field('editGwmLanguage').value.trim(), polling_enabled: field('editGwmPollingEnabled').checked, poll_interval: field('editGwmPollInterval').value.trim(), vehicle_id: field('editGwmVehicleId').value.trim() || derivedId, capacity_kwh: field('editGwmCapacity').value.trim(), source_topic_base: field('editGwmSourceTopicBase').value.trim(), auto_reconnect: field('editGwmAutoReconnect').checked, delayed_retry_enabled: field('editGwmDelayedRetryEnabled').checked, retry_delay_minutes: field('editGwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('editGwmFallbackOnSilence').checked }; if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.'); }
   await postJson(`./api/vehicles/${editState.vehicleId}`, payload, 'PUT'); await loadDashboard(); if(closeAfter){ field('editDialog').close(); } } catch(err){ showNotice('editError', err.message); } }
 field('saveEditKeepOpenBtn').onclick = ()=>saveEdit(false);
@@ -610,7 +811,6 @@ field('saveEditBtn').onclick = ()=>saveEdit(true);
 async function deleteVehicle(vehicleId){ if(!confirm('Fahrzeug wirklich löschen?')) return; await fetch(`./api/vehicles/${vehicleId}`,{method:'DELETE'}); await loadDashboard(); }
 window.deleteVehicle = deleteVehicle;
 
-field('copyEvccBtn').onclick = copyCurrentCarToEvcc;
 if (field('editOraSendVerificationBtn')) field('editOraSendVerificationBtn').onclick = sendOraVerificationCode;
 field('editBmwAutoReconnect').onchange = toggleBmwReconnectMode;
 toggleBmwReconnectMode();

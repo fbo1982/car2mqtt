@@ -23,15 +23,14 @@ class BmwProvider(BaseProvider):
             ],
             fields=[
                 {"name": "client_id", "label": "Client ID", "type": "text", "required": True},
-                {"name": "mqtt_username", "label": "BMW MQTT Username / GCID", "type": "text", "required": False},
-                {"name": "vin", "label": "VIN", "type": "text", "required": True},
+                                {"name": "vin", "label": "VIN", "type": "text", "required": True},
                 {"name": "region", "label": "Region", "type": "text", "required": False, "default": "EU"},
             ],
         )
 
     def validate_config(self, provider_config: Dict[str, Any]) -> Dict[str, Any]:
         client_id = str(provider_config.get("client_id", "")).strip()
-        mqtt_username = str(provider_config.get("mqtt_username", "")).strip()
+        mqtt_username = str(provider_config.get("mqtt_username", "")).strip() or client_id
         vin = str(provider_config.get("vin", "")).strip().upper()
         if not client_id:
             raise ValueError("BMW Client ID fehlt")
