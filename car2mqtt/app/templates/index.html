@@ -39,7 +39,7 @@
 #gwmCreateSection .muted,#editGwmSection .muted{max-width:100%}
 @media (max-width: 900px){
   #gwmCreateSection .grid.two,#editGwmSection .grid.two{grid-template-columns:minmax(0,1fr)}
-}.provider-card.selected{border-color:var(--accent)}.provider-card strong{display:block;font-size:20px;margin:8px 0}.provider-card span{color:var(--muted)}.info-box,.auth-box,.log-box{background:rgba(0,0,0,.14);border:1px solid var(--line);border-radius:22px;padding:18px}.auth-box{margin-top:18px}.auth-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.auth-link{word-break:break-all;color:#8ad7ff}.log-viewer{background:#0a1024;border:1px solid rgba(138,215,255,.18);border-radius:18px;padding:16px;min-height:220px;max-height:360px;overflow:auto;white-space:pre-wrap;color:#d9f2ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.7;box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}
+}.provider-card.selected{border-color:var(--accent)}.provider-card strong{display:block;font-size:20px;margin:8px 0}.provider-card span{color:var(--muted)}.info-box,.auth-box,.log-box{background:rgba(0,0,0,.14);border:1px solid var(--line);border-radius:22px;padding:18px}.auth-box{margin-top:18px}.auth-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.auth-link{word-break:break-all;color:#8ad7ff}.howto-btn{padding:10px 14px;border-radius:12px;font-size:14px}.howto-content{display:grid;gap:14px}.howto-card{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:18px;padding:16px}.howto-card h4{margin:0 0 10px;font-size:16px}.howto-card ol,.howto-card ul{margin:8px 0 0 18px;padding:0}.howto-card li{margin:6px 0}.howto-note{color:var(--muted);font-size:14px}.log-viewer{background:#0a1024;border:1px solid rgba(138,215,255,.18);border-radius:18px;padding:16px;min-height:220px;max-height:360px;overflow:auto;white-space:pre-wrap;color:#d9f2ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.7;box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}
     .live-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.05);font-size:13px;color:var(--muted)}
     .live-chip.active{color:#03190c;background:var(--ok);border-color:transparent;font-weight:800}
     .log-toolbar{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
@@ -161,7 +161,7 @@ select, option {
   <div class="panel">
     <div class="modal-head"><div><div class="eyebrow">Fahrzeug</div><h3>Fahrzeug bearbeiten</h3></div><button id="closeEditBtn" class="icon-btn">✕</button></div>
     <div id="editError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;margin:0 28px 10px"><button id="copyEvccBtn" class="ghost-btn">Copy Car to Custom EVCC</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyEvccBtn" class="ghost-btn">Copy Car to Custom EVCC</button></div>
     <div class="modal-body grid">
       <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
@@ -276,6 +276,71 @@ select, option {
     <div class="modal-foot"><button id="cancelEditBtn" class="ghost-btn">Abbrechen</button><div class="spacer"></div><button id="saveEditKeepOpenBtn" class="ghost-btn">Speichern</button><button id="saveEditBtn" class="primary-btn">Speichern &amp; schließen</button></div>
   </div>
 </dialog>
+
+<dialog id="bmwHowtoDialog" class="modal">
+  <div class="panel wide">
+    <div class="modal-head">
+      <div><div class="eyebrow">BMW CarData</div><h3>My BMW How to</h3></div>
+      <button id="closeBmwHowtoBtn" class="icon-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="howto-content">
+        <div class="howto-card">
+          <h4>1. Client ID in My BMW anlegen</h4>
+          <ol>
+            <li>Im My BMW Fahrzeugbereich den Bereich <strong>BMW CarData</strong> öffnen.</li>
+            <li>Unter dem technischen Zugang einen <strong>CarData Client</strong> erstellen.</li>
+            <li>Die erzeugte <strong>Client ID</strong> kopieren und in Car2MQTT bei BMW eintragen.</li>
+            <li>Im BMW Portal sowohl den API-Zugriff als auch den Streaming-Zugriff aktivieren.</li>
+          </ol>
+          <div class="howto-note">Ohne gültige Client ID und aktivierten Stream kommen keine Live-Daten an.</div>
+        </div>
+
+        <div class="howto-card">
+          <h4>2. Diese Datenpunkte mindestens freischalten</h4>
+          <ul>
+            <li><code>vehicle.body.chargingPort.status</code></li>
+            <li><code>vehicle.cabin.infotainment.navigation.currentLocation.latitude</code></li>
+            <li><code>vehicle.cabin.infotainment.navigation.currentLocation.longitude</code></li>
+            <li><code>vehicle.cabin.hvac.preconditioning.status.comfortState</code></li>
+            <li><code>vehicle.drivetrain.batteryManagement.header</code></li>
+            <li><code>vehicle.drivetrain.electricEngine.charging.hvStatus</code></li>
+            <li><code>vehicle.drivetrain.electricEngine.charging.status</code></li>
+            <li><code>vehicle.drivetrain.electricEngine.charging.timeRemaining</code></li>
+            <li><code>vehicle.drivetrain.electricEngine.kombiRemainingElectricRange</code></li>
+            <li><code>vehicle.powertrain.electric.battery.stateOfCharge.target</code></li>
+            <li><code>vehicle.vehicle.preConditioning.activity</code></li>
+            <li><code>vehicle.vehicle.travelledDistance</code></li>
+          </ul>
+        </div>
+
+        <div class="howto-card">
+          <h4>3. Wofür diese Daten in Car2MQTT verwendet werden</h4>
+          <ul>
+            <li><strong>SoC</strong> aus <code>vehicle.drivetrain.batteryManagement.header</code></li>
+            <li><strong>Reichweite</strong> aus <code>vehicle.drivetrain.electricEngine.kombiRemainingElectricRange</code></li>
+            <li><strong>Ladezustand</strong> aus <code>vehicle.drivetrain.electricEngine.charging.status</code></li>
+            <li><strong>Angesteckt</strong> aus <code>vehicle.body.chargingPort.status</code></li>
+            <li><strong>Ladelimit</strong> aus <code>vehicle.powertrain.electric.battery.stateOfCharge.target</code></li>
+            <li><strong>Preconditioning</strong> aus <code>vehicle.vehicle.preConditioning.activity</code></li>
+            <li><strong>Odometer</strong> aus <code>vehicle.vehicle.travelledDistance</code></li>
+            <li><strong>Position</strong> aus <code>...currentLocation.latitude</code> und <code>...longitude</code></li>
+          </ul>
+        </div>
+
+        <div class="howto-card">
+          <h4>4. Wichtig</h4>
+          <ul>
+            <li>Nach Änderungen im BMW Portal kann es etwas dauern, bis der Stream stabil Daten liefert.</li>
+            <li>Wenn trotz Client ID nichts kommt, zuerst prüfen, ob die Streaming-Freigabe aktiv ist und die obigen Datenpunkte wirklich gesetzt sind.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot"><div class="spacer"></div><button id="closeBmwHowtoBottomBtn" class="ghost-btn">Schließen</button></div>
+  </div>
+</dialog>
+
 
 <script>
 const providers = {{ providers | tojson }};
