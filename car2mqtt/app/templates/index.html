@@ -599,6 +599,13 @@ const closeBmwHowtoBtn = field('closeBmwHowtoBtn');
 if(closeBmwHowtoBtn) closeBmwHowtoBtn.onclick = (ev)=>{ ev.preventDefault(); closeBmwHowtoDialog(); };
 const closeBmwHowtoBottomBtn = field('closeBmwHowtoBottomBtn');
 if(closeBmwHowtoBottomBtn) closeBmwHowtoBottomBtn.onclick = (ev)=>{ ev.preventDefault(); closeBmwHowtoDialog(); };
+const evccConfigBtn = field('copyEvccBtn');
+if(evccConfigBtn) evccConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openEvccConfigDialog(buildEvccCustomTemplate()); };
+const closeEvccConfigBtn = field('closeEvccConfigBtn');
+if(closeEvccConfigBtn) closeEvccConfigBtn.onclick = (ev)=>{ ev.preventDefault(); closeEvccConfigDialog(); };
+const closeEvccConfigBottomBtn = field('closeEvccConfigBottomBtn');
+if(closeEvccConfigBottomBtn) closeEvccConfigBottomBtn.onclick = (ev)=>{ ev.preventDefault(); closeEvccConfigDialog(); };
+
 
 
 function openBmwHowto(){
@@ -617,24 +624,20 @@ function openEvccConfigDialog(content){
   const ta = field('evccConfigTextarea');
   if(!dlg || !ta) return;
   ta.value = content || '';
-  try{
+  try {
     dlg.showModal();
-  }catch(e){
+  } catch(e) {
     dlg.setAttribute('open','open');
-    dlg.style.display='flex';
+    dlg.style.display = 'flex';
   }
   ta.focus();
   ta.select();
   ta.setSelectionRange(0, ta.value.length);
 }
 function closeEvccConfigDialog(){
-  const dlg = field('evccConfigDialog');
-  if(!dlg) return;
-  try{
-    dlg.close();
-  }catch(e){
-    dlg.removeAttribute('open');
-    dlg.style.display='none';
+  const d = field('evccConfigDialog');
+  if(d){
+    try{ d.close(); }catch(e){ d.removeAttribute('open'); d.style.display = 'none'; }
   }
 }
 
@@ -786,11 +789,6 @@ field('saveEditBtn').onclick = ()=>saveEdit(true);
 async function deleteVehicle(vehicleId){ if(!confirm('Fahrzeug wirklich löschen?')) return; await fetch(`./api/vehicles/${vehicleId}`,{method:'DELETE'}); await loadDashboard(); }
 window.deleteVehicle = deleteVehicle;
 
-field('copyEvccBtn').onclick = (ev)=>{ ev.preventDefault(); ev.stopPropagation(); copyCurrentCarToEvcc(); };
-field('closeEvccConfigBtn') && (field('closeEvccConfigBtn').onclick = (ev)=>{ ev.preventDefault(); closeEvccConfigDialog(); });
-field('closeEvccConfigBottomBtn') && (field('closeEvccConfigBottomBtn').onclick = (ev)=>{ ev.preventDefault(); closeEvccConfigDialog(); });
-field('closeEvccConfigBtn')?.addEventListener('click', ()=> closeEvccConfigDialog());
-field('closeEvccConfigBottomBtn')?.addEventListener('click', ()=> closeEvccConfigDialog());
 if (field('editOraSendVerificationBtn')) field('editOraSendVerificationBtn').onclick = sendOraVerificationCode;
 field('editBmwAutoReconnect').onchange = toggleBmwReconnectMode;
 toggleBmwReconnectMode();
