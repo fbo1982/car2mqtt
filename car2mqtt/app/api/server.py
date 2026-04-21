@@ -154,7 +154,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.0.2",
+                "version": "1.0.3",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -168,7 +168,13 @@ def create_app() -> FastAPI:
     async def get_dashboard():
         cards, mqtt_settings = build_cards()
         config = store.load()
-        return {"vehicles": cards, "mqtt": mqtt_settings, "additional_brokers": [broker.model_dump(mode="json", exclude={"password"}) | {"password_set": bool(broker.password)} for broker in config.mqtt_brokers], "vehicle_groups": [group.model_dump(mode="json") for group in config.vehicle_groups], "primary_mqtt": mqtt_settings.model_dump(mode="json")}
+        brokers = []
+        for broker in config.mqtt_brokers:
+            item = broker.model_dump(mode="json", exclude={"password"})
+            item["password_set"] = bool(getattr(broker, "password", ""))
+            brokers.append(item)
+        groups = [group.model_dump(mode="json") for group in config.vehicle_groups]
+        return {"vehicles": cards, "mqtt": mqtt_settings, "additional_brokers": brokers, "vehicle_groups": groups, "primary_mqtt": mqtt_settings.model_dump(mode="json")}
 
     @app.get("/api/vehicles/{vehicle_id}")
     async def get_vehicle(vehicle_id: str):

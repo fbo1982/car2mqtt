@@ -42,9 +42,9 @@ class VehicleConfig(BaseModel):
 
 
 class AdditionalMqttBroker(BaseModel):
-    id: str
-    name: str
-    host: str
+    id: str = ""
+    name: str = ""
+    host: str = ""
     port: int = 1883
     username: str = ""
     password: str = ""
@@ -60,8 +60,8 @@ class AdditionalMqttBroker(BaseModel):
 
 
 class VehicleGroup(BaseModel):
-    id: str
-    name: str
+    id: str = ""
+    name: str = ""
     vehicle_ids: List[str] = Field(default_factory=list)
 
 
