@@ -43,7 +43,15 @@
     .live-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.05);font-size:13px;color:var(--muted)}
     .live-chip.active{color:#03190c;background:var(--ok);border-color:transparent;font-weight:800}
     .log-toolbar{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
-    .log-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.review-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.review-row,.meta-item{padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.05)}.review-row span,.meta-item span{display:block;color:var(--muted);margin-bottom:6px}.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}.spacer{flex:1}.hidden{display:none!important}
+    .log-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.comm-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.comm-card{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:18px;padding:14px 16px}
+.comm-toggle{display:flex;align-items:flex-start;gap:12px}
+.comm-toggle input[type=checkbox]{margin-top:4px;transform:scale(1.2)}
+.comm-title{font-weight:700;color:#edf1ff}
+.comm-help{margin-top:8px;color:var(--muted)}
+@media (max-width: 900px){.comm-grid{grid-template-columns:minmax(0,1fr)}}
+.review-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.review-row,.meta-item{padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.05)}.review-row span,.meta-item span{display:block;color:var(--muted);margin-bottom:6px}.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}.spacer{flex:1}.hidden{display:none!important}
     @media(max-width:900px){.topbar,.section-header,.modal-head,.modal-foot{flex-direction:column;align-items:stretch}.grid.two,.grid.three,.review-grid,.meta-grid{grid-template-columns:1fr}.topbar h1{font-size:34px}}
   
 select, option {
@@ -225,46 +233,39 @@ select, option {
             <div class="field"><label>Akkukapazität (kWh)</label><input id="editGwmCapacity" type="number" step="0.1" /></div>
             <div class="field"><label>Vehicle ID</label><input id="editGwmVehicleId" /></div>
           </div>
-          <div class="field" style="margin-top:16px"><label>Source Topic Base</label><input id="editGwmSourceTopicBase" /></div>
-          <div class="muted" style="margin-top:8px">Für ORA hier einfach <code>GWM</code> verwenden.</div>
-          <div class="log-actions" style="margin-top:16px"><button id="runOraTestMapBtn" class="tiny-btn">Temporärer Testbutton Mapping</button></div>
+          <input id="editGwmSourceTopicBase" type="hidden" value="GWM" />
         </div>
 
         <div class="info-box dialog-narrow" style="margin-top:18px">
           <div class="eyebrow">Kommunikationssettings</div>
-          <div class="grid two" style="margin-top:14px">
-            <div class="field">
-              <label style="display:flex;align-items:center;gap:12px;"><input id="editGwmPollingEnabled" type="checkbox" checked style="transform:scale(1.25)" /> Polling aktivieren</label>
-              <div class="muted" style="margin-top:8px">Wenn deaktiviert, arbeitet ORA nur Event-/Live-basiert.</div>
+          <div class="comm-grid" style="margin-top:14px">
+            <div class="comm-card">
+              <label class="comm-toggle"><input id="editGwmPollingEnabled" type="checkbox" checked /><span><span class="comm-title">Polling aktivieren</span><div class="comm-help">Wenn deaktiviert, arbeitet ORA nur Event-/Live-basiert.</div></span></label>
             </div>
             <div class="field"><label>Polling-Intervall (Sekunden)</label><input id="editGwmPollInterval" type="number" min="10" /></div>
-          </div>
 
-          <div class="grid two" style="margin-top:16px">
-            <div class="field">
-              <label style="display:flex;align-items:center;gap:12px;"><input id="editGwmAutoReconnect" type="checkbox" checked style="transform:scale(1.25)" /> Automatischer Reconnect aktiv</label>
-              <div class="muted" style="margin-top:8px">Reconnect nur wenn nötig, kein aggressiver Retry.</div>
+            <div class="comm-card">
+              <label class="comm-toggle"><input id="editGwmAutoReconnect" type="checkbox" checked /><span><span class="comm-title">Automatischer Reconnect aktiv</span><div class="comm-help">Reconnect nur wenn nötig, kein aggressiver Retry.</div></span></label>
             </div>
-            <div class="field">
-              <label style="display:flex;align-items:center;gap:12px;"><input id="editGwmDelayedRetryEnabled" type="checkbox" checked style="transform:scale(1.25)" /> Verzögerter Retry aktiv</label>
+            <div class="comm-card">
+              <label class="comm-toggle"><input id="editGwmDelayedRetryEnabled" type="checkbox" checked /><span><span class="comm-title">Verzögerter Retry aktiv</span></span></label>
             </div>
-          </div>
 
-          <div class="grid two" style="margin-top:16px">
             <div class="field"><label>Retry Delay (Minuten)</label>
               <select id="editGwmRetryDelayMinutes"><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option><option value="20">20</option><option value="21">21</option><option value="22">22</option><option value="23">23</option><option value="24">24</option><option value="25">25</option><option value="26">26</option><option value="27">27</option><option value="28">28</option><option value="29">29</option><option value="30">30</option><option value="31">31</option><option value="32">32</option><option value="33">33</option><option value="34">34</option><option value="35">35</option><option value="36">36</option><option value="37">37</option><option value="38">38</option><option value="39">39</option><option value="40">40</option><option value="41">41</option><option value="42">42</option><option value="43">43</option><option value="44">44</option><option value="45">45</option><option value="46">46</option><option value="47">47</option><option value="48">48</option><option value="49">49</option><option value="50">50</option><option value="51">51</option><option value="52">52</option><option value="53">53</option><option value="54">54</option><option value="55" selected>55</option><option value="56">56</option><option value="57">57</option><option value="58">58</option><option value="59">59</option><option value="60">60</option></select>
             </div>
-            <div class="field">
-              <label style="display:flex;align-items:center;gap:12px;"><input id="editGwmFallbackOnSilence" type="checkbox" checked style="transform:scale(1.25)" /> Fallback bei ausbleibenden Events</label>
-              <div class="muted" style="margin-top:8px">Als Reserve, falls der Live-Stream keine neuen Events liefert.</div>
+            <div class="comm-card">
+              <label class="comm-toggle"><input id="editGwmFallbackOnSilence" type="checkbox" checked /><span><span class="comm-title">Fallback bei ausbleibenden Events</span><div class="comm-help">Als Reserve, falls der Live-Stream keine neuen Events liefert.</div></span></label>
             </div>
           </div>
+          <div class="log-actions" style="margin-top:16px"><button id="runOraTestMapBtn" class="tiny-btn">Temporärer Testbutton Mapping</button></div>
         </div>
+      </div>
       <div class="log-box dialog-narrow">
         <div class="log-toolbar"><strong>Fahrzeug-Log</strong><div class="log-actions"><span id="liveLogState" class="live-chip">Live aus</span><button id="toggleLiveLogsBtn" class="tiny-btn">Live-Log einschalten</button><button id="refreshLogsBtn" class="tiny-btn">Logs aktualisieren</button><button id="clearLogsBtn" class="danger-btn">Logs löschen</button></div></div>
         <div id="vehicleLogViewer" class="log-viewer">Noch keine Logs geladen.</div>
       </div>
-      <div id="gwmVerifyPanel" class="provider-card hidden" style="margin-top:18px">
+      <div id="gwmVerifyPanel" class="provider-card hidden dialog-narrow" style="margin-top:18px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;"><strong>Verifikationscode senden</strong><span id="gwmVerifyHint" class="chip-warn">Code erforderlich</span></div><div style="margin-top:12px">
           <div class="muted" style="margin-bottom:10px">Dieser Bereich öffnet sich nur, wenn ORA/GWM einen 4-stelligen Verifikationscode anfordert.</div>
           <div class="field"><label>Verifikationscode</label><input id="editGwmVerificationCode" maxlength="4" placeholder="z. B. 3719" inputmode="numeric" /></div>
