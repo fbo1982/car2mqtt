@@ -164,7 +164,7 @@ select, option {
   <div class="panel">
     <div class="modal-head"><div><div class="eyebrow">Fahrzeug</div><h3>Fahrzeug bearbeiten</h3></div><button id="closeEditBtn" class="icon-btn">✕</button></div>
     <div id="editError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn">My BMW How to</button><button id="copyEvccBtn" type="button" class="ghost-btn">Copy Car to Custom EVCC</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn">My BMW How to</button><button id="copyEvccBtn" type="button" class="ghost-btn">EVCC Custom Config</button></div>
     <div class="modal-body grid">
       <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
@@ -452,30 +452,37 @@ async function copyTextRobust(content){
   }catch(err){}
   return false;
 }
-function showCopyFallback(content){
-  const dlg = document.createElement('dialog');
-  dlg.className = 'modal';
-  dlg.innerHTML = `<div class="panel wide"><div class="modal-head"><div><div class="eyebrow">EVCC</div><h3>Vorlage manuell kopieren</h3></div><button type="button" class="icon-btn">✕</button></div><div class="modal-body"><div class="field"><label>Inhalt</label><textarea id="copyFallbackTextarea" style="min-height:360px"></textarea></div></div><div class="modal-foot"><div class="spacer"></div><button type="button" class="ghost-btn">Schließen</button></div></div>`;
-  document.body.appendChild(dlg);
-  const ta = dlg.querySelector('#copyFallbackTextarea');
-  if(ta) ta.value = content;
-  const close = ()=>{ try{ dlg.close(); }catch(e){} dlg.remove(); };
-  dlg.querySelector('.icon-btn').onclick = close;
-  dlg.querySelector('.ghost-btn').onclick = close;
-  try{ dlg.showModal(); }catch(e){ dlg.setAttribute('open','open'); dlg.style.display='flex'; }
-  if(ta){ ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length); }
+function showEvccConfigDialog(content){
+  const dlg = field('evccConfigDialog');
+  const ta = field('evccConfigTextarea');
+  if(!dlg || !ta) return;
+  ta.value = content;
+  try{
+    dlg.showModal();
+  }catch(e){
+    dlg.setAttribute('open','open');
+    dlg.style.display='flex';
+  }
+  ta.focus();
+  ta.select();
+  ta.setSelectionRange(0, ta.value.length);
 }
-async function copyCurrentCarToEvcc(){
+function closeEvccConfigDialog(){
+  const dlg = field('evccConfigDialog');
+  if(!dlg) return;
+  try{
+    dlg.close();
+  }catch(e){
+    dlg.removeAttribute('open');
+    dlg.style.display='none';
+  }
+}
+function copyCurrentCarToEvcc(){
   try{
     const content = buildEvccCustomTemplate();
-    const copied = await copyTextRobust(content);
-    if(copied){
-      alert('EVCC-Vorlage in die Zwischenablage kopiert.');
-    }else{
-      showCopyFallback(content);
-    }
+    showEvccConfigDialog(content);
   }catch(err){
-    alert('EVCC-Vorlage konnte nicht kopiert werden: ' + (err.message || err));
+    alert('EVCC-Konfiguration konnte nicht erzeugt werden: ' + (err.message || err));
   }
 }
 
@@ -748,6 +755,8 @@ async function deleteVehicle(vehicleId){ if(!confirm('Fahrzeug wirklich löschen
 window.deleteVehicle = deleteVehicle;
 
 field('copyEvccBtn').onclick = (ev)=>{ ev.preventDefault(); copyCurrentCarToEvcc(); };
+field('closeEvccConfigBtn')?.addEventListener('click', ()=> closeEvccConfigDialog());
+field('closeEvccConfigBottomBtn')?.addEventListener('click', ()=> closeEvccConfigDialog());
 if (field('editOraSendVerificationBtn')) field('editOraSendVerificationBtn').onclick = sendOraVerificationCode;
 field('editBmwAutoReconnect').onchange = toggleBmwReconnectMode;
 toggleBmwReconnectMode();
