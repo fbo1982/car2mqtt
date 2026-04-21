@@ -365,24 +365,23 @@ function getCurrentEditCard(){
   return cards.find(card => card.id === editState.vehicleId) || null;
 }
 function buildEvccCustomTemplate(){
-  const manufacturer = field('editManufacturer').value || 'car';
+  const manufacturer = field('editManufacturer').value || 'bmw';
   const id = normalizeVehicleIdFromPlate(field('editPlate').value.trim());
   const title = field('editLabel').value.trim() || id;
   let capacity = '';
   if(manufacturer === 'gwm'){
-    capacity = String(field('editGwmCapacity').value || '').trim();
+    capacity = String(field('editGwmCapacity')?.value || '').trim();
   } else if (manufacturer === 'bmw') {
     const current = getCurrentEditCard();
     capacity = String((current && current.metrics && current.metrics.capacityKwh != null ? current.metrics.capacityKwh : '') || '').trim();
   }
   const topicBase = `car/${manufacturerTopicPrefix(manufacturer)}/${id}/mapped`;
-  const capacityLine = capacity ? `capacity: ${capacity}` : 'capacity: 0 #<- Auf die Batteriekapazität anpassen';
   return `###########################################
 ###### CAR2MQTT Custom EVCC Template ######
 ###########################################
 
 title: ${yamlEscape(title)} #<- Angezeigter Fahrzeugname
-${capacityLine}
+capacity: ${capacity || '0'} #<- Auf die Batteriekapazität anpassen
 phases: 3 #<- Wieviele Phasen werden verwendet 1,3 zulässig
 icon: car
 identifiers:
@@ -456,9 +455,10 @@ async function copyTextRobust(content){
 function showCopyFallback(content){
   const dlg = document.createElement('dialog');
   dlg.className = 'modal';
-  dlg.innerHTML = `<div class="panel wide"><div class="modal-head"><div><div class="eyebrow">EVCC</div><h3>Vorlage manuell kopieren</h3></div><button type="button" class="icon-btn">✕</button></div><div class="modal-body"><div class="field"><label>Inhalt</label><textarea style="min-height:360px">${content.replace(/</g,'&lt;')}</textarea></div></div><div class="modal-foot"><div class="spacer"></div><button type="button" class="ghost-btn">Schließen</button></div></div>`;
+  dlg.innerHTML = `<div class="panel wide"><div class="modal-head"><div><div class="eyebrow">EVCC</div><h3>Vorlage manuell kopieren</h3></div><button type="button" class="icon-btn">✕</button></div><div class="modal-body"><div class="field"><label>Inhalt</label><textarea id="copyFallbackTextarea" style="min-height:360px"></textarea></div></div><div class="modal-foot"><div class="spacer"></div><button type="button" class="ghost-btn">Schließen</button></div></div>`;
   document.body.appendChild(dlg);
-  const ta = dlg.querySelector('textarea');
+  const ta = dlg.querySelector('#copyFallbackTextarea');
+  if(ta) ta.value = content;
   const close = ()=>{ try{ dlg.close(); }catch(e){} dlg.remove(); };
   dlg.querySelector('.icon-btn').onclick = close;
   dlg.querySelector('.ghost-btn').onclick = close;
