@@ -39,7 +39,7 @@
 #gwmCreateSection .muted,#editGwmSection .muted{max-width:100%}
 @media (max-width: 900px){
   #gwmCreateSection .grid.two,#editGwmSection .grid.two{grid-template-columns:minmax(0,1fr)}
-}.provider-card.selected{border-color:var(--accent)}.provider-card strong{display:block;font-size:20px;margin:8px 0}.provider-card span{color:var(--muted)}.info-box,.auth-box,.log-box{background:rgba(0,0,0,.14);border:1px solid var(--line);border-radius:22px;padding:18px}.auth-box{margin-top:18px}.auth-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.auth-link{word-break:break-all;color:#8ad7ff}.howto-btn{padding:10px 14px;border-radius:12px;font-size:14px}.howto-content{display:grid;gap:14px}.howto-card{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:18px;padding:16px}.howto-card h4{margin:0 0 10px;font-size:16px}.howto-card ol,.howto-card ul{margin:8px 0 0 18px;padding:0}.howto-card li{margin:6px 0}.howto-note{color:var(--muted);font-size:14px}.log-viewer{background:#0a1024;border:1px solid rgba(138,215,255,.18);border-radius:18px;padding:16px;min-height:220px;max-height:360px;overflow:auto;white-space:pre-wrap;color:#d9f2ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.7;box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}
+}.provider-card.selected{border-color:var(--accent)}.provider-card strong{display:block;font-size:20px;margin:8px 0}.provider-card span{color:var(--muted)}.info-box,.auth-box,.log-box{background:rgba(0,0,0,.14);border:1px solid var(--line);border-radius:22px;padding:18px}.auth-box{margin-top:18px}.auth-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.auth-link{word-break:break-all;color:#8ad7ff}.howto-btn{padding:10px 14px;border-radius:12px;font-size:14px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}.howto-content{display:grid;gap:14px}.howto-card{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:18px;padding:16px}.howto-card h4{margin:0 0 10px;font-size:16px}.howto-card ol,.howto-card ul{margin:8px 0 0 18px;padding:0}.howto-card li{margin:6px 0}.howto-note{color:var(--muted);font-size:14px}.log-viewer{background:#0a1024;border:1px solid rgba(138,215,255,.18);border-radius:18px;padding:16px;min-height:220px;max-height:360px;overflow:auto;white-space:pre-wrap;color:#d9f2ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.7;box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}
     .live-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.05);font-size:13px;color:var(--muted)}
     .live-chip.active{color:#03190c;background:var(--ok);border-color:transparent;font-weight:800}
     .log-toolbar{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
@@ -88,7 +88,7 @@ select, option {
   <div class="panel wide">
     <div class="modal-head"><div><div class="eyebrow">Neues Fahrzeug</div><h3>Fahrzeug hinzufügen</h3></div><button id="closeWizardBtn" class="icon-btn">✕</button></div>
     <div id="wizardError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoCreateBtn" class="ghost-btn howto-btn hidden">My BMW How to</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoCreateBtn" class="ghost-btn howto-btn">My BMW How to</button></div>
     <div class="modal-body grid">
       <div class="field">
         <label>Hersteller</label><div id="createManufacturerNote" class="muted" style="margin-top:8px"></div>
@@ -163,7 +163,7 @@ select, option {
   <div class="panel">
     <div class="modal-head"><div><div class="eyebrow">Fahrzeug</div><h3>Fahrzeug bearbeiten</h3></div><button id="closeEditBtn" class="icon-btn">✕</button></div>
     <div id="editError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyEvccBtn" class="ghost-btn">Copy Car to Custom EVCC</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" class="ghost-btn howto-btn">My BMW How to</button><button id="copyEvccBtn" class="ghost-btn">Copy Car to Custom EVCC</button></div>
     <div class="modal-body grid">
       <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
