@@ -9,7 +9,7 @@
     *{box-sizing:border-box}html,body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:linear-gradient(180deg,#03061d,#050b2f 35%,#02061f);color:var(--text)}
     button,input,select,textarea{font:inherit}button{cursor:pointer}.shell{max-width:1380px;margin:0 auto;padding:24px 28px 48px}
     .topbar{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:28px}.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:#8bb4ff}.topbar h1{font-size:46px;line-height:1.05;margin:6px 0 10px}.topbar h1 span{font-size:20px;color:#98a6dc}.topbar p{margin:0;color:var(--muted);max-width:760px}
-    .mqtt-pill{min-width:280px;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:26px;padding:18px 20px;box-shadow:var(--shadow)}.pill-title{font-size:12px;color:#8bb4ff;text-transform:uppercase;letter-spacing:.14em}.pill-main{font-weight:800;font-size:20px;margin-top:6px}.pill-sub{margin-top:8px;color:var(--muted);font-size:14px}.mqtt-readonly{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:22px;padding:18px}.broker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}.mini-card{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:20px;padding:16px}.mini-card h4{margin:0 0 8px;font-size:16px}.mini-sub{color:var(--muted);font-size:14px}.tag-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.tiny-tag{padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px}.section-stack{display:grid;gap:18px}.checkbox-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}.checkbox-item{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.03)}
+    .mqtt-pill{min-width:280px;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:26px;padding:18px 20px;box-shadow:var(--shadow)}.pill-title{font-size:12px;color:#8bb4ff;text-transform:uppercase;letter-spacing:.14em}.pill-main{font-weight:800;font-size:20px;margin-top:6px}.pill-sub{margin-top:8px;color:var(--muted);font-size:14px}
     .section-header{display:flex;justify-content:space-between;align-items:end;margin:18px 0}.section-header h2{margin:4px 0 0;font-size:28px}.toolbar{display:flex;gap:12px}
     .ghost-btn,.primary-btn,.tiny-btn,.danger-btn{border-radius:14px;padding:12px 16px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text)}.primary-btn{background:var(--ok);color:#05210f;font-weight:800;border-color:transparent}.danger-btn{background:rgba(255,93,108,.12);color:#ffdbe0}.tiny-btn{padding:9px 12px}.icon-btn{background:transparent;border:0;color:var(--text);font-size:28px;padding:6px 10px}.check-lg{transform:scale(1.35);transform-origin:left center;margin-right:12px;accent-color:var(--ok)}.collapsible{border:1px solid var(--line);border-radius:22px;background:rgba(255,255,255,.04);padding:0;overflow:hidden}.collapsible summary{list-style:none;cursor:pointer;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;font-weight:700}.collapsible summary::-webkit-details-marker{display:none}.collapsible .collapsible-body{padding:0 18px 18px}.chip-warn{display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;background:rgba(255,177,66,.16);color:#ffd899;font-size:12px;font-weight:700;letter-spacing:.03em}.hidden{display:none !important}
     .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:22px}.vehicle-card,.add-card{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow)}.vehicle-card{overflow:hidden}.vehicle-head{display:flex;justify-content:space-between;gap:14px;padding:22px 24px 18px;border-bottom:1px solid var(--line)}.vehicle-title{font-size:18px;font-weight:800;margin-bottom:6px}.vehicle-subtitle{color:var(--muted);font-size:14px}.status-badge{padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px;text-transform:uppercase;letter-spacing:.08em;height:max-content}.status-badge.connected{color:#042d14;background:var(--ok)}.status-badge.error,.status-badge.disconnected{color:white;background:rgba(255,93,108,.9)}.status-badge.starting,.status-badge.saved{background:rgba(0,183,255,.18);color:#7ed5ff}.status-badge.inactive{background:rgba(255,255,255,.12);color:#d6dbf6}
@@ -78,61 +78,12 @@ select, option {
     </div>
   </header>
 
-  <div class="top-nav">
-    <div class="nav-shell">
-      <button class="nav-btn active" data-page="vehiclesPage"><span class="nav-ico">🚘</span><span>Fahrzeuge</span></button>
-      <button class="nav-btn" data-page="mqttPage"><span class="nav-ico">📡</span><span>MQTT Broker</span></button>
-      <button class="nav-btn" data-page="groupsPage"><span class="nav-ico">👥</span><span>Fahrzeuggruppen</span></button>
-      <button class="nav-btn nav-info" id="layoutInfoBtn" type="button"><span class="nav-ico">ⓘ</span></button>
-    </div>
-  </div>
-
-  <section id="vehiclesPage" class="page-view active">
-    <div class="dashboard-layout">
-      <div class="dashboard-panel">
-        <div class="vehicle-section-head">
-          <div>
-            <div class="eyebrow">Live Übersicht</div>
-            <h2>Fahrzeuge</h2>
-            <p class="panel-sub">Übersicht aller konfigurierten Fahrzeuge und Live-Status</p>
-          </div>
-          <div class="toolbar"><button id="mqttTestBtn" class="ghost-btn">MQTT testen</button></div>
-        </div>
-        <section id="cardsGrid" class="cards-grid v2"></section>
-      </div>
-      <aside class="dashboard-panel status-side">
-        <div>
-          <div class="eyebrow">MQTT</div>
-          <h3>MQTT Broker Status</h3>
-        </div>
-        <div id="primaryMqttCard"></div>
-        <div>
-          <div class="muted" style="margin-bottom:10px">Zusätzliche MQTT Broker</div>
-          <div id="additionalBrokerGrid" class="status-stack"></div>
-          <button id="goMqttPageBtn" class="ghost-btn list-cta" type="button">Alle Broker anzeigen</button>
-        </div>
-      </aside>
-    </div>
+  <section class="section-header">
+    <div><div class="eyebrow">Live Übersicht</div><h2>Fahrzeuge</h2></div>
+    <div class="toolbar"><button id="mqttTestBtn" class="ghost-btn">MQTT testen</button></div>
   </section>
 
-  <section id="mqttPage" class="page-view">
-    <div class="page-header">
-      <div><div class="eyebrow">MQTT</div><h2>MQTT Broker</h2><p>Zusätzliche MQTT Broker verwalten. Der primäre MQTT Server bleibt im Add-on konfiguriert und ist hier schreibgeschützt sichtbar.</p></div>
-      <div class="toolbar"><button id="addBrokerBtn" class="primary-btn">MQTT Broker hinzufügen</button></div>
-    </div>
-    <div class="section-stack">
-      <div id="primaryMqttReadonly" class="mqtt-readonly"></div>
-      <div id="additionalBrokerListPage" class="list-grid"></div>
-    </div>
-  </section>
-
-  <section id="groupsPage" class="page-view">
-    <div class="page-header">
-      <div><div class="eyebrow">Gruppen</div><h2>Fahrzeuggruppen</h2><p>Gruppen helfen dir, mehrere Fahrzeuge bequem mehreren MQTT Brokern zuzuordnen.</p></div>
-      <div class="toolbar"><button id="addGroupBtn" class="ghost-btn">Fahrzeuggruppe hinzufügen</button></div>
-    </div>
-    <div id="vehicleGroupGrid" class="list-grid"></div>
-  </section>
+  <section id="cardsGrid" class="cards-grid"></section>
 </main>
 
 <dialog id="wizardDialog" class="modal">
@@ -214,7 +165,7 @@ select, option {
   <div class="panel">
     <div class="modal-head"><div><div class="eyebrow">Fahrzeug</div><h3>Fahrzeug bearbeiten</h3></div><button id="closeEditBtn" class="icon-btn">✕</button></div>
     <div id="editError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyEvccBtn" type="button" class="ghost-btn" onclick="openEvccConfigDialog(buildEvccCustomTemplate()); return false;">EVCC Custom Config</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyEvccBtn" type="button" class="ghost-btn">EVCC Custom Config</button></div>
     <div class="modal-body grid">
       <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
@@ -399,7 +350,7 @@ select, option {
   <div class="panel wide">
     <div class="modal-head">
       <div><div class="eyebrow">EVCC</div><h3>EVCC Custom Config</h3></div>
-      <button id="closeEvccConfigBtn" type="button" class="icon-btn" onclick="closeEvccConfigDialog(); return false;">✕</button>
+      <button id="closeEvccConfigBtn" type="button" class="icon-btn">✕</button>
     </div>
     <div class="modal-body">
       <div class="field">
@@ -409,39 +360,11 @@ select, option {
     </div>
     <div class="modal-foot">
       <div class="spacer"></div>
-      <button id="closeEvccConfigBottomBtn" type="button" class="ghost-btn" onclick="closeEvccConfigDialog(); return false;">Schließen</button>
+      <button id="closeEvccConfigBottomBtn" type="button" class="ghost-btn">Schließen</button>
     </div>
   </div>
 </dialog>
 
-
-<dialog id="brokerDialog" class="modal">
-  <div class="panel wide">
-    <div class="modal-head"><div><div class="eyebrow">MQTT</div><h3>Zusätzlichen MQTT Broker bearbeiten</h3></div><button id="closeBrokerBtn" class="icon-btn">✕</button></div>
-    <div id="brokerError" class="notice"></div>
-    <div class="modal-body grid">
-      <div class="grid two"><div class="field"><label>Name</label><input id="brokerName" /></div><div class="field"><label>Host</label><input id="brokerHost" /></div></div>
-      <div class="grid three"><div class="field"><label>Port</label><input id="brokerPort" type="number" value="1883" /></div><div class="field"><label>Username</label><input id="brokerUsername" /></div><div class="field"><label>Passwort</label><input id="brokerPassword" type="password" /></div></div>
-      <div class="grid three"><div class="field"><label>Base Topic</label><input id="brokerBaseTopic" value="car" /></div><div class="field"><label>QoS</label><input id="brokerQos" type="number" min="0" max="2" value="1" /></div><div class="field"><label>Retain</label><div><input id="brokerRetain" class="check-lg" type="checkbox" style="width:auto" checked> Aktiv</div></div></div>
-      <div class="grid three"><div class="field"><label>Aktiv</label><div><input id="brokerEnabled" class="check-lg" type="checkbox" style="width:auto" checked> Broker aktiv</div></div><div class="field"><label>TLS</label><div><input id="brokerTls" class="check-lg" type="checkbox" style="width:auto"> TLS aktiv</div></div><div class="field"><label>Raw-Daten zusätzlich senden</label><div><input id="brokerRawEnabled" class="check-lg" type="checkbox" style="width:auto"> Raw + mapped</div><small>Standard: aus = nur mapped</small></div></div>
-      <div class="field"><label>Fahrzeuge</label><div id="brokerVehicleList" class="checkbox-list"></div></div>
-      <div class="field"><label>Gruppen</label><div id="brokerGroupList" class="checkbox-list"></div></div>
-    </div>
-    <div class="modal-foot"><button id="deleteBrokerBtn" class="danger-btn hidden">Löschen</button><div class="spacer"></div><button id="testBrokerBtn" class="ghost-btn">MQTT testen</button><button id="cancelBrokerBtn" class="ghost-btn">Abbrechen</button><button id="saveBrokerBtn" class="primary-btn">Speichern</button></div>
-  </div>
-</dialog>
-
-<dialog id="groupDialog" class="modal">
-  <div class="panel wide">
-    <div class="modal-head"><div><div class="eyebrow">Gruppen</div><h3>Fahrzeuggruppe bearbeiten</h3></div><button id="closeGroupBtn" class="icon-btn">✕</button></div>
-    <div id="groupError" class="notice"></div>
-    <div class="modal-body grid">
-      <div class="field"><label>Name</label><input id="groupName" /></div>
-      <div class="field"><label>Fahrzeuge</label><div id="groupVehicleList" class="checkbox-list"></div></div>
-    </div>
-    <div class="modal-foot"><button id="deleteGroupBtn" class="danger-btn hidden">Löschen</button><div class="spacer"></div><button id="cancelGroupBtn" class="ghost-btn">Abbrechen</button><button id="saveGroupBtn" class="primary-btn">Speichern</button></div>
-  </div>
-</dialog>
 
 <script>
 const providers = {{ providers | tojson }};
@@ -585,160 +508,6 @@ function copyCurrentCarToEvcc(){
   }
 }
 
-
-function slugifyId(value){
-  return String(value || '').toLowerCase().replace(/[^a-z0-9_-]+/g,'').slice(0,40);
-}
-
-function switchPage(pageId){
-  document.querySelectorAll('.page-view').forEach(el => el.classList.toggle('active', el.id === pageId));
-  document.querySelectorAll('.nav-btn[data-page]').forEach(btn => btn.classList.toggle('active', btn.dataset.page === pageId));
-}
-function brokerVehicleSet(broker){
-  const ids = new Set(broker?.vehicle_ids || []);
-  const groups = new Map((mqttUiState.groups || []).map(group => [group.id, group]));
-  for(const groupId of (broker?.group_ids || [])){
-    const group = groups.get(groupId);
-    for(const vehicleId of (group?.vehicle_ids || [])) ids.add(vehicleId);
-  }
-  return ids;
-}
-function renderPrimaryMqttCard(){
-  const mqtt = mqttUiState.primary || {};
-  const main = field('primaryMqttCard');
-  const page = field('primaryMqttReadonly');
-  const stateClass = mqtt.host ? 'connected' : 'disabled';
-  const statusLabel = mqtt.host ? 'verbunden' : 'nicht gesetzt';
-  const content = `<div class="status-broker-card"><div class="status-broker-top"><div><div class="mini-sub">Primärer MQTT Server</div><div style="font-size:18px;font-weight:800;margin-top:4px">${mqtt.host || 'Nicht gesetzt'}:${mqtt.port || '—'}</div><div class="mini-sub" style="margin-top:8px">Basis ${mqtt.base_topic || 'car'} · QoS ${mqtt.qos ?? 1} · Retain ${mqtt.retain ? 'an' : 'aus'}</div></div><span class="status-indicator ${stateClass}">${statusLabel}</span></div><div class="readonly-tag">Schreibgeschützt (im Add-on konfiguriert)</div></div>`;
-  if(main) main.innerHTML = content;
-  if(page) page.innerHTML = `<div class="eyebrow">Primärer MQTT Server</div><div style="font-size:22px;font-weight:800;margin-top:10px">${mqtt.host || 'Nicht gesetzt'}:${mqtt.port || '—'}</div><div class="mini-sub" style="margin-top:8px">Base Topic: ${mqtt.base_topic || 'car'} · TLS: ${mqtt.tls ? 'ja' : 'nein'} · QoS: ${mqtt.qos ?? 1}</div><div class="mini-sub" style="margin-top:8px">Dieser Broker wird in den Add-on/App-Einstellungen verwaltet und kann hier nicht geändert werden.</div><div class="readonly-tag">Schreibgeschützt (im Add-on konfiguriert)</div>`;
-}
-function renderAdditionalBrokers(){
-  const side = field('additionalBrokerGrid');
-  const page = field('additionalBrokerListPage');
-  const brokers = mqttUiState.brokers || [];
-  const empty = `<div class="empty-block">Noch keine zusätzlichen MQTT Broker. Füge weitere Broker hinzu und wähle Fahrzeuge und/oder Gruppen aus.</div>`;
-  if(side) side.innerHTML = '';
-  if(page) page.innerHTML = '';
-  if(!brokers.length){
-    if(side) side.innerHTML = empty;
-    if(page) page.innerHTML = empty;
-    return;
-  }
-  const sideHtml = brokers.map(broker => {
-    const targetCount = brokerVehicleSet(broker).size;
-    const stateClass = broker.enabled ? 'connected' : 'disabled';
-    const stateLabel = broker.enabled ? 'verbunden' : 'deaktiviert';
-    return `<div class="status-broker-card"><div class="status-broker-top"><div><div style="font-size:16px;font-weight:800">${broker.name}</div><div class="mini-sub" style="margin-top:6px">${broker.host}:${broker.port}</div></div><span class="status-indicator ${stateClass}">${stateLabel}</span></div><div class="mini-sub" style="margin-top:10px">Basis ${broker.base_topic || 'car'} · QoS ${broker.qos ?? 1} · Retain ${broker.retain ? 'an' : 'aus'}</div><div class="mini-sub" style="margin-top:6px">Rohdaten: ${broker.raw_enabled ? 'an (raw + mapped)' : 'aus (nur mapped)'}</div><div class="tiny-link" style="margin-top:10px">${targetCount} Ziel-Fahrzeuge</div></div>`;
-  }).join('');
-  const pageHtml = brokers.map(broker => {
-    const targetCount = brokerVehicleSet(broker).size;
-    return `<div class="mini-card"><h4>${broker.name}</h4><div class="mini-sub">${broker.host}:${broker.port} · Base Topic ${broker.base_topic || 'car'}</div><div class="tag-row"><span class="tiny-tag">${broker.enabled ? 'aktiv' : 'inaktiv'}</span><span class="tiny-tag">${broker.raw_enabled ? 'raw + mapped' : 'nur mapped'}</span><span class="tiny-tag">${targetCount} Ziel-Fahrzeuge</span></div><div class="mini-sub" style="margin-top:10px">Direkte Fahrzeuge: ${(broker.vehicle_ids || []).length} · Gruppen: ${(broker.group_ids || []).length}</div><div class="tag-row" style="margin-top:14px"><button class="tiny-btn" onclick="editBroker('${broker.id}')">Bearbeiten</button><button class="danger-btn" onclick="deleteBroker('${broker.id}')">Löschen</button></div></div>`;
-  }).join('');
-  if(side) side.innerHTML = sideHtml;
-  if(page) page.innerHTML = pageHtml;
-}
-function renderVehicleGroups(){
-  const root = field('vehicleGroupGrid');
-  if(!root) return;
-  const groups = mqttUiState.groups || [];
-  if(!groups.length){
-    root.innerHTML = `<div class="empty-block">Noch keine Fahrzeuggruppen vorhanden.</div>`;
-    return;
-  }
-  root.innerHTML = groups.map(group => `<div class="mini-card"><h4>${group.name}</h4><div class="mini-sub">${(group.vehicle_ids || []).length} Fahrzeuge zugeordnet</div><div class="tag-row" style="margin-top:14px"><button class="tiny-btn" onclick="editGroup('${group.id}')">Bearbeiten</button><button class="danger-btn" onclick="deleteGroup('${group.id}')">Löschen</button></div></div>`).join('');
-}
-function renderBrokerVehicleList(selectedIds=[]){
-  const root = field('brokerVehicleList');
-  if(!root) return;
-  root.innerHTML = cards.map(card => `<label class="checkbox-item"><input type="checkbox" value="${card.id}" ${selectedIds.includes(card.id) ? 'checked' : ''}><span>${card.label}<br><small>${card.manufacturer} · ${card.license_plate}</small></span></label>`).join('');
-}
-function renderBrokerGroupList(selectedIds=[]){
-  const root = field('brokerGroupList');
-  if(!root) return;
-  root.innerHTML = (mqttUiState.groups || []).map(group => `<label class="checkbox-item"><input type="checkbox" value="${group.id}" ${selectedIds.includes(group.id) ? 'checked' : ''}><span>${group.name}<br><small>${(group.vehicle_ids || []).length} Fahrzeuge</small></span></label>`).join('') || '<div class="mini-sub">Noch keine Gruppen vorhanden.</div>';
-}
-function renderGroupVehicleList(selectedIds=[]){
-  const root = field('groupVehicleList');
-  if(!root) return;
-  root.innerHTML = cards.map(card => `<label class="checkbox-item"><input type="checkbox" value="${card.id}" ${selectedIds.includes(card.id) ? 'checked' : ''}><span>${card.label}<br><small>${card.manufacturer} · ${card.license_plate}</small></span></label>`).join('');
-}
-async function loadMqttDistribution(){
-  const data = await (await fetch('./api/dashboard')).json();
-  mqttUiState.brokers = data.additional_brokers || [];
-  mqttUiState.groups = data.vehicle_groups || [];
-  mqttUiState.primary = data.primary_mqtt || data.mqtt || {};
-  renderPrimaryMqttCard();
-  renderAdditionalBrokers();
-  renderVehicleGroups();
-}
-function openBrokerDialog(broker=null){
-  mqttUiState.brokerId = broker?.id || null;
-  showNotice('brokerError');
-  field('brokerName').value = broker?.name || '';
-  field('brokerHost').value = broker?.host || '';
-  field('brokerPort').value = broker?.port || 1883;
-  field('brokerUsername').value = broker?.username || '';
-  field('brokerPassword').value = '';
-  field('brokerTls').checked = !!broker?.tls;
-  field('brokerEnabled').checked = broker ? broker.enabled !== false : true;
-  field('brokerRawEnabled').checked = !!broker?.raw_enabled;
-  field('brokerBaseTopic').value = broker?.base_topic || 'car';
-  field('brokerQos').value = broker?.qos ?? 1;
-  field('brokerRetain').checked = broker ? broker.retain !== false : true;
-  field('deleteBrokerBtn').classList.toggle('hidden', !broker);
-  renderBrokerVehicleList(broker?.vehicle_ids || []);
-  renderBrokerGroupList(broker?.group_ids || []);
-  field('brokerDialog').showModal();
-}
-window.editBroker = function(brokerId){
-  const broker = (mqttUiState.brokers || []).find(item => item.id === brokerId);
-  openBrokerDialog(broker || null);
-}
-function openGroupDialog(group=null){
-  mqttUiState.groupId = group?.id || null;
-  showNotice('groupError');
-  field('groupName').value = group?.name || '';
-  field('deleteGroupBtn').classList.toggle('hidden', !group);
-  renderGroupVehicleList(group?.vehicle_ids || []);
-  field('groupDialog').showModal();
-}
-window.editGroup = function(groupId){
-  const group = (mqttUiState.groups || []).find(item => item.id === groupId);
-  openGroupDialog(group || null);
-}
-async function saveBroker(){
-  try{
-    const payload = {id: mqttUiState.brokerId || slugifyId(field('brokerName').value), name: field('brokerName').value.trim(), host: field('brokerHost').value.trim(), port: parseInt(field('brokerPort').value || '1883', 10), username: field('brokerUsername').value.trim(), password: field('brokerPassword').value, tls: field('brokerTls').checked, enabled: field('brokerEnabled').checked, raw_enabled: field('brokerRawEnabled').checked, base_topic: field('brokerBaseTopic').value.trim() || 'car', qos: parseInt(field('brokerQos').value || '1', 10), retain: field('brokerRetain').checked, vehicle_ids: Array.from(field('brokerVehicleList').querySelectorAll('input:checked')).map(el => el.value), group_ids: Array.from(field('brokerGroupList').querySelectorAll('input:checked')).map(el => el.value)};
-    if(!payload.name || !payload.host) throw new Error('Bitte Name und Host ausfüllen.');
-    if(mqttUiState.brokerId){ await postJson(`./api/mqtt/brokers/${mqttUiState.brokerId}`, payload, 'PUT'); } else { await postJson('./api/mqtt/brokers', payload); }
-    field('brokerDialog').close(); await loadMqttDistribution();
-  }catch(err){ showNotice('brokerError', err.message); }
-}
-async function testBroker(){
-  try{
-    const payload = {id: mqttUiState.brokerId || slugifyId(field('brokerName').value), name: field('brokerName').value.trim(), host: field('brokerHost').value.trim(), port: parseInt(field('brokerPort').value || '1883', 10), username: field('brokerUsername').value.trim(), password: field('brokerPassword').value, tls: field('brokerTls').checked, enabled: true, raw_enabled: field('brokerRawEnabled').checked, base_topic: field('brokerBaseTopic').value.trim() || 'car', qos: parseInt(field('brokerQos').value || '1', 10), retain: field('brokerRetain').checked, vehicle_ids: [], group_ids: []};
-    const d = await postJson('./api/mqtt/brokers/test', payload); alert(`MQTT ok: ${d.topic}`);
-  }catch(err){ showNotice('brokerError', err.message); }
-}
-window.deleteBroker = async function(brokerId){
-  if(!confirm('MQTT Broker wirklich löschen?')) return;
-  await fetch(`./api/mqtt/brokers/${brokerId}`, { method: 'DELETE' });
-  await loadMqttDistribution();
-}
-async function saveGroup(){
-  try{
-    const payload = {id: mqttUiState.groupId || slugifyId(field('groupName').value), name: field('groupName').value.trim(), vehicle_ids: Array.from(field('groupVehicleList').querySelectorAll('input:checked')).map(el => el.value)};
-    if(!payload.name) throw new Error('Bitte Gruppennamen ausfüllen.');
-    if(mqttUiState.groupId){ await postJson(`./api/vehicle-groups/${mqttUiState.groupId}`, payload, 'PUT'); } else { await postJson('./api/vehicle-groups', payload); }
-    field('groupDialog').close(); await loadMqttDistribution();
-  }catch(err){ showNotice('groupError', err.message); }
-}
-window.deleteGroup = async function(groupId){
-  if(!confirm('Fahrzeuggruppe wirklich löschen?')) return;
-  await fetch(`./api/vehicle-groups/${groupId}`, { method: 'DELETE' });
-  await loadMqttDistribution();
-}
 function showNotice(id, msg='') { const el = field(id); el.textContent = msg; el.style.display = msg ? 'block' : 'none'; }
 function statusLabel(v){ return v || 'idle'; }
 function yesNo(v){ return v === true ? 'ja' : (v === false ? 'nein' : '—'); }
@@ -818,7 +587,7 @@ function toggleEditGwmOptions(){
 }
 function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity','gwmSourceTopicBase','gwmVerificationCode'].forEach(id=>field(id).value=''); field('bmwRegion').value='EU'; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('gwmPollingEnabled').checked=true; field('gwmAutoReconnect').checked=true; field('gwmDelayedRetryEnabled').checked=true; field('gwmRetryDelayMinutes').value='55'; field('gwmFallbackOnSilence').checked=true; toggleCreateGwmOptions(); field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; setCreateManufacturerLayout(null); }
 function openWizard(){ resetCreate(); field('wizardDialog').showModal(); }
-async function loadDashboard(){ const res = await fetch('./api/dashboard'); const data = await res.json(); cards = data.vehicles || []; mqttUiState.brokers = data.additional_brokers || []; mqttUiState.groups = data.vehicle_groups || []; mqttUiState.primary = data.primary_mqtt || data.mqtt || {}; renderCards(); renderPrimaryMqttCard(); renderAdditionalBrokers(); renderVehicleGroups(); }
+async function loadDashboard(){ const res = await fetch('./api/dashboard'); const data = await res.json(); cards = data.vehicles || []; renderCards(); }
 async function postJson(url,payload,method='POST'){ const res = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})}); const text = await res.text(); let data={}; try{ data = text ? JSON.parse(text) : {}; }catch{ data = { detail: text }; } if(!res.ok) throw new Error(data.detail || 'Unbekannter Fehler'); return data; }
 async function fetchText(url){ const res = await fetch(url); const text = await res.text(); if(!res.ok) throw new Error(text || 'Unbekannter Fehler'); return text; }
 
@@ -852,6 +621,12 @@ const closeBmwHowtoBtn = field('closeBmwHowtoBtn');
 if(closeBmwHowtoBtn) closeBmwHowtoBtn.onclick = (ev)=>{ ev.preventDefault(); closeBmwHowtoDialog(); };
 const closeBmwHowtoBottomBtn = field('closeBmwHowtoBottomBtn');
 if(closeBmwHowtoBottomBtn) closeBmwHowtoBottomBtn.onclick = (ev)=>{ ev.preventDefault(); closeBmwHowtoDialog(); };
+const evccConfigBtn = field('copyEvccBtn');
+if(evccConfigBtn) evccConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openEvccConfigDialog(buildEvccCustomTemplate()); };
+const closeEvccConfigBtn = field('closeEvccConfigBtn');
+if(closeEvccConfigBtn) closeEvccConfigBtn.onclick = (ev)=>{ ev.preventDefault(); closeEvccConfigDialog(); };
+const closeEvccConfigBottomBtn = field('closeEvccConfigBottomBtn');
+if(closeEvccConfigBottomBtn) closeEvccConfigBottomBtn.onclick = (ev)=>{ ev.preventDefault(); closeEvccConfigDialog(); };
 
 
 
@@ -869,29 +644,23 @@ function openBmwHowto(){
 function openEvccConfigDialog(content){
   const dlg = field('evccConfigDialog');
   const ta = field('evccConfigTextarea');
-  if(!dlg || !ta) return false;
+  if(!dlg || !ta) return;
   ta.value = content || '';
-  try{
+  try {
     dlg.showModal();
-  }catch(e){
+  } catch(e) {
     dlg.setAttribute('open','open');
     dlg.style.display = 'flex';
   }
   ta.focus();
   ta.select();
   ta.setSelectionRange(0, ta.value.length);
-  return false;
 }
 function closeEvccConfigDialog(){
-  const dlg = field('evccConfigDialog');
-  if(!dlg) return false;
-  try{
-    dlg.close();
-  }catch(e){
-    dlg.removeAttribute('open');
-    dlg.style.display = 'none';
+  const d = field('evccConfigDialog');
+  if(d){
+    try{ d.close(); }catch(e){ d.removeAttribute('open'); d.style.display = 'none'; }
   }
-  return false;
 }
 
 function closeBmwHowto(){
@@ -1045,16 +814,7 @@ window.deleteVehicle = deleteVehicle;
 if (field('editOraSendVerificationBtn')) field('editOraSendVerificationBtn').onclick = sendOraVerificationCode;
 field('editBmwAutoReconnect').onchange = toggleBmwReconnectMode;
 toggleBmwReconnectMode();
-field('addBrokerBtn').onclick = ()=>openBrokerDialog(null);
-field('addGroupBtn').onclick = ()=>openGroupDialog(null);
-field('closeBrokerBtn').onclick = field('cancelBrokerBtn').onclick = ()=> field('brokerDialog').close();
-field('saveBrokerBtn').onclick = saveBroker;
-field('testBrokerBtn').onclick = testBroker;
-field('deleteBrokerBtn').onclick = ()=> mqttUiState.brokerId && deleteBroker(mqttUiState.brokerId);
-field('closeGroupBtn').onclick = field('cancelGroupBtn').onclick = ()=> field('groupDialog').close();
-field('saveGroupBtn').onclick = saveGroup;
-field('deleteGroupBtn').onclick = ()=> mqttUiState.groupId && deleteGroup(mqttUiState.groupId);
-field('createManufacturer').onchange = toggleCreateSections; setLiveLogUi(); renderCards(); renderProviderList(); fillManufacturerSelect(); loadMqttDistribution(); setInterval(loadDashboard, 15000);
+field('createManufacturer').onchange = toggleCreateSections; setLiveLogUi(); renderCards(); renderProviderList(); fillManufacturerSelect(); setInterval(loadDashboard, 15000);
 </script>
 </body>
 </html>
