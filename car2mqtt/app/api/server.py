@@ -22,7 +22,13 @@ from app.mqtt.client import test_connection
 from app.mqtt.topic_builder import mapped_topic, raw_vehicle_topic
 from app.providers.bmw.oauth import poll_device_flow, save_token_file, start_device_flow
 from app.providers.registry import ProviderRegistry
-from app.providers.gwm_config import render_ora2mqtt_yaml
+from app.providers.gwm_config import (
+    render_ora2mqtt_yaml,
+    merge_ora_tokens,
+    apply_ora_token_bundle,
+    extract_ora_token_bundle,
+    publish_ora_token_backup,
+)
 from app.services.worker_manager import WorkerManager
 
 
@@ -291,13 +297,21 @@ def create_app() -> FastAPI:
                     if src.resolve() != dst.resolve():
                         dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
 
-        if payload.manufacturer == "gwm" and existing and existing.manufacturer == "gwm":
-            # Preserve persisted ORA session/token data so saving the form does not trigger a new verify each time.
-            for key in ("access_token", "refresh_token", "gw_id", "bean_id", "device_id"):
-                if not vehicle.provider_config.get(key) and existing.provider_config.get(key):
-                    vehicle.provider_config[key] = existing.provider_config.get(key)
-
         if payload.manufacturer == "gwm":
+            # Preserve persisted ORA session/token data so saving the form does not trigger a new verify each time.
+            token_bundle = {}
+            if existing and existing.manufacturer == "gwm":
+                apply_ora_token_bundle(token_bundle, extract_ora_token_bundle(existing.provider_config))
+            source_cfg_id = vehicle_id_to_replace or payload.id
+            existing_cfg = Path(data_dir) / "providers" / source_cfg_id / "ora2mqtt.yml"
+            if existing_cfg.exists():
+                try:
+                    merge_ora_tokens(token_bundle, existing_cfg)
+                    log_store.append(vehicle.id, "ORA Tokens aus bestehender ora2mqtt.yml zur Speicherung übernommen")
+                except Exception as exc:
+                    log_store.append(vehicle.id, f"ORA Token-Übernahme vor dem Speichern fehlgeschlagen: {exc}")
+            apply_ora_token_bundle(vehicle.provider_config, token_bundle)
+
             source_base = str(vehicle.provider_config.get("source_topic_base", "")).strip()
             if (not source_base) or source_base.upper().startswith("GWM/"):
                 vehicle.provider_config["source_topic_base"] = "GWM"
@@ -306,6 +320,7 @@ def create_app() -> FastAPI:
             settings = load_runtime_mqtt_settings()
             ora_config = render_ora2mqtt_yaml(vehicle.provider_config, settings)
             (target_dir / "ora2mqtt.yml").write_text(ora_config, encoding="utf-8")
+            publish_ora_token_backup(vehicle.provider_config, settings, vehicle.id, lambda msg: log_store.append(vehicle.id, msg))
             vehicle.provider_state.auth_state = "authorized"
             vehicle.provider_state.auth_message = "ORA Runner vorbereitet"
             if not vehicle.provider_config.get("source_topic_base"):

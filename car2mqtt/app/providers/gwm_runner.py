@@ -14,7 +14,14 @@ import paho.mqtt.client as mqtt
 
 from app.core.models import VehicleConfig
 from app.core.runtime_settings import RuntimeMqttSettings
-from app.providers.gwm_config import ensure_ora_runtime_config, render_ora2mqtt_yaml, merge_ora_tokens
+from app.providers.gwm_config import (
+    ensure_ora_runtime_config,
+    render_ora2mqtt_yaml,
+    merge_ora_tokens,
+    has_usable_ora_tokens,
+    publish_ora_token_backup,
+    restore_ora_tokens_from_mqtt,
+)
 
 
 class GwmIntegratedWorker:
@@ -105,25 +112,27 @@ class GwmIntegratedWorker:
         config_path = self.vehicle_dir / "ora2mqtt.yml"
 
         # Reuse already persisted ORA tokens/session data before overwriting the config file.
-        if config_path.exists() and (
-            not self.vehicle.provider_config.get("access_token")
-            or not self.vehicle.provider_config.get("refresh_token")
-        ):
+        usable, missing = has_usable_ora_tokens(self.vehicle.provider_config)
+        if config_path.exists() and not usable:
             try:
                 merge_ora_tokens(self.vehicle.provider_config, config_path)
-                self.log("ORA Tokens aus bestehender ora2mqtt.yml übernommen")
-
+                usable, missing = has_usable_ora_tokens(self.vehicle.provider_config)
+                if usable:
+                    self.log("ORA Tokens aus bestehender ora2mqtt.yml übernommen")
+                else:
+                    self.log(f"ORA Token-Übernahme aus bestehender Config unvollständig - fehlend: {', '.join(missing)}")
             except Exception as exc:
-                message = str(exc)
-                if "ORA_WAITING_FOR_CODE" in message or "ORA_AUTH_FATAL" in message:
-                    try:
-                        self._session_marker_path().unlink(missing_ok=True)
-                    except Exception:
-                        pass
                 self.log(f"ORA Token-Übernahme aus bestehender Config fehlgeschlagen: {exc}")
+
+        if not usable:
+            restored = restore_ora_tokens_from_mqtt(self.vehicle.provider_config, self.settings, self.vehicle.id, self.log)
+            if restored:
+                usable, missing = has_usable_ora_tokens(self.vehicle.provider_config)
 
         ensure_ora_runtime_config(self.vehicle.provider_config, self.settings)
         config_path.write_text(render_ora2mqtt_yaml(self.vehicle.provider_config, self.settings), encoding="utf-8")
+        if usable:
+            publish_ora_token_backup(self.vehicle.provider_config, self.settings, self.vehicle.id, self.log)
         return config_path
 
     def _run_configure(self, config_path: Path) -> None:
@@ -183,6 +192,7 @@ class GwmIntegratedWorker:
                 raise RuntimeError(f"ORA_AUTH_FATAL::{joined.splitlines()[0] if joined else 'Authentifizierungsfehler'}")
             raise RuntimeError(f"ora2mqtt configure fehlgeschlagen (rc={proc.returncode})")
         merge_ora_tokens(self.vehicle.provider_config, config_path)
+        publish_ora_token_backup(self.vehicle.provider_config, self.settings, self.vehicle.id, self.log)
         self.log("ORA configure erfolgreich abgeschlossen")
 
     def _start_monitor(self, source_topic: str, source_base: str) -> None:
@@ -265,10 +275,7 @@ class GwmIntegratedWorker:
             try:
                 config_path = self._prepare_runtime_files()
                 code_file = self.vehicle_dir / "verification_code.txt"
-                access_token = str(self.vehicle.provider_config.get("access_token", "")).strip()
-                refresh_token = str(self.vehicle.provider_config.get("refresh_token", "")).strip()
-                has_tokens = bool(access_token and refresh_token)
-                session_marker_exists = self._session_marker_path().exists()
+                has_tokens, missing = has_usable_ora_tokens(self.vehicle.provider_config)
 
                 # configure only when explicitly needed:
                 # 1) verification code was manually provided
@@ -279,7 +286,7 @@ class GwmIntegratedWorker:
                     if code_file.exists():
                         self.log("ORA configure nötig - Verifikationscode liegt vor")
                     else:
-                        self.log("ORA configure nötig - keine gültigen Tokens vorhanden")
+                        self.log(f"ORA configure nötig - keine gültigen Tokens vorhanden (fehlend: {', '.join(missing)})")
                     self.on_detail("ORA Konfiguration und Login wird aufgebaut")
                     self._run_configure(config_path)
                 else:
