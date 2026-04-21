@@ -8,13 +8,13 @@ from typing import Any, Dict
 import paho.mqtt.client as paho_mqtt
 
 from app.core.config_store import ConfigStore
-from app.core.models import VehicleRuntimeState
+from app.core.models import VehicleRuntimeState, AdditionalMqttBroker
 from app.core.runtime_settings import load_runtime_mqtt_settings
 from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
 from app.mapping.bmw_mapper import map_bmw_payload
 from app.mapping.gwm_mapper import apply_gwm_metric
-from app.mqtt.client import LocalMqttClient
+from app.mqtt.client import LocalMqttClient, broker_to_runtime_settings
 from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic
 from app.providers.bmw.streaming import BMWStreamWorker
 from app.providers.gwm_runner import GwmIntegratedWorker
@@ -28,6 +28,47 @@ class WorkerManager:
         self.log_store = VehicleLogStore(data_dir)
         self.workers: dict[str, object] = {}
         self._bmw_raw_cache: dict[str, dict] = {}
+
+    def _selected_additional_brokers(self, vehicle_id: str) -> list[AdditionalMqttBroker]:
+        config = self.config_store.load()
+        groups = {group.id: set(group.vehicle_ids) for group in config.vehicle_groups}
+        selected: list[AdditionalMqttBroker] = []
+        for broker in config.mqtt_brokers:
+            if not broker.enabled:
+                continue
+            vehicle_set = set(broker.vehicle_ids)
+            for group_id in broker.group_ids:
+                vehicle_set.update(groups.get(group_id, set()))
+            if vehicle_id in vehicle_set:
+                selected.append(broker)
+        return selected
+
+    def _publish_to_additional_brokers(self, vehicle, raw_publish: list[tuple[str, Any]] | None = None, mapped_payload: Dict[str, Any] | None = None) -> None:
+        brokers = self._selected_additional_brokers(vehicle.id)
+        if not brokers:
+            return
+        raw_publish = raw_publish or []
+        mapped_payload = mapped_payload or {}
+        for broker in brokers:
+            settings = broker_to_runtime_settings(broker)
+            if not settings.host:
+                continue
+            client = LocalMqttClient(settings)
+            try:
+                client.connect()
+                if broker.raw_enabled:
+                    for topic, payload in raw_publish:
+                        client.publish(topic, payload)
+                mapped_root = mapped_topic(settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
+                for key, value in mapped_payload.items():
+                    client.publish(f"{mapped_root}/{key}", value)
+            except Exception as exc:
+                self.log_store.append(vehicle.id, f"Zusätzlicher MQTT Broker '{broker.name}' Fehler: {exc}")
+            finally:
+                try:
+                    client.disconnect()
+                except Exception:
+                    pass
 
     def start_all(self) -> None:
         settings = load_runtime_mqtt_settings()
@@ -128,21 +169,25 @@ class WorkerManager:
         finally:
             client.disconnect()
 
-    def _flatten_publish(self, client: LocalMqttClient, base_topic_prefix: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _flatten_publish(self, client: LocalMqttClient, base_topic_prefix: str, data: Dict[str, Any]) -> tuple[Dict[str, Any], list[tuple[str, Any]]]:
         data_points = data.get("data", {})
         nested: Dict[str, Any] = {}
+        published: list[tuple[str, Any]] = []
         for metric_name, metric_data in data_points.items():
             metric_topic = f"{base_topic_prefix}/{metric_name.replace('.', '/')}"
             client.publish(metric_topic, metric_data)
+            published.append((metric_topic, metric_data))
             if isinstance(metric_data, dict):
                 for key, value in metric_data.items():
-                    client.publish(f"{metric_topic}/{key}", value)
+                    child_topic = f"{metric_topic}/{key}"
+                    client.publish(child_topic, value)
+                    published.append((child_topic, value))
             parts = metric_name.split('.')
             ref = nested
             for part in parts[:-1]:
                 ref = ref.setdefault(part, {})
             ref[parts[-1]] = metric_data
-        return nested
+        return nested, published
 
     def _deep_merge_dict(self, target: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any]:
         for key, value in source.items():
@@ -160,13 +205,14 @@ class WorkerManager:
         raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings, callback_topic)
         try:
             client.connect()
-            nested = self._flatten_publish(client, raw_topic_base, data)
+            nested, raw_publish = self._flatten_publish(client, raw_topic_base, data)
             cached = self._bmw_raw_cache.get(vehicle_id, {})
             merged = self._deep_merge_dict(cached, nested)
             self._bmw_raw_cache[vehicle_id] = merged
             mapped_payload = map_bmw_payload(merged)
             for key, value in mapped_payload.items():
                 client.publish(f"{mapped}/{key}", value)
+            self._publish_to_additional_brokers(vehicle, raw_publish=raw_publish, mapped_payload=mapped_payload)
             self.log_store.append(
                 vehicle_id,
                 f"BMW Mapping aktualisiert: soc={mapped_payload.get('soc')} range={mapped_payload.get('range')} odometer={mapped_payload.get('odometer')} capacityKwh={mapped_payload.get('capacityKwh')}"
@@ -215,6 +261,7 @@ class WorkerManager:
             target_topic = f"{raw_topic_base}/{relative}"
 
         client = LocalMqttClient(mqtt_settings)
+        raw_publish = [(target_topic, payload)]
         try:
             client.connect()
             client.publish(target_topic, payload)
@@ -258,6 +305,7 @@ class WorkerManager:
                 client.connect()
                 for key, value in metrics.items():
                     client.publish(f"{mapped}/{key}", value)
+                self._publish_to_additional_brokers(vehicle, raw_publish=raw_publish, mapped_payload=metrics)
             finally:
                 client.disconnect()
 

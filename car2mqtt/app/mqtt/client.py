@@ -6,7 +6,7 @@ import threading
 import uuid
 from typing import Any
 import paho.mqtt.client as mqtt
-from app.core.models import RuntimeMqttSettings
+from app.core.models import RuntimeMqttSettings, AdditionalMqttBroker
 
 
 class LocalMqttClient:
@@ -66,3 +66,17 @@ def test_connection(settings: RuntimeMqttSettings) -> dict:
     client.publish(topic, {"status": "ok", "source": "car2mqtt"}, retain=False)
     client.disconnect()
     return {"status": "ok", "topic": topic}
+
+
+def broker_to_runtime_settings(broker: AdditionalMqttBroker) -> RuntimeMqttSettings:
+    return RuntimeMqttSettings(
+        host=broker.host,
+        port=broker.port,
+        username=broker.username,
+        password=broker.password,
+        password_set=bool(broker.password),
+        base_topic=broker.base_topic,
+        qos=broker.qos,
+        retain=broker.retain,
+        tls=broker.tls,
+    )

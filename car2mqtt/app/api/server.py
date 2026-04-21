@@ -14,11 +14,11 @@ from pydantic import BaseModel
 
 from app.core.auth_store import AuthStore
 from app.core.config_store import ConfigStore
-from app.core.models import AuthSession, VehicleConfig
+from app.core.models import AuthSession, VehicleConfig, AdditionalMqttBroker, VehicleGroup
 from app.core.runtime_settings import load_runtime_mqtt_settings
 from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
-from app.mqtt.client import test_connection
+from app.mqtt.client import test_connection, broker_to_runtime_settings
 from app.mqtt.topic_builder import mapped_topic, raw_vehicle_topic
 from app.providers.bmw.oauth import poll_device_flow, save_token_file, start_device_flow
 from app.providers.registry import ProviderRegistry
@@ -48,6 +48,27 @@ class BmwAuthPollPayload(BaseModel):
 
 class GwmVerificationPayload(BaseModel):
     verification_code: str
+
+class BrokerPayload(BaseModel):
+    id: str = ""
+    name: str
+    host: str
+    port: int = 1883
+    username: str = ""
+    password: str = ""
+    tls: bool = False
+    enabled: bool = True
+    raw_enabled: bool = False
+    base_topic: str = "car"
+    qos: int = 1
+    retain: bool = True
+    vehicle_ids: list[str] = []
+    group_ids: list[str] = []
+
+class VehicleGroupPayload(BaseModel):
+    id: str = ""
+    name: str
+    vehicle_ids: list[str] = []
 
 
 def _normalize_vehicle_id(license_plate: str) -> str:
@@ -133,7 +154,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "0.9.24",
+                "version": "1.0.1",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -146,7 +167,8 @@ def create_app() -> FastAPI:
     @app.get("/api/dashboard")
     async def get_dashboard():
         cards, mqtt_settings = build_cards()
-        return {"vehicles": cards, "mqtt": mqtt_settings}
+        config = store.load()
+        return {"vehicles": cards, "mqtt": mqtt_settings, "additional_brokers": [broker.model_dump(mode="json", exclude={"password"}) | {"password_set": bool(broker.password)} for broker in config.mqtt_brokers], "vehicle_groups": [group.model_dump(mode="json") for group in config.vehicle_groups], "primary_mqtt": mqtt_settings.model_dump(mode="json")}
 
     @app.get("/api/vehicles/{vehicle_id}")
     async def get_vehicle(vehicle_id: str):
@@ -180,6 +202,83 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="ORA Fahrzeug nicht gefunden")
         settings = load_runtime_mqtt_settings()
         return render_ora2mqtt_yaml(vehicle.provider_config, settings)
+
+
+    @app.post("/api/mqtt/brokers")
+    async def create_broker(payload: BrokerPayload):
+        broker_id = re.sub(r"[^A-Za-z0-9_-]", "", (payload.id or payload.name or "").strip().lower()) or f"broker{len(store.list_brokers())+1}"
+        if store.get_broker(broker_id):
+            raise HTTPException(status_code=400, detail="MQTT Broker existiert bereits")
+        broker = AdditionalMqttBroker(
+            id=broker_id, name=payload.name.strip(), host=payload.host.strip(), port=payload.port,
+            username=payload.username.strip(), password=payload.password, password_set=bool(payload.password),
+            tls=payload.tls, enabled=payload.enabled, raw_enabled=payload.raw_enabled,
+            base_topic=(payload.base_topic or "car").strip() or "car", qos=payload.qos, retain=payload.retain,
+            vehicle_ids=payload.vehicle_ids, group_ids=payload.group_ids
+        )
+        store.upsert_broker(broker)
+        return broker.model_dump(mode="json", exclude={"password"}) | {"password_set": bool(broker.password)}
+
+    @app.put("/api/mqtt/brokers/{broker_id}")
+    async def update_broker(broker_id: str, payload: BrokerPayload):
+        existing = store.get_broker(broker_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="MQTT Broker nicht gefunden")
+        password = payload.password if payload.password != "" else existing.password
+        broker = AdditionalMqttBroker(
+            id=broker_id, name=payload.name.strip(), host=payload.host.strip(), port=payload.port,
+            username=payload.username.strip(), password=password, password_set=bool(password),
+            tls=payload.tls, enabled=payload.enabled, raw_enabled=payload.raw_enabled,
+            base_topic=(payload.base_topic or "car").strip() or "car", qos=payload.qos, retain=payload.retain,
+            vehicle_ids=payload.vehicle_ids, group_ids=payload.group_ids
+        )
+        store.upsert_broker(broker)
+        return broker.model_dump(mode="json", exclude={"password"}) | {"password_set": bool(broker.password)}
+
+    @app.delete("/api/mqtt/brokers/{broker_id}")
+    async def delete_broker(broker_id: str):
+        if not store.get_broker(broker_id):
+            raise HTTPException(status_code=404, detail="MQTT Broker nicht gefunden")
+        store.delete_broker(broker_id)
+        return {"status": "ok", "broker_id": broker_id}
+
+    @app.post("/api/mqtt/brokers/test")
+    async def test_additional_broker(payload: BrokerPayload):
+        broker = AdditionalMqttBroker(
+            id=payload.id or "test", name=payload.name.strip() or "Test", host=payload.host.strip(), port=payload.port,
+            username=payload.username.strip(), password=payload.password, password_set=bool(payload.password),
+            tls=payload.tls, enabled=True, raw_enabled=payload.raw_enabled,
+            base_topic=(payload.base_topic or "car").strip() or "car", qos=payload.qos, retain=payload.retain,
+            vehicle_ids=[], group_ids=[]
+        )
+        try:
+            return test_connection(broker_to_runtime_settings(broker))
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post("/api/vehicle-groups")
+    async def create_vehicle_group(payload: VehicleGroupPayload):
+        group_id = re.sub(r"[^A-Za-z0-9_-]", "", (payload.id or payload.name or "").strip().lower()) or f"group{len(store.list_groups())+1}"
+        if store.get_group(group_id):
+            raise HTTPException(status_code=400, detail="Fahrzeuggruppe existiert bereits")
+        group = VehicleGroup(id=group_id, name=payload.name.strip(), vehicle_ids=payload.vehicle_ids)
+        store.upsert_group(group)
+        return group.model_dump(mode="json")
+
+    @app.put("/api/vehicle-groups/{group_id}")
+    async def update_vehicle_group(group_id: str, payload: VehicleGroupPayload):
+        if not store.get_group(group_id):
+            raise HTTPException(status_code=404, detail="Fahrzeuggruppe nicht gefunden")
+        group = VehicleGroup(id=group_id, name=payload.name.strip(), vehicle_ids=payload.vehicle_ids)
+        store.upsert_group(group)
+        return group.model_dump(mode="json")
+
+    @app.delete("/api/vehicle-groups/{group_id}")
+    async def delete_vehicle_group(group_id: str):
+        if not store.get_group(group_id):
+            raise HTTPException(status_code=404, detail="Fahrzeuggruppe nicht gefunden")
+        store.delete_group(group_id)
+        return {"status": "ok", "group_id": group_id}
 
     @app.post("/api/mqtt/test")
     async def mqtt_test():

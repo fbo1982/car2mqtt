@@ -39,8 +39,36 @@ class VehicleConfig(BaseModel):
     provider_state: ProviderState = Field(default_factory=ProviderState)
 
 
+
+
+class AdditionalMqttBroker(BaseModel):
+    id: str
+    name: str
+    host: str
+    port: int = 1883
+    username: str = ""
+    password: str = ""
+    password_set: bool = False
+    tls: bool = False
+    enabled: bool = True
+    raw_enabled: bool = False
+    base_topic: str = "car"
+    qos: int = 1
+    retain: bool = True
+    vehicle_ids: List[str] = Field(default_factory=list)
+    group_ids: List[str] = Field(default_factory=list)
+
+
+class VehicleGroup(BaseModel):
+    id: str
+    name: str
+    vehicle_ids: List[str] = Field(default_factory=list)
+
+
 class AppConfig(BaseModel):
     vehicles: List[VehicleConfig] = Field(default_factory=list)
+    mqtt_brokers: List[AdditionalMqttBroker] = Field(default_factory=list)
+    vehicle_groups: List[VehicleGroup] = Field(default_factory=list)
 
 
 class ProviderDescriptor(BaseModel):
