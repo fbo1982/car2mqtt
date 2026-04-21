@@ -94,7 +94,7 @@ select, option {
         <label>Hersteller</label><div id="createManufacturerNote" class="muted" style="margin-top:8px"></div>
         <select id="createManufacturer"></select>
       </div>
-      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:-6px 0 4px"><button id="bmwHowtoCreateBtn" type="button" class="ghost-btn howto-btn">My BMW How to</button></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:-6px 0 4px"><button id="bmwHowtoCreateBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button></div>
       <div id="createGenericFields">
       <div class="field"><label>Anzeigename</label><input id="vehicleLabel" placeholder="BMW iX1 xDrive30e" /></div>
       <div class="field"><label>Kennzeichen</label><input id="vehiclePlate" placeholder="GG-CA-1013E" /></div>
@@ -164,7 +164,7 @@ select, option {
   <div class="panel">
     <div class="modal-head"><div><div class="eyebrow">Fahrzeug</div><h3>Fahrzeug bearbeiten</h3></div><button id="closeEditBtn" class="icon-btn">✕</button></div>
     <div id="editError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn">My BMW How to</button><button id="copyEvccBtn" type="button" class="ghost-btn">EVCC Custom Config</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyEvccBtn" type="button" class="ghost-btn">EVCC Custom Config</button></div>
     <div class="modal-body grid">
       <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
@@ -480,7 +480,7 @@ function closeEvccConfigDialog(){
 function copyCurrentCarToEvcc(){
   try{
     const content = buildEvccCustomTemplate();
-    showEvccConfigDialog(content);
+    openEvccConfigDialog(content);
   }catch(err){
     alert('EVCC-Konfiguration konnte nicht erzeugt werden: ' + (err.message || err));
   }
@@ -515,13 +515,15 @@ function setCreateManufacturerLayout(manufacturer){
   const isBmw = manufacturer === 'bmw';
   const isGwm = manufacturer === 'gwm';
   field('bmwHowtoCreateBtn')?.classList.toggle('hidden', !isBmw);
-  const generic = field('createGenericFields');
+  field('bmwCreateSection').classList.toggle('hidden', !isBmw);
+  field('gwmCreateSection').classList.toggle('hidden', !isGwm);
   if(note){
-    note.textContent = isBmw ? 'BMW-spezifische Maske aktiv.' : (isGwm ? 'ORA / GWM-spezifische Maske aktiv.' : '');
+    if(!manufacturer){ note.textContent = ''; }
+    else{
+      const provider = providers.find(p => p.id === manufacturer);
+      note.textContent = provider?.notes || '';
+    }
   }
-  if(generic) generic.style.display = manufacturer ? '' : 'none';
-  field('bmwCreateSection')?.classList.toggle('hidden', !isBmw);
-  field('gwmCreateSection')?.classList.toggle('hidden', !isGwm);
 }
 
 function toggleCreateSections(){ createState.manufacturer = field('createManufacturer').value || null; setCreateManufacturerLayout(createState.manufacturer); }
@@ -535,8 +537,11 @@ function setEditManufacturerLayout(manufacturer){
   if(editPlateWrap) editPlateWrap.style.display = '';
   field('editBmwSection')?.classList.toggle('hidden', !isBmw);
   field('editGwmSection')?.classList.toggle('hidden', !isGwm);
-  field('gwmVerifyPanel')?.classList.toggle('hidden', !isGwm);
-  if(isGwm) toggleEditGwmOptions();
+  field('bmwHowtoBtn')?.classList.toggle('hidden', !isBmw);
+  const verifyPanel = field('gwmVerifyPanel');
+  if(verifyPanel){
+    verifyPanel.classList.toggle('hidden', !isGwm);
+  }
 }
 
 function toggleEditSections(){ const man = field('editManufacturer').value; setEditManufacturerLayout(man); }
@@ -606,6 +611,33 @@ function openBmwHowto(){
     dlg.setAttribute('open','open');
   }
 }
+
+function openEvccConfigDialog(content){
+  const dlg = field('evccConfigDialog');
+  const ta = field('evccConfigTextarea');
+  if(!dlg || !ta) return;
+  ta.value = content || '';
+  try{
+    dlg.showModal();
+  }catch(e){
+    dlg.setAttribute('open','open');
+    dlg.style.display='flex';
+  }
+  ta.focus();
+  ta.select();
+  ta.setSelectionRange(0, ta.value.length);
+}
+function closeEvccConfigDialog(){
+  const dlg = field('evccConfigDialog');
+  if(!dlg) return;
+  try{
+    dlg.close();
+  }catch(e){
+    dlg.removeAttribute('open');
+    dlg.style.display='none';
+  }
+}
+
 function closeBmwHowto(){
   const dlg = field('bmwHowtoDialog');
   if(!dlg) return;
@@ -754,7 +786,9 @@ field('saveEditBtn').onclick = ()=>saveEdit(true);
 async function deleteVehicle(vehicleId){ if(!confirm('Fahrzeug wirklich löschen?')) return; await fetch(`./api/vehicles/${vehicleId}`,{method:'DELETE'}); await loadDashboard(); }
 window.deleteVehicle = deleteVehicle;
 
-field('copyEvccBtn').onclick = (ev)=>{ ev.preventDefault(); copyCurrentCarToEvcc(); };
+field('copyEvccBtn').onclick = (ev)=>{ ev.preventDefault(); ev.stopPropagation(); copyCurrentCarToEvcc(); };
+field('closeEvccConfigBtn') && (field('closeEvccConfigBtn').onclick = (ev)=>{ ev.preventDefault(); closeEvccConfigDialog(); });
+field('closeEvccConfigBottomBtn') && (field('closeEvccConfigBottomBtn').onclick = (ev)=>{ ev.preventDefault(); closeEvccConfigDialog(); });
 field('closeEvccConfigBtn')?.addEventListener('click', ()=> closeEvccConfigDialog());
 field('closeEvccConfigBottomBtn')?.addEventListener('click', ()=> closeEvccConfigDialog());
 if (field('editOraSendVerificationBtn')) field('editOraSendVerificationBtn').onclick = sendOraVerificationCode;
