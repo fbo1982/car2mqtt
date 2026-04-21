@@ -154,7 +154,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.0.3",
+                "version": "1.0.4",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -168,13 +168,35 @@ def create_app() -> FastAPI:
     async def get_dashboard():
         cards, mqtt_settings = build_cards()
         config = store.load()
-        brokers = []
-        for broker in config.mqtt_brokers:
-            item = broker.model_dump(mode="json", exclude={"password"})
-            item["password_set"] = bool(getattr(broker, "password", ""))
-            brokers.append(item)
-        groups = [group.model_dump(mode="json") for group in config.vehicle_groups]
-        return {"vehicles": cards, "mqtt": mqtt_settings, "additional_brokers": brokers, "vehicle_groups": groups, "primary_mqtt": mqtt_settings.model_dump(mode="json")}
+
+        def to_jsonable(value, *, exclude_password: bool = False):
+            if isinstance(value, dict):
+                data = dict(value)
+            elif hasattr(value, "model_dump"):
+                data = value.model_dump(mode="json")
+            elif hasattr(value, "dict"):
+                data = value.dict()
+            else:
+                data = dict(value) if value is not None else {}
+
+            if exclude_password:
+                data.pop("password", None)
+                data["password_set"] = bool(
+                    value.get("password") if isinstance(value, dict) else getattr(value, "password", "")
+                )
+            return data
+
+        brokers = [to_jsonable(broker, exclude_password=True) for broker in getattr(config, "mqtt_brokers", [])]
+        groups = [to_jsonable(group) for group in getattr(config, "vehicle_groups", [])]
+        primary_mqtt = to_jsonable(mqtt_settings)
+
+        return {
+            "vehicles": cards,
+            "mqtt": mqtt_settings,
+            "additional_brokers": brokers,
+            "vehicle_groups": groups,
+            "primary_mqtt": primary_mqtt,
+        }
 
     @app.get("/api/vehicles/{vehicle_id}")
     async def get_vehicle(vehicle_id: str):
