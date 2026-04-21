@@ -15,7 +15,22 @@
     .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:22px}.vehicle-card,.add-card{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow)}.vehicle-card{overflow:hidden}.vehicle-head{display:flex;justify-content:space-between;gap:14px;padding:22px 24px 18px;border-bottom:1px solid var(--line)}.vehicle-title{font-size:18px;font-weight:800;margin-bottom:6px}.vehicle-subtitle{color:var(--muted);font-size:14px}.status-badge{padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px;text-transform:uppercase;letter-spacing:.08em;height:max-content}.status-badge.connected{color:#042d14;background:var(--ok)}.status-badge.error,.status-badge.disconnected{color:white;background:rgba(255,93,108,.9)}.status-badge.starting,.status-badge.saved{background:rgba(0,183,255,.18);color:#7ed5ff}.status-badge.inactive{background:rgba(255,255,255,.12);color:#d6dbf6}
     .vehicle-metrics{display:grid;grid-template-columns:1fr 1fr;gap:16px 26px;padding:22px 24px}.metric{display:flex;justify-content:space-between;gap:18px}.metric span{color:var(--muted)}.metric strong{color:var(--ok);font-size:19px}.card-footer{border-top:1px solid var(--line);padding:16px 24px 22px;color:var(--muted);font-size:14px}.topic-row{margin-top:8px;font-size:12px;color:#93b3ff;word-break:break-all}.card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.add-card{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:258px;color:var(--text);background:transparent}.add-card span{font-size:44px;line-height:1}.add-card strong{font-size:24px;margin-top:10px}
     dialog{border:0;padding:0;background:transparent}.modal::backdrop{background:rgba(0,0,0,.6);backdrop-filter:blur(8px)}.panel{width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow-y:auto;overflow-x:hidden;background:var(--panel);border:1px solid var(--line);border-radius:30px;box-shadow:var(--shadow)}.panel.wide{width:min(900px,calc(100vw - 32px))}.modal-head,.modal-foot{display:flex;align-items:center;gap:16px;padding:24px 28px}.modal-head{justify-content:space-between;border-bottom:1px solid var(--line)}.modal-head h3{margin:4px 0 0;font-size:24px}.modal-body{padding:24px 28px 28px}.notice{display:none;margin:0 28px 18px;padding:14px 16px;border-radius:14px;background:rgba(255,93,108,.14);color:#ffd8dd;border:1px solid rgba(255,93,108,.28)}
-    .field{display:flex;flex-direction:column;gap:8px}.field label{font-weight:700;color:#edf1ff}.field small,.muted{color:var(--muted);word-break:break-word;overflow-wrap:anywhere}input,select,textarea{width:100%;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--text);padding:14px 15px;box-sizing:border-box}.grid{display:grid;gap:16px}.grid.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.grid.three{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}.provider-list{display:grid;gap:14px}.provider-card{padding:20px;border-radius:22px;background:rgba(0,0,0,.12);border:1px solid transparent;overflow:hidden}.toggle-field{display:flex;gap:12px;align-items:flex-start}.toggle-field input[type=checkbox]{margin-top:4px;transform:scale(1.25);accent-color:var(--ok)}.toggle-field .toggle-copy{min-width:0}.gwm-edit-box{display:grid;gap:16px}.gwm-edit-box .field,.gwm-edit-box .grid,.gwm-edit-box .toggle-field{min-width:0}
+    .field{display:flex;flex-direction:column;gap:8px}.field label{font-weight:700;color:#edf1ff}.field small,.muted{color:var(--muted);word-break:break-word;overflow-wrap:anywhere}input,select,textarea{width:100%;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--text);padding:14px 15px;box-sizing:border-box}.grid{display:grid;gap:16px}.grid.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.grid.three{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}.provider-list{display:grid;gap:14px}.provider-card{padding:20px;border-radius:22px;background:rgba(0,0,0,.12);border:1px solid transparent;overflow:hidden}
+.dialog-narrow{max-width:860px;margin:0 auto;width:100%;min-width:0}
+.dialog-narrow > .info-box,
+.dialog-narrow > .log-box,
+.dialog-narrow > .verify-box{max-width:100%;width:100%;box-sizing:border-box}
+#editDialog .dialog-narrow input,
+#editDialog .dialog-narrow select,
+#editDialog .dialog-narrow textarea{max-width:100%;width:100%;box-sizing:border-box}
+#editDialog .dialog-narrow .grid.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+#editDialog .dialog-narrow .field{min-width:0}
+#editDialog .dialog-narrow .log-actions{display:flex;flex-wrap:wrap;gap:12px}
+#editDialog .dialog-narrow .muted{overflow-wrap:anywhere;word-break:break-word}
+@media (max-width: 900px){
+  #editDialog .dialog-narrow .grid.two{grid-template-columns:minmax(0,1fr)}
+}
+.toggle-field{display:flex;gap:12px;align-items:flex-start}.toggle-field input[type=checkbox]{margin-top:4px;transform:scale(1.25);accent-color:var(--ok)}.toggle-field .toggle-copy{min-width:0}.gwm-edit-box{display:grid;gap:16px}.gwm-edit-box .field,.gwm-edit-box .grid,.gwm-edit-box .toggle-field{min-width:0}
 #gwmCreateSection,#editGwmSection{min-width:0}
 #gwmCreateSection .grid.two,#editGwmSection .grid.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
 #gwmCreateSection .field,#editGwmSection .field{min-width:0}
@@ -140,7 +155,7 @@ select, option {
     <div id="editError" class="notice"></div>
     <div style="display:flex;justify-content:flex-end;margin:0 28px 10px"><button id="copyEvccBtn" class="ghost-btn">Copy Car to Custom EVCC</button></div>
     <div class="modal-body grid">
-      <div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
+      <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
       <div class="grid three">
         <div class="field"><label>Titel</label><input id="editLabel" /></div>
@@ -196,7 +211,7 @@ select, option {
 
       
 <div id="editGwmSection" class="grid hidden"><div class="field" style="grid-column:1/-1"><div class="eyebrow">ORA / GWM-spezifische Einstellungen</div></div>
-        <div class="info-box">
+        <div class="info-box dialog-narrow">
           <div class="eyebrow">ORA / GWM Setup</div>
           <div class="field" style="margin-top:14px"><label>Benutzerkonto</label><input id="editGwmAccount" /></div>
           <div class="field" style="margin-top:16px"><label>Passwort</label><input id="editGwmPassword" type="password" /></div>
@@ -235,7 +250,7 @@ select, option {
           <div class="log-actions" style="margin-top:16px"><button id="runOraTestMapBtn" class="tiny-btn">Temporärer Testbutton Mapping</button></div>
         </div>
       </div>
-      <div class="log-box">
+      <div class="log-box dialog-narrow">
         <div class="log-toolbar"><strong>Fahrzeug-Log</strong><div class="log-actions"><span id="liveLogState" class="live-chip">Live aus</span><button id="toggleLiveLogsBtn" class="tiny-btn">Live-Log einschalten</button><button id="refreshLogsBtn" class="tiny-btn">Logs aktualisieren</button><button id="clearLogsBtn" class="danger-btn">Logs löschen</button></div></div>
         <div id="vehicleLogViewer" class="log-viewer">Noch keine Logs geladen.</div>
       </div>
