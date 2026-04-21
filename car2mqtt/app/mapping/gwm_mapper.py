@@ -69,9 +69,12 @@ def apply_gwm_metric(mapped: dict[str, Any], item_id: str, value: Any, field_nam
     elif item_id in {"2042082", "2210012"} and boo is not None:
         mapped["plugged"] = boo
         mapped["plugged_ts"] = ts
-    elif item_id == "2210005" and num is not None:
+    elif item_id == "2041301" and num is not None:
         mapped["limitSoc"] = num
         mapped["limitSoc_ts"] = ts
+    elif item_id == "2210005" and num is not None:
+        mapped["chargeLimitMode"] = num
+        mapped["chargeLimitMode_ts"] = ts
     elif item_id in {"2210010", "2220001"} and num is not None:
         mapped["altitude"] = num
         mapped["altitude_ts"] = ts
