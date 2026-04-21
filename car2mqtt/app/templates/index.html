@@ -89,12 +89,12 @@ select, option {
   <div class="panel wide">
     <div class="modal-head"><div><div class="eyebrow">Neues Fahrzeug</div><h3>Fahrzeug hinzufügen</h3></div><button id="closeWizardBtn" class="icon-btn">✕</button></div>
     <div id="wizardError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoCreateBtn" type="button" class="ghost-btn howto-btn">My BMW How to</button></div>
     <div class="modal-body grid">
       <div class="field">
         <label>Hersteller</label><div id="createManufacturerNote" class="muted" style="margin-top:8px"></div>
         <select id="createManufacturer"></select>
       </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:-6px 0 4px"><button id="bmwHowtoCreateBtn" type="button" class="ghost-btn howto-btn">My BMW How to</button></div>
       <div id="createGenericFields">
       <div class="field"><label>Anzeigename</label><input id="vehicleLabel" placeholder="BMW iX1 xDrive30e" /></div>
       <div class="field"><label>Kennzeichen</label><input id="vehiclePlate" placeholder="GG-CA-1013E" /></div>
@@ -290,7 +290,7 @@ select, option {
         <div class="howto-card">
           <h4>1. Client ID in My BMW anlegen</h4>
           <ol>
-            <li>Im My BMW Fahrzeugbereich den Bereich <strong>BMW CarData</strong> öffnen.</li>
+            <li>Im My BMW Fahrzeugbereich den Bereich <strong>BMW CarData</strong> öffnen. Direktlink: <a class="auth-link" href="https://bmw-cardata.bmwgroup.com/customer/public/home" target="_blank" rel="noopener noreferrer">CarData Customer Portal</a></li>
             <li>Unter dem technischen Zugang einen <strong>CarData Client</strong> erstellen.</li>
             <li>Die erzeugte <strong>Client ID</strong> kopieren und in Car2MQTT bei BMW eintragen.</li>
             <li>Im BMW Portal sowohl den API-Zugriff als auch den Streaming-Zugriff aktivieren.</li>
@@ -541,6 +541,36 @@ async function postJson(url,payload,method='POST'){ const res = await fetch(url,
 async function fetchText(url){ const res = await fetch(url); const text = await res.text(); if(!res.ok) throw new Error(text || 'Unbekannter Fehler'); return text; }
 
 field('closeWizardBtn').onclick = field('cancelWizardBtn').onclick = () => field('wizardDialog').close();
+
+function openBmwHowtoDialog(){
+  const dlg = field('bmwHowtoDialog');
+  if(!dlg) return;
+  try{
+    dlg.showModal();
+  }catch(e){
+    dlg.setAttribute('open','open');
+    dlg.style.display='flex';
+  }
+}
+function closeBmwHowtoDialog(){
+  const dlg = field('bmwHowtoDialog');
+  if(!dlg) return;
+  try{
+    dlg.close();
+  }catch(e){
+    dlg.removeAttribute('open');
+    dlg.style.display='none';
+  }
+}
+const bmwHowtoBtn = field('bmwHowtoBtn');
+if(bmwHowtoBtn) bmwHowtoBtn.onclick = (ev)=>{ ev.preventDefault(); openBmwHowtoDialog(); };
+const bmwHowtoCreateBtn = field('bmwHowtoCreateBtn');
+if(bmwHowtoCreateBtn) bmwHowtoCreateBtn.onclick = (ev)=>{ ev.preventDefault(); openBmwHowtoDialog(); };
+const closeBmwHowtoBtn = field('closeBmwHowtoBtn');
+if(closeBmwHowtoBtn) closeBmwHowtoBtn.onclick = (ev)=>{ ev.preventDefault(); closeBmwHowtoDialog(); };
+const closeBmwHowtoBottomBtn = field('closeBmwHowtoBottomBtn');
+if(closeBmwHowtoBottomBtn) closeBmwHowtoBottomBtn.onclick = (ev)=>{ ev.preventDefault(); closeBmwHowtoDialog(); };
+
 
 function openBmwHowto(){
   const dlg = field('bmwHowtoDialog');
