@@ -85,13 +85,18 @@ select, option {
 
   <section class="section-stack" style="margin:10px 0 26px">
     <div class="section-header">
-      <div><div class="eyebrow">MQTT</div><h2>MQTT Verteilung</h2></div>
-      <div class="toolbar"><button id="addGroupBtn" class="ghost-btn">Fahrzeuggruppe hinzufügen</button><button id="addBrokerBtn" class="primary-btn">MQTT Broker hinzufügen</button></div>
+      <div><div class="eyebrow">MQTT</div><h2>MQTT Broker</h2></div>
+      <div class="toolbar"><button id="addBrokerBtn" class="primary-btn">MQTT Broker hinzufügen</button></div>
     </div>
     <div id="primaryMqttCard" class="mqtt-readonly"></div>
-    <div class="section-header" style="margin-top:0"><div><div class="eyebrow">Zusätzliche Ziele</div><h2 style="font-size:24px">Zusätzliche MQTT Broker</h2></div></div>
     <div id="additionalBrokerGrid" class="broker-grid"></div>
-    <div class="section-header" style="margin-top:0"><div><div class="eyebrow">Organisation</div><h2 style="font-size:24px">Fahrzeuggruppen</h2></div></div>
+  </section>
+
+  <section class="section-stack" style="margin:10px 0 26px">
+    <div class="section-header">
+      <div><div class="eyebrow">Gruppen</div><h2>Fahrzeuggruppen</h2></div>
+      <div class="toolbar"><button id="addGroupBtn" class="ghost-btn">Fahrzeuggruppe hinzufügen</button></div>
+    </div>
     <div id="vehicleGroupGrid" class="broker-grid"></div>
   </section>
 
@@ -572,7 +577,7 @@ function renderAdditionalBrokers(){
   if(!root) return;
   const brokers = mqttUiState.brokers || [];
   if(!brokers.length){
-    root.innerHTML = `<div class="mini-card"><h4>Noch keine zusätzlichen MQTT Broker</h4><div class="mini-sub">Füge weitere Broker hinzu und wähle Fahrzeuge und/oder Gruppen aus. Standardmäßig werden nur mapped Daten gesendet.</div></div>`;
+    root.innerHTML = `<div class="mini-card"><h4>Noch keine zusätzlichen MQTT Broker</h4><div class="mini-sub">Füge weitere Broker hinzu und wähle Fahrzeuge und/oder Gruppen aus. Der primäre MQTT Server bleibt in den App-Einstellungen verwaltet.</div></div>`;
     return;
   }
   root.innerHTML = brokers.map(broker => {
