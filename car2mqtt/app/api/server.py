@@ -154,7 +154,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.0.4",
+                "version": "1.0.5",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -192,7 +192,7 @@ def create_app() -> FastAPI:
 
         return {
             "vehicles": cards,
-            "mqtt": mqtt_settings,
+            "mqtt": primary_mqtt,
             "additional_brokers": brokers,
             "vehicle_groups": groups,
             "primary_mqtt": primary_mqtt,

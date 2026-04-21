@@ -78,29 +78,61 @@ select, option {
     </div>
   </header>
 
-  <section class="section-header">
-    <div><div class="eyebrow">Live Übersicht</div><h2>Fahrzeuge</h2></div>
-    <div class="toolbar"><button id="mqttTestBtn" class="ghost-btn">MQTT testen</button></div>
+  <div class="top-nav">
+    <div class="nav-shell">
+      <button class="nav-btn active" data-page="vehiclesPage"><span class="nav-ico">🚘</span><span>Fahrzeuge</span></button>
+      <button class="nav-btn" data-page="mqttPage"><span class="nav-ico">📡</span><span>MQTT Broker</span></button>
+      <button class="nav-btn" data-page="groupsPage"><span class="nav-ico">👥</span><span>Fahrzeuggruppen</span></button>
+      <button class="nav-btn nav-info" id="layoutInfoBtn" type="button"><span class="nav-ico">ⓘ</span></button>
+    </div>
+  </div>
+
+  <section id="vehiclesPage" class="page-view active">
+    <div class="dashboard-layout">
+      <div class="dashboard-panel">
+        <div class="vehicle-section-head">
+          <div>
+            <div class="eyebrow">Live Übersicht</div>
+            <h2>Fahrzeuge</h2>
+            <p class="panel-sub">Übersicht aller konfigurierten Fahrzeuge und Live-Status</p>
+          </div>
+          <div class="toolbar"><button id="mqttTestBtn" class="ghost-btn">MQTT testen</button></div>
+        </div>
+        <section id="cardsGrid" class="cards-grid v2"></section>
+      </div>
+      <aside class="dashboard-panel status-side">
+        <div>
+          <div class="eyebrow">MQTT</div>
+          <h3>MQTT Broker Status</h3>
+        </div>
+        <div id="primaryMqttCard"></div>
+        <div>
+          <div class="muted" style="margin-bottom:10px">Zusätzliche MQTT Broker</div>
+          <div id="additionalBrokerGrid" class="status-stack"></div>
+          <button id="goMqttPageBtn" class="ghost-btn list-cta" type="button">Alle Broker anzeigen</button>
+        </div>
+      </aside>
+    </div>
   </section>
 
-  <section class="section-stack" style="margin:10px 0 26px">
-    <div class="section-header">
-      <div><div class="eyebrow">MQTT</div><h2>MQTT Broker</h2></div>
+  <section id="mqttPage" class="page-view">
+    <div class="page-header">
+      <div><div class="eyebrow">MQTT</div><h2>MQTT Broker</h2><p>Zusätzliche MQTT Broker verwalten. Der primäre MQTT Server bleibt im Add-on konfiguriert und ist hier schreibgeschützt sichtbar.</p></div>
       <div class="toolbar"><button id="addBrokerBtn" class="primary-btn">MQTT Broker hinzufügen</button></div>
     </div>
-    <div id="primaryMqttCard" class="mqtt-readonly"></div>
-    <div id="additionalBrokerGrid" class="broker-grid"></div>
+    <div class="section-stack">
+      <div id="primaryMqttReadonly" class="mqtt-readonly"></div>
+      <div id="additionalBrokerListPage" class="list-grid"></div>
+    </div>
   </section>
 
-  <section class="section-stack" style="margin:10px 0 26px">
-    <div class="section-header">
-      <div><div class="eyebrow">Gruppen</div><h2>Fahrzeuggruppen</h2></div>
+  <section id="groupsPage" class="page-view">
+    <div class="page-header">
+      <div><div class="eyebrow">Gruppen</div><h2>Fahrzeuggruppen</h2><p>Gruppen helfen dir, mehrere Fahrzeuge bequem mehreren MQTT Brokern zuzuordnen.</p></div>
       <div class="toolbar"><button id="addGroupBtn" class="ghost-btn">Fahrzeuggruppe hinzufügen</button></div>
     </div>
-    <div id="vehicleGroupGrid" class="broker-grid"></div>
+    <div id="vehicleGroupGrid" class="list-grid"></div>
   </section>
-
-  <section id="cardsGrid" class="cards-grid"></section>
 </main>
 
 <dialog id="wizardDialog" class="modal">
@@ -557,6 +589,11 @@ function copyCurrentCarToEvcc(){
 function slugifyId(value){
   return String(value || '').toLowerCase().replace(/[^a-z0-9_-]+/g,'').slice(0,40);
 }
+
+function switchPage(pageId){
+  document.querySelectorAll('.page-view').forEach(el => el.classList.toggle('active', el.id === pageId));
+  document.querySelectorAll('.nav-btn[data-page]').forEach(btn => btn.classList.toggle('active', btn.dataset.page === pageId));
+}
 function brokerVehicleSet(broker){
   const ids = new Set(broker?.vehicle_ids || []);
   const groups = new Map((mqttUiState.groups || []).map(group => [group.id, group]));
@@ -568,29 +605,45 @@ function brokerVehicleSet(broker){
 }
 function renderPrimaryMqttCard(){
   const mqtt = mqttUiState.primary || {};
-  const root = field('primaryMqttCard');
-  if(!root) return;
-  root.innerHTML = `<div class="eyebrow">Primärer MQTT Server</div><div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-top:10px"><div><div style="font-size:22px;font-weight:800">${mqtt.host || 'Nicht gesetzt'}:${mqtt.port || '—'}</div><div class="mini-sub" style="margin-top:8px">Base Topic: ${mqtt.base_topic || 'car'} · TLS: ${mqtt.tls ? 'ja' : 'nein'} · QoS: ${mqtt.qos ?? 1}</div><div class="mini-sub" style="margin-top:8px">Dieser Broker wird in den Add-on/App-Einstellungen verwaltet und kann hier nicht geändert werden.</div></div><div class="tag-row"><span class="tiny-tag">Primär</span><span class="tiny-tag">${mqtt.username ? 'Benutzer gesetzt' : 'Anonym'}</span></div></div>`;
+  const main = field('primaryMqttCard');
+  const page = field('primaryMqttReadonly');
+  const stateClass = mqtt.host ? 'connected' : 'disabled';
+  const statusLabel = mqtt.host ? 'verbunden' : 'nicht gesetzt';
+  const content = `<div class="status-broker-card"><div class="status-broker-top"><div><div class="mini-sub">Primärer MQTT Server</div><div style="font-size:18px;font-weight:800;margin-top:4px">${mqtt.host || 'Nicht gesetzt'}:${mqtt.port || '—'}</div><div class="mini-sub" style="margin-top:8px">Basis ${mqtt.base_topic || 'car'} · QoS ${mqtt.qos ?? 1} · Retain ${mqtt.retain ? 'an' : 'aus'}</div></div><span class="status-indicator ${stateClass}">${statusLabel}</span></div><div class="readonly-tag">Schreibgeschützt (im Add-on konfiguriert)</div></div>`;
+  if(main) main.innerHTML = content;
+  if(page) page.innerHTML = `<div class="eyebrow">Primärer MQTT Server</div><div style="font-size:22px;font-weight:800;margin-top:10px">${mqtt.host || 'Nicht gesetzt'}:${mqtt.port || '—'}</div><div class="mini-sub" style="margin-top:8px">Base Topic: ${mqtt.base_topic || 'car'} · TLS: ${mqtt.tls ? 'ja' : 'nein'} · QoS: ${mqtt.qos ?? 1}</div><div class="mini-sub" style="margin-top:8px">Dieser Broker wird in den Add-on/App-Einstellungen verwaltet und kann hier nicht geändert werden.</div><div class="readonly-tag">Schreibgeschützt (im Add-on konfiguriert)</div>`;
 }
 function renderAdditionalBrokers(){
-  const root = field('additionalBrokerGrid');
-  if(!root) return;
+  const side = field('additionalBrokerGrid');
+  const page = field('additionalBrokerListPage');
   const brokers = mqttUiState.brokers || [];
+  const empty = `<div class="empty-block">Noch keine zusätzlichen MQTT Broker. Füge weitere Broker hinzu und wähle Fahrzeuge und/oder Gruppen aus.</div>`;
+  if(side) side.innerHTML = '';
+  if(page) page.innerHTML = '';
   if(!brokers.length){
-    root.innerHTML = `<div class="mini-card"><h4>Noch keine zusätzlichen MQTT Broker</h4><div class="mini-sub">Füge weitere Broker hinzu und wähle Fahrzeuge und/oder Gruppen aus. Der primäre MQTT Server bleibt in den App-Einstellungen verwaltet.</div></div>`;
+    if(side) side.innerHTML = empty;
+    if(page) page.innerHTML = empty;
     return;
   }
-  root.innerHTML = brokers.map(broker => {
+  const sideHtml = brokers.map(broker => {
+    const targetCount = brokerVehicleSet(broker).size;
+    const stateClass = broker.enabled ? 'connected' : 'disabled';
+    const stateLabel = broker.enabled ? 'verbunden' : 'deaktiviert';
+    return `<div class="status-broker-card"><div class="status-broker-top"><div><div style="font-size:16px;font-weight:800">${broker.name}</div><div class="mini-sub" style="margin-top:6px">${broker.host}:${broker.port}</div></div><span class="status-indicator ${stateClass}">${stateLabel}</span></div><div class="mini-sub" style="margin-top:10px">Basis ${broker.base_topic || 'car'} · QoS ${broker.qos ?? 1} · Retain ${broker.retain ? 'an' : 'aus'}</div><div class="mini-sub" style="margin-top:6px">Rohdaten: ${broker.raw_enabled ? 'an (raw + mapped)' : 'aus (nur mapped)'}</div><div class="tiny-link" style="margin-top:10px">${targetCount} Ziel-Fahrzeuge</div></div>`;
+  }).join('');
+  const pageHtml = brokers.map(broker => {
     const targetCount = brokerVehicleSet(broker).size;
     return `<div class="mini-card"><h4>${broker.name}</h4><div class="mini-sub">${broker.host}:${broker.port} · Base Topic ${broker.base_topic || 'car'}</div><div class="tag-row"><span class="tiny-tag">${broker.enabled ? 'aktiv' : 'inaktiv'}</span><span class="tiny-tag">${broker.raw_enabled ? 'raw + mapped' : 'nur mapped'}</span><span class="tiny-tag">${targetCount} Ziel-Fahrzeuge</span></div><div class="mini-sub" style="margin-top:10px">Direkte Fahrzeuge: ${(broker.vehicle_ids || []).length} · Gruppen: ${(broker.group_ids || []).length}</div><div class="tag-row" style="margin-top:14px"><button class="tiny-btn" onclick="editBroker('${broker.id}')">Bearbeiten</button><button class="danger-btn" onclick="deleteBroker('${broker.id}')">Löschen</button></div></div>`;
   }).join('');
+  if(side) side.innerHTML = sideHtml;
+  if(page) page.innerHTML = pageHtml;
 }
 function renderVehicleGroups(){
   const root = field('vehicleGroupGrid');
   if(!root) return;
   const groups = mqttUiState.groups || [];
   if(!groups.length){
-    root.innerHTML = `<div class="mini-card"><h4>Noch keine Fahrzeuggruppen</h4><div class="mini-sub">Gruppen helfen dir, mehrere Fahrzeuge bequem mehreren MQTT Brokern zuzuordnen.</div></div>`;
+    root.innerHTML = `<div class="empty-block">Noch keine Fahrzeuggruppen vorhanden.</div>`;
     return;
   }
   root.innerHTML = groups.map(group => `<div class="mini-card"><h4>${group.name}</h4><div class="mini-sub">${(group.vehicle_ids || []).length} Fahrzeuge zugeordnet</div><div class="tag-row" style="margin-top:14px"><button class="tiny-btn" onclick="editGroup('${group.id}')">Bearbeiten</button><button class="danger-btn" onclick="deleteGroup('${group.id}')">Löschen</button></div></div>`).join('');
