@@ -205,11 +205,14 @@ class GwmIntegratedWorker:
         if self.settings.tls:
             client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
 
+        subscribed_event = threading.Event()
+
         def _on_connect(_client, _userdata, _flags, rc, _properties=None):
             if rc == 0:
                 self.log("ORA MQTT Monitor verbunden")
                 _client.subscribe(source_topic, qos=self.settings.qos)
                 self.log(f"ORA MQTT Subscribe gesendet: {source_topic}")
+                subscribed_event.set()
                 self.on_connect()
             else:
                 self.on_error(f"ORA MQTT Monitor Verbindung fehlgeschlagen (rc={rc})")
@@ -231,6 +234,9 @@ class GwmIntegratedWorker:
         client.loop_start()
         self.log(f"ORA Source Base Topic: {source_base}")
         self.log(f"ORA Subscribe Topic: {source_topic}")
+        if not subscribed_event.wait(10):
+            raise RuntimeError(f"ORA MQTT Monitor Subscribe Timeout für {source_topic}")
+        time.sleep(0.5)
 
     def _start_run(self, config_path: Path) -> None:
         env = os.environ.copy()
