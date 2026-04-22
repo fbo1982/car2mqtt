@@ -1077,7 +1077,7 @@ function closeEvccConfigDialog(){
     try{ d.close(); }catch(e){ d.removeAttribute('open'); d.style.display = 'none'; }
   }
 }
-function openHelperConfigDialog(){
+async function openHelperConfigDialog(){
   const dlg = field('helperConfigDialog');
   const cfgTa = field('helperConfigurationConfigTextarea');
   const autoTa = field('helperAutomationsConfigTextarea');
