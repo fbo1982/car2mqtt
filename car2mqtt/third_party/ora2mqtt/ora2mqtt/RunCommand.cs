@@ -176,7 +176,7 @@ public class RunCommand:BaseCommand
             return $"GWM/{vin}/status";
         }
 
-        return template.Replace("{vin}", vin, StringComparison.OrdinalIgnoreCase).Trim('/');
+        return template.Replace("{vin}", vin).Replace("{VIN}", vin).Trim('/');
     }
 
     private Task PublishHaDiscoveryAsync(IMqttClient mqtt, Ora2MqttMqttOptions options, Vehicle vehicle, VehicleStatus status, CancellationToken cancellationToken)
