@@ -14,6 +14,14 @@ from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
 from app.mapping.bmw_mapper import map_bmw_payload
 from app.mapping.gwm_mapper import apply_gwm_metric
+
+GWM_OBSOLETE_MAPPED_KEYS = {
+    "chargeLimitMode",
+    "chargeLimitMode_ts",
+    "chargingPortConnected",
+    "chargingPortConnected_ts",
+}
+
 from app.mqtt.client import LocalMqttClient
 from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic, vehicle_root_topic
 from app.providers.bmw.streaming import BMWStreamWorker
