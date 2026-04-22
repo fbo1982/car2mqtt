@@ -178,7 +178,7 @@ select, option {
   <div class="panel">
     <div class="modal-head"><div><div class="eyebrow">Fahrzeug</div><h3>Fahrzeug bearbeiten</h3></div><button id="closeEditBtn" class="icon-btn">✕</button></div>
     <div id="editError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyEvccBtn" type="button" class="ghost-btn">EVCC Custom Config</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyConfigsBtn" type="button" class="ghost-btn">Copy Configs</button></div>
     <div class="modal-body grid">
       <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
@@ -361,13 +361,23 @@ select, option {
 <dialog id="evccConfigDialog" class="modal">
   <div class="panel wide">
     <div class="modal-head">
-      <div><div class="eyebrow">EVCC</div><h3>EVCC Custom Config</h3></div>
+      <div><div class="eyebrow">Copy</div><h3>Copy Configs</h3></div>
       <button id="closeEvccConfigBtn" type="button" class="icon-btn">✕</button>
     </div>
     <div class="modal-body">
-      <div class="field">
-        <label>Fahrzeugspezifische Konfiguration</label>
-        <textarea id="evccConfigTextarea" style="min-height:360px"></textarea>
+      <div class="howto-content">
+        <div class="howto-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h4>evcc</h4><button id="copyEvccSectionBtn" type="button" class="ghost-btn">Kopieren</button></div>
+          <div class="field"><label>Abschnitt für evcc</label><textarea id="evccConfigTextarea" style="min-height:260px"></textarea></div>
+        </div>
+        <div class="howto-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h4>configuration.yaml</h4><button id="copyConfigurationSectionBtn" type="button" class="ghost-btn">Kopieren</button></div>
+          <div class="field"><label>MQTT Sensoren für dieses Fahrzeug</label><textarea id="configurationConfigTextarea" style="min-height:320px"></textarea></div>
+        </div>
+        <div class="howto-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h4>automations.yaml</h4><button id="copyAutomationsSectionBtn" type="button" class="ghost-btn">Kopieren</button></div>
+          <div class="field"><label>Variablenblock für dieses Fahrzeug</label><textarea id="automationsConfigTextarea" style="min-height:380px"></textarea></div>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -398,18 +408,26 @@ function manufacturerTopicPrefix(manufacturer){
 function getCurrentEditCard(){
   return cards.find(card => card.id === editState.vehicleId) || null;
 }
-function buildEvccCustomTemplate(){
+function getCopyConfigContext(){
   const manufacturer = field('editManufacturer').value || 'bmw';
   const id = normalizeVehicleIdFromPlate(field('editPlate').value.trim());
+  const rawPlate = field('editPlate').value.trim() || id;
   const title = field('editLabel').value.trim() || id;
+  const current = getCurrentEditCard();
   let capacity = '';
   if(manufacturer === 'gwm'){
     capacity = String(field('editGwmCapacity')?.value || '').trim();
   } else if (manufacturer === 'bmw') {
-    const current = getCurrentEditCard();
     capacity = String((current && current.metrics && current.metrics.capacityKwh != null ? current.metrics.capacityKwh : '') || '').trim();
   }
-  const topicBase = `car/${manufacturerTopicPrefix(manufacturer)}/${id}/mapped`;
+  const manufacturerPrefix = manufacturerTopicPrefix(manufacturer);
+  const topicBase = `car/${manufacturerPrefix}/${id}/mapped`;
+  const entityBase = `car_${manufacturerPrefix}_${id.toLowerCase()}`;
+  const varPrefix = `${id.toLowerCase()}_`;
+  return { manufacturer, manufacturerPrefix, id, rawPlate, title, current, capacity, topicBase, entityBase, varPrefix };
+}
+function buildEvccCustomTemplate(){
+  const { id, title, capacity, topicBase } = getCopyConfigContext();
   return `###########################################
 ###### CAR2MQTT Custom EVCC Template ######
 ###########################################
@@ -458,6 +476,108 @@ status:
     timeout: 24h
 `;
 }
+function buildConfigurationYamlTemplate(){
+  const { manufacturerPrefix, id, rawPlate, title, topicBase, entityBase } = getCopyConfigContext();
+  const displayManufacturer = manufacturerPrefix.toUpperCase();
+  return `#######################################
+## ${rawPlate} ${title} ##
+#######################################
+
+    - name: "Car ${displayManufacturer} ${id} Plugged TS"
+      unique_id: ${entityBase}_plugged_ts
+      state_topic: "${topicBase}/plugged_ts"
+      availability_topic: "evcc/status"
+      payload_available: "online"
+      payload_not_available: "offline"
+
+    - name: "Car ${displayManufacturer} ${id} Plugged"
+      unique_id: ${entityBase}_plugged
+      state_topic: "${topicBase}/plugged"
+      availability_topic: "evcc/status"
+      payload_available: "online"
+      payload_not_available: "offline"
+
+    - name: "Car ${displayManufacturer} ${id} Latitude"
+      unique_id: ${entityBase}_latitude
+      state_topic: "${topicBase}/latitude"
+      availability_topic: "evcc/status"
+      payload_available: "online"
+      payload_not_available: "offline"
+
+    - name: "Car ${displayManufacturer} ${id} Longitude"
+      unique_id: ${entityBase}_longitude
+      state_topic: "${topicBase}/longitude"
+      availability_topic: "evcc/status"
+      payload_available: "online"
+      payload_not_available: "offline"`;
+}
+function buildAutomationsYamlTemplate(){
+  const { entityBase, title, varPrefix } = getCopyConfigContext();
+  return `    ##################################################
+    # ${title}
+    ##################################################
+    ${varPrefix}vehicle: "${yamlEscape(title)}"
+    ${varPrefix}plugged_raw: "{{ states('sensor.${entityBase}_plugged') }}"
+    ${varPrefix}plugged_ts_raw: "{{ states('sensor.${entityBase}_plugged_ts') }}"
+    ${varPrefix}lat_raw: "{{ states('sensor.${entityBase}_latitude') }}"
+    ${varPrefix}lon_raw: "{{ states('sensor.${entityBase}_longitude') }}"
+
+    ${varPrefix}plugged: "{{ ${varPrefix}plugged_raw in ['true', 'True', 'on', '1'] }}"
+
+    ${varPrefix}ts: >
+      {% if ${varPrefix}plugged_ts_raw not in ['unknown', 'unavailable', '', none] %}
+        {{ as_timestamp(as_datetime(${varPrefix}plugged_ts_raw)) }}
+      {% else %}
+        {{ none }}
+      {% endif %}
+
+    ${varPrefix}has_gps: >
+      {{ ${varPrefix}lat_raw not in ['unknown', 'unavailable', '', none]
+         and ${varPrefix}lon_raw not in ['unknown', 'unavailable', '', none] }}
+
+    ${varPrefix}lat: >
+      {% if ${varPrefix}has_gps %}
+        {{ ${varPrefix}lat_raw | float(0) }}
+      {% else %}
+        {{ none }}
+      {% endif %}
+
+    ${varPrefix}lon: >
+      {% if ${varPrefix}has_gps %}
+        {{ ${varPrefix}lon_raw | float(0) }}
+      {% else %}
+        {{ none }}
+      {% endif %}
+
+    ${varPrefix}delta: >
+      {% if connect_ts is not none and ${varPrefix}ts is not none %}
+        {{ (connect_ts - ${varPrefix}ts) | abs }}
+      {% else %}
+        {{ 999999 }}
+      {% endif %}
+
+    ${varPrefix}distance_m: >
+      {% if ${varPrefix}lat is not none and ${varPrefix}lon is not none and home_lat != 0 and home_lon != 0 %}
+        {% set pi = 3.141592653589793 %}
+        {% set r = 6371000 %}
+        {% set lat1 = home_lat * pi / 180 %}
+        {% set lon1 = home_lon * pi / 180 %}
+        {% set lat2 = ${varPrefix}lat * pi / 180 %}
+        {% set lon2 = ${varPrefix}lon * pi / 180 %}
+        {% set dlat = lat2 - lat1 %}
+        {% set dlon = lon2 - lon1 %}
+        {% set a = (sin(dlat / 2) ** 2) + cos(lat1) * cos(lat2) * (sin(dlon / 2) ** 2) %}
+        {% set c = 2 * atan2(sqrt(a), sqrt(1 - a)) %}
+        {{ r * c }}
+      {% else %}
+        {{ 999999 }}
+      {% endif %}
+
+    ${varPrefix}match: >
+      {{ ${varPrefix}plugged
+         and (${varPrefix}delta | float(999999) <= 20)
+         and (${varPrefix}distance_m | float(999999) <= 100) }}`;
+}
 async function copyTextRobust(content){
   if(navigator.clipboard){
     try{
@@ -486,37 +606,11 @@ async function copyTextRobust(content){
   }catch(err){}
   return false;
 }
-function showEvccConfigDialog(content){
-  const dlg = field('evccConfigDialog');
-  const ta = field('evccConfigTextarea');
-  if(!dlg || !ta) return;
-  ta.value = content;
-  try{
-    dlg.showModal();
-  }catch(e){
-    dlg.setAttribute('open','open');
-    dlg.style.display='flex';
-  }
-  ta.focus();
-  ta.select();
-  ta.setSelectionRange(0, ta.value.length);
-}
-function closeEvccConfigDialog(){
-  const dlg = field('evccConfigDialog');
-  if(!dlg) return;
-  try{
-    dlg.close();
-  }catch(e){
-    dlg.removeAttribute('open');
-    dlg.style.display='none';
-  }
-}
 function copyCurrentCarToEvcc(){
   try{
-    const content = buildEvccCustomTemplate();
-    openEvccConfigDialog(content);
+    openEvccConfigDialog();
   }catch(err){
-    alert('EVCC-Konfiguration konnte nicht erzeugt werden: ' + (err.message || err));
+    alert('Konfigurationen konnten nicht erzeugt werden: ' + (err.message || err));
   }
 }
 
@@ -633,12 +727,18 @@ const closeBmwHowtoBtn = field('closeBmwHowtoBtn');
 if(closeBmwHowtoBtn) closeBmwHowtoBtn.onclick = (ev)=>{ ev.preventDefault(); closeBmwHowtoDialog(); };
 const closeBmwHowtoBottomBtn = field('closeBmwHowtoBottomBtn');
 if(closeBmwHowtoBottomBtn) closeBmwHowtoBottomBtn.onclick = (ev)=>{ ev.preventDefault(); closeBmwHowtoDialog(); };
-const evccConfigBtn = field('copyEvccBtn');
-if(evccConfigBtn) evccConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openEvccConfigDialog(buildEvccCustomTemplate()); };
+const evccConfigBtn = field('copyConfigsBtn');
+if(evccConfigBtn) evccConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openEvccConfigDialog(); };
 const closeEvccConfigBtn = field('closeEvccConfigBtn');
 if(closeEvccConfigBtn) closeEvccConfigBtn.onclick = (ev)=>{ ev.preventDefault(); closeEvccConfigDialog(); };
 const closeEvccConfigBottomBtn = field('closeEvccConfigBottomBtn');
 if(closeEvccConfigBottomBtn) closeEvccConfigBottomBtn.onclick = (ev)=>{ ev.preventDefault(); closeEvccConfigDialog(); };
+const copyEvccSectionBtn = field('copyEvccSectionBtn');
+if(copyEvccSectionBtn) copyEvccSectionBtn.onclick = async (ev)=>{ ev.preventDefault(); await copyTextRobust(field('evccConfigTextarea')?.value || ''); };
+const copyConfigurationSectionBtn = field('copyConfigurationSectionBtn');
+if(copyConfigurationSectionBtn) copyConfigurationSectionBtn.onclick = async (ev)=>{ ev.preventDefault(); await copyTextRobust(field('configurationConfigTextarea')?.value || ''); };
+const copyAutomationsSectionBtn = field('copyAutomationsSectionBtn');
+if(copyAutomationsSectionBtn) copyAutomationsSectionBtn.onclick = async (ev)=>{ ev.preventDefault(); await copyTextRobust(field('automationsConfigTextarea')?.value || ''); };
 
 
 
@@ -653,20 +753,21 @@ function openBmwHowto(){
   }
 }
 
-function openEvccConfigDialog(content){
+function openEvccConfigDialog(){
   const dlg = field('evccConfigDialog');
-  const ta = field('evccConfigTextarea');
-  if(!dlg || !ta) return;
-  ta.value = content || '';
+  const evccTa = field('evccConfigTextarea');
+  const cfgTa = field('configurationConfigTextarea');
+  const autoTa = field('automationsConfigTextarea');
+  if(!dlg || !evccTa || !cfgTa || !autoTa) return;
+  evccTa.value = buildEvccCustomTemplate();
+  cfgTa.value = buildConfigurationYamlTemplate();
+  autoTa.value = buildAutomationsYamlTemplate();
   try {
     dlg.showModal();
   } catch(e) {
     dlg.setAttribute('open','open');
     dlg.style.display = 'flex';
   }
-  ta.focus();
-  ta.select();
-  ta.setSelectionRange(0, ta.value.length);
 }
 function closeEvccConfigDialog(){
   const d = field('evccConfigDialog');
