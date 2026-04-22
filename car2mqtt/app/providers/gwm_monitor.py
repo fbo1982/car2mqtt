@@ -11,6 +11,7 @@ import paho.mqtt.client as mqtt
 
 from app.core.models import VehicleConfig
 from app.core.runtime_settings import RuntimeMqttSettings
+from app.mqtt.topic_builder import gwm_direct_source_root, gwm_direct_status_topic
 
 
 class GwmMonitorWorker:
@@ -54,10 +55,11 @@ class GwmMonitorWorker:
             self._thread.join(timeout=2)
 
     def _build_source_topics(self) -> tuple[str, str]:
-        configured_base = str(self.vehicle.provider_config.get("source_topic_base", "")).strip()
-        if not configured_base or configured_base.upper().startswith("GWM"):
-            return "GWM/+/status/#", "GWM/+"
-        return f"{configured_base}/status/#", configured_base
+        base_topic = str(getattr(self.settings, "base_topic", "car") or "car").strip().strip("/") or "car"
+        return (
+            gwm_direct_status_topic(base_topic, self.vehicle.license_plate),
+            gwm_direct_source_root(base_topic, self.vehicle.license_plate),
+        )
 
     def _run(self) -> None:
         backoff = 5

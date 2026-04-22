@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+
+from app.mqtt.topic_builder import normalize_plate
 import json
 import ssl
 import time
@@ -21,12 +23,16 @@ def ensure_ora_runtime_config(provider_config: Dict[str, Any], mqtt_settings) ->
         "GwId": str(provider_config.get("gw_id", "")).strip(),
         "BeanId": str(provider_config.get("bean_id", "")).strip(),
     }
+    base_topic = str(getattr(mqtt_settings, "base_topic", "car") or "car").strip().strip("/") or "car"
+    license_plate = normalize_plate(str(provider_config.get("license_plate", "")).strip())
+    topic_prefix_template = f"{base_topic}/GWM/{license_plate}/{{vin}}/status" if license_plate else f"{base_topic}/GWM/{{vin}}/status"
     mqtt = {
         "Host": mqtt_settings.host,
         "Username": mqtt_settings.username,
         "Password": mqtt_settings.password if getattr(mqtt_settings, "password_set", False) else "",
         "UseTls": bool(mqtt_settings.tls),
         "HomeAssistantDiscoveryTopic": None,
+        "TopicPrefixTemplate": topic_prefix_template,
     }
     return {
         "DeviceId": device_id,

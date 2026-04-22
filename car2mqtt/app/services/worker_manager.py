@@ -15,7 +15,7 @@ from app.core.vehicle_log_store import VehicleLogStore
 from app.mapping.bmw_mapper import map_bmw_payload
 from app.mapping.gwm_mapper import apply_gwm_metric
 from app.mqtt.client import LocalMqttClient
-from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic
+from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic, vehicle_root_topic
 from app.providers.bmw.streaming import BMWStreamWorker
 from app.providers.gwm_runner import GwmIntegratedWorker
 
@@ -197,56 +197,53 @@ class WorkerManager:
         vehicle = self.config_store.get_vehicle(vehicle_id)
         if not vehicle:
             return
-        configured_source_base = str(vehicle.provider_config.get("source_topic_base", "")).strip() or "GWM"
-        parts = source_topic.split("/")
 
-        if len(parts) >= 3 and parts[0] == "GWM":
-            discovered_source_id = parts[1]
-            relative_parts = parts[2:]
+        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
+        root_parts = [
+            str(getattr(mqtt_settings, "base_topic", "car") or "car").strip().strip("/") or "car",
+            "GWM",
+            "".join(ch for ch in vehicle.license_plate.upper().strip() if ch.isalnum()),
+        ]
+        topic_parts = source_topic.split("/")
+        discovered_source_id = ""
+        relative_parts: list[str] = []
+
+        if len(topic_parts) >= 5 and topic_parts[:3] == root_parts:
+            discovered_source_id = topic_parts[3]
+            relative_parts = topic_parts[4:]
+        elif len(topic_parts) >= 3 and topic_parts[0] == "GWM":
+            discovered_source_id = topic_parts[1]
+            relative_parts = topic_parts[2:]
         else:
-            discovered_source_id = ""
-            relative_parts = parts
+            relative_parts = topic_parts
 
         relative = "/".join(relative_parts)
-        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
-        if discovered_source_id:
-            target_topic = f"{raw_topic_base}/{discovered_source_id}/{relative}"
-        else:
-            target_topic = f"{raw_topic_base}/{relative}"
-
-        client = LocalMqttClient(mqtt_settings)
-        try:
-            client.connect()
-            client.publish(target_topic, payload)
-        finally:
-            client.disconnect()
+        source_root = f"{vehicle_root_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)}/{discovered_source_id}" if discovered_source_id else raw_topic_base
 
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
         metrics = dict(runtime.metrics or {})
-        parts = source_topic.split("/")
         item_id = ""
-        field_name = parts[-1] if parts else ""
-        if "items" in parts:
-            idx = parts.index("items")
-            if len(parts) > idx + 1:
-                item_id = parts[idx + 1]
-            if len(parts) > idx + 2:
-                field_name = parts[idx + 2]
+        field_name = relative_parts[-1] if relative_parts else ""
+        if "items" in relative_parts:
+            idx = relative_parts.index("items")
+            if len(relative_parts) > idx + 1:
+                item_id = relative_parts[idx + 1]
+            if len(relative_parts) > idx + 2:
+                field_name = relative_parts[idx + 2]
         metrics = apply_gwm_metric(metrics, item_id, payload, field_name)
 
         runtime.connection_state = "connected"
         runtime.connection_detail = "ORA Stream aktiv"
         runtime.auth_state = vehicle.provider_state.auth_state
-        runtime.raw_topic = target_topic if "target_topic" in locals() else raw_topic_base
+        runtime.raw_topic = source_root
         runtime.mapped_topic = mapped
         runtime.metrics = metrics
         runtime.provider_meta = {
             "vehicle_id": vehicle.provider_config.get("vehicle_id", vehicle.id),
-            "configured_source_topic_base": configured_source_base,
-            "discovered_source_id": discovered_source_id,
             "source_topic": source_topic,
-            "normalized_target_root": raw_topic_base,
-            "raw_target_topic": target_topic,
+            "source_root": source_root,
+            "relative_topic": relative,
+            "direct_source_enabled": True,
         }
 
         runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
@@ -261,7 +258,7 @@ class WorkerManager:
             finally:
                 client.disconnect()
 
-        self.log_store.append(vehicle_id, f"ORA Datenpunkt empfangen: {source_topic} -> {target_topic} = {payload}")
+        self.log_store.append(vehicle_id, f"ORA Datenpunkt empfangen: {source_topic} -> mapped aus car/... = {payload}")
         self._publish_meta(vehicle, runtime, mqtt_settings)
 
     def publish_vehicle_saved_meta(self, vehicle_id: str) -> None:
@@ -280,7 +277,7 @@ class WorkerManager:
             raise ValueError("ORA Fahrzeug nicht gefunden")
 
         seen = {"count": 0}
-        topic = "GWM/+/status/#"
+        topic = f"{mqtt_settings.base_topic}/GWM/{''.join(ch for ch in vehicle.license_plate.upper().strip() if ch.isalnum())}/+/status/#"
         client = paho_mqtt.Client(client_id=f"car2mqtt-gwmtest-{vehicle_id[:8]}")
         if mqtt_settings.username:
             client.username_pw_set(mqtt_settings.username, mqtt_settings.password)
@@ -301,7 +298,7 @@ class WorkerManager:
         client.on_message = on_message
         client.connect(mqtt_settings.host, mqtt_settings.port, 30)
         client.loop_start()
-        self.log_store.append(vehicle_id, f"ORA Test-Mapping gestartet: {topic} -> Zielwurzel cartest/gwm/{vehicle.license_plate}")
+        self.log_store.append(vehicle_id, f"ORA Test-Mapping gestartet: {topic} -> Mapping aus car/... Topics")
         time.sleep(wait_seconds)
         client.loop_stop()
         client.disconnect()

@@ -139,7 +139,7 @@ public class RunCommand:BaseCommand
         foreach (var vehicle in vehicles)
         {
             var status = await gwm.GetLastVehicleStatusAsync(vehicle.Vin, cancellationToken);
-            var topicPrefix = $"GWM/{vehicle.Vin}/status";
+            var topicPrefix = GetTopicPrefix(options, vehicle.Vin);
             if (publishHaDiscovery)
             {
                 await PublishHaDiscoveryAsync(mqtt, options, vehicle, status, cancellationToken);
@@ -167,9 +167,21 @@ public class RunCommand:BaseCommand
         }
     }
 
+
+    private static string GetTopicPrefix(Ora2MqttMqttOptions options, string vin)
+    {
+        var template = options.TopicPrefixTemplate;
+        if (String.IsNullOrWhiteSpace(template))
+        {
+            return $"GWM/{vin}/status";
+        }
+
+        return template.Replace("{vin}", vin, StringComparison.OrdinalIgnoreCase).Trim('/');
+    }
+
     private Task PublishHaDiscoveryAsync(IMqttClient mqtt, Ora2MqttMqttOptions options, Vehicle vehicle, VehicleStatus status, CancellationToken cancellationToken)
     {
-        var topicPrefix = $"GWM/{vehicle.Vin}/status";
+        var topicPrefix = GetTopicPrefix(options, vehicle.Vin);
         var json = JsonSerializer.Serialize(new
         {
             dev = new

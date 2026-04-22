@@ -63,6 +63,7 @@ class GwmProvider(BaseProvider):
             "poll_interval": poll_interval,
             "vehicle_id": vehicle_id,
             "capacity_kwh": capacity_kwh,
+            "license_plate": str(provider_config.get("license_plate", "")).strip(),
             "source_topic_base": str(provider_config.get("source_topic_base", "")).strip(),
             "verification_code": str(provider_config.get("verification_code", "")).strip(),
         }

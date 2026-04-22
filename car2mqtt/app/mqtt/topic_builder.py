@@ -17,5 +17,13 @@ def mapped_topic(base_topic: str, manufacturer: str, license_plate: str) -> str:
     return f"{vehicle_root_topic(base_topic, manufacturer, license_plate)}/mapped"
 
 
+def gwm_direct_source_root(base_topic: str, license_plate: str, source_id: str = "+") -> str:
+    return f"{vehicle_root_topic(base_topic, 'GWM', license_plate)}/{source_id}"
+
+
+def gwm_direct_status_topic(base_topic: str, license_plate: str, source_id: str = "+") -> str:
+    return f"{gwm_direct_source_root(base_topic, license_plate, source_id)}/status/#"
+
+
 def meta_topic(base_topic: str, manufacturer: str, license_plate: str) -> str:
     return f"{vehicle_root_topic(base_topic, manufacturer, license_plate)}/_meta"

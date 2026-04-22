@@ -139,7 +139,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.2",
+                "version": "1.1.3",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -185,7 +185,9 @@ def create_app() -> FastAPI:
         if not vehicle or vehicle.manufacturer != "gwm":
             raise HTTPException(status_code=404, detail="ORA Fahrzeug nicht gefunden")
         settings = load_runtime_mqtt_settings()
-        return render_ora2mqtt_yaml(vehicle.provider_config, settings)
+        provider_config = dict(vehicle.provider_config)
+        provider_config["license_plate"] = vehicle.license_plate
+        return render_ora2mqtt_yaml(provider_config, settings)
 
     @app.post("/api/mqtt/test")
     async def mqtt_test():
@@ -298,6 +300,7 @@ def create_app() -> FastAPI:
                         dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
 
         if payload.manufacturer == "gwm":
+            vehicle.provider_config["license_plate"] = vehicle.license_plate
             # Preserve persisted ORA session/token data so saving the form does not trigger a new verify each time.
             token_bundle = {}
             if existing and existing.manufacturer == "gwm":
