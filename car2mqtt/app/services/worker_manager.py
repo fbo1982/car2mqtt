@@ -120,6 +120,18 @@ class WorkerManager:
         vehicle = self.config_store.get_vehicle(vehicle_id)
         if not vehicle:
             return
+
+        if vehicle.manufacturer == "gwm":
+            if state in {"starting", "connected"}:
+                vehicle.provider_state.auth_state = "authorized"
+                vehicle.provider_state.auth_message = detail
+                vehicle.provider_state.last_error = ""
+                self.config_store.upsert_vehicle(vehicle)
+            elif state == "waiting_for_code":
+                vehicle.provider_state.auth_state = "error"
+                vehicle.provider_state.auth_message = detail
+                self.config_store.upsert_vehicle(vehicle)
+
         settings = load_runtime_mqtt_settings()
         raw_topic, mapped = self._runtime_topics(vehicle, settings)
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
