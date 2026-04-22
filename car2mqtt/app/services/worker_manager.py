@@ -208,10 +208,12 @@ class WorkerManager:
         discovered_source_id = ""
         relative_parts: list[str] = []
 
-        if len(topic_parts) >= 5 and topic_parts[:3] == root_parts:
+        root_parts_lower = [part.lower() for part in root_parts]
+
+        if len(topic_parts) >= 5 and [part.lower() for part in topic_parts[:3]] == root_parts_lower:
             discovered_source_id = topic_parts[3]
             relative_parts = topic_parts[4:]
-        elif len(topic_parts) >= 3 and topic_parts[0] == "GWM":
+        elif len(topic_parts) >= 3 and topic_parts[0].upper() == "GWM":
             discovered_source_id = topic_parts[1]
             relative_parts = topic_parts[2:]
         else:
@@ -277,7 +279,9 @@ class WorkerManager:
             raise ValueError("ORA Fahrzeug nicht gefunden")
 
         seen = {"count": 0}
-        topic = f"{mqtt_settings.base_topic}/GWM/{''.join(ch for ch in vehicle.license_plate.upper().strip() if ch.isalnum())}/+/status/#"
+        normalized_plate = "".join(ch for ch in vehicle.license_plate.upper().strip() if ch.isalnum())
+        topic = f"{mqtt_settings.base_topic}/gwm/{normalized_plate}/+/status/#"
+        legacy_topic = f"{mqtt_settings.base_topic}/GWM/{normalized_plate}/+/status/#"
         client = paho_mqtt.Client(client_id=f"car2mqtt-gwmtest-{vehicle_id[:8]}")
         if mqtt_settings.username:
             client.username_pw_set(mqtt_settings.username, mqtt_settings.password)
@@ -285,6 +289,7 @@ class WorkerManager:
         def on_connect(c, _u, _f, rc, _p=None):
             if rc == 0:
                 c.subscribe(topic, qos=mqtt_settings.qos)
+                c.subscribe(legacy_topic, qos=mqtt_settings.qos)
 
         def on_message(_c, _u, msg):
             try:

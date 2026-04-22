@@ -139,7 +139,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.5",
+                "version": "1.1.6",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -187,7 +187,7 @@ def create_app() -> FastAPI:
         settings = load_runtime_mqtt_settings()
         provider_config = dict(vehicle.provider_config)
         provider_config["license_plate"] = vehicle.license_plate
-        return render_ora2mqtt_yaml(provider_config, settings)
+        return render_ora2mqtt_yaml(provider_config, settings, license_plate=vehicle.license_plate)
 
     @app.post("/api/mqtt/test")
     async def mqtt_test():
@@ -321,7 +321,7 @@ def create_app() -> FastAPI:
             target_dir = Path(data_dir) / "providers" / vehicle.id
             target_dir.mkdir(parents=True, exist_ok=True)
             settings = load_runtime_mqtt_settings()
-            ora_config = render_ora2mqtt_yaml(vehicle.provider_config, settings)
+            ora_config = render_ora2mqtt_yaml(vehicle.provider_config, settings, license_plate=vehicle.license_plate)
             (target_dir / "ora2mqtt.yml").write_text(ora_config, encoding="utf-8")
             publish_ora_token_backup(vehicle.provider_config, settings, vehicle.id, lambda msg: log_store.append(vehicle.id, msg))
             vehicle.provider_state.auth_state = "authorized"

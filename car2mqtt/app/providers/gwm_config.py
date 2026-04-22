@@ -12,7 +12,7 @@ import paho.mqtt.client as mqtt
 import yaml
 
 
-def ensure_ora_runtime_config(provider_config: Dict[str, Any], mqtt_settings) -> Dict[str, Any]:
+def ensure_ora_runtime_config(provider_config: Dict[str, Any], mqtt_settings, license_plate: str = "") -> Dict[str, Any]:
     device_id = str(provider_config.get("device_id", "")).strip() or uuid.uuid4().hex
     provider_config["device_id"] = device_id
     country = str(provider_config.get("country", "DE")).strip().upper() or "DE"
@@ -24,8 +24,8 @@ def ensure_ora_runtime_config(provider_config: Dict[str, Any], mqtt_settings) ->
         "BeanId": str(provider_config.get("bean_id", "")).strip(),
     }
     base_topic = str(getattr(mqtt_settings, "base_topic", "car") or "car").strip().strip("/") or "car"
-    license_plate = normalize_plate(str(provider_config.get("license_plate", "")).strip())
-    topic_prefix_template = f"{base_topic}/GWM/{license_plate}/{{vin}}/status" if license_plate else f"{base_topic}/GWM/{{vin}}/status"
+    license_plate = normalize_plate(license_plate or str(provider_config.get("license_plate", "")).strip())
+    topic_prefix_template = f"{base_topic}/gwm/{license_plate}/{{vin}}/status" if license_plate else f"{base_topic}/gwm/{{vin}}/status"
     mqtt = {
         "Host": mqtt_settings.host,
         "Username": mqtt_settings.username,
@@ -42,8 +42,8 @@ def ensure_ora_runtime_config(provider_config: Dict[str, Any], mqtt_settings) ->
     }
 
 
-def render_ora2mqtt_yaml(provider_config: Dict[str, Any], mqtt_settings) -> str:
-    config = ensure_ora_runtime_config(provider_config, mqtt_settings)
+def render_ora2mqtt_yaml(provider_config: Dict[str, Any], mqtt_settings, license_plate: str = "") -> str:
+    config = ensure_ora_runtime_config(provider_config, mqtt_settings, license_plate=license_plate)
     return yaml.safe_dump(config, sort_keys=False, allow_unicode=True)
 
 

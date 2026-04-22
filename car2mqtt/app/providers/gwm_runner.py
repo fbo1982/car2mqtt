@@ -131,8 +131,8 @@ class GwmIntegratedWorker:
             if restored:
                 usable, missing = has_usable_ora_tokens(self.vehicle.provider_config)
 
-        ensure_ora_runtime_config(self.vehicle.provider_config, self.settings)
-        config_path.write_text(render_ora2mqtt_yaml(self.vehicle.provider_config, self.settings), encoding="utf-8")
+        ensure_ora_runtime_config(self.vehicle.provider_config, self.settings, license_plate=self.vehicle.license_plate)
+        config_path.write_text(render_ora2mqtt_yaml(self.vehicle.provider_config, self.settings, license_plate=self.vehicle.license_plate), encoding="utf-8")
         if usable:
             publish_ora_token_backup(self.vehicle.provider_config, self.settings, self.vehicle.id, self.log)
         return config_path
