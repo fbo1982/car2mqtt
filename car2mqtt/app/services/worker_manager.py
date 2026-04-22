@@ -114,13 +114,27 @@ class WorkerManager:
         settings = load_runtime_mqtt_settings()
         raw_topic, mapped = self._runtime_topics(vehicle, settings)
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
+        previous_state = runtime.connection_state or ""
+        previous_detail = runtime.connection_detail or ""
+
+        sticky_reauth = previous_state == "reauth_required" and state in {"disconnected", "error"}
+        if sticky_reauth:
+            runtime.auth_state = vehicle.provider_state.auth_state
+            runtime.raw_topic = raw_topic
+            runtime.mapped_topic = mapped
+            self.state_store.upsert(runtime)
+            self.log_store.append(vehicle_id, f"Status unverändert (ReAuth hat Vorrang): {state}: {detail}")
+            self._publish_meta(vehicle, runtime, settings)
+            return
+
         runtime.connection_state = state
         runtime.connection_detail = detail
         runtime.auth_state = vehicle.provider_state.auth_state
         runtime.raw_topic = raw_topic
         runtime.mapped_topic = mapped
         self.state_store.upsert(runtime)
-        self.log_store.append(vehicle_id, f"Status -> {state}: {detail}")
+        if previous_state != state or previous_detail != detail:
+            self.log_store.append(vehicle_id, f"Status -> {state}: {detail}")
         self._publish_meta(vehicle, runtime, settings)
 
     def _publish_meta(self, vehicle, runtime: VehicleRuntimeState, settings) -> None:
