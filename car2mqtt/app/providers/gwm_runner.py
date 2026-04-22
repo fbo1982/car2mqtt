@@ -234,6 +234,9 @@ class GwmIntegratedWorker:
             if self._stop.is_set():
                 return
             self.log(f"ORA MQTT Monitor getrennt (rc={rc})")
+            if self._reauth_required:
+                self.log("ORA MQTT Disconnect ignoriert - ReAuth Status hat Vorrang")
+                return
             self.on_disconnect(str(rc))
 
         def _on_message(_client, _userdata, msg):

@@ -72,6 +72,18 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         vehicle.manufacturer,
         vehicle.license_plate,
     )
+    effective_status = (runtime_state or {}).get("connection_state", "idle")
+    effective_detail = (runtime_state or {}).get("connection_detail", vehicle.provider_state.auth_message or "Noch keine Live-Daten")
+    if vehicle.manufacturer == "gwm":
+        reauth_text = " ".join([
+            str(effective_status or ""),
+            str(effective_detail or ""),
+            str(vehicle.provider_state.last_error or ""),
+            str(vehicle.provider_state.auth_message or ""),
+        ]).lower()
+        if "reauth erforderlich" in reauth_text or "refresh token abgelaufen" in reauth_text:
+            effective_status = "reauth_required"
+            effective_detail = vehicle.provider_state.auth_message or "ReAuth erforderlich - Refresh Token abgelaufen"
     return {
         "id": vehicle.id,
         "label": vehicle.label,
@@ -79,8 +91,8 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         "license_plate": vehicle.license_plate,
         "topic": raw_topic,
         "mapped_topic": (runtime_state or {}).get("mapped_topic") or mapped_topic(base_topic, vehicle.manufacturer, vehicle.license_plate),
-        "status": (runtime_state or {}).get("connection_state", "idle"),
-        "status_detail": (runtime_state or {}).get("connection_detail", vehicle.provider_state.auth_message or "Noch keine Live-Daten"),
+        "status": effective_status,
+        "status_detail": effective_detail,
         "auth_state": vehicle.provider_state.auth_state,
         "metrics": {
             "soc": metrics.get("soc"),

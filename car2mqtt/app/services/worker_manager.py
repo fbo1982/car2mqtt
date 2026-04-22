@@ -97,6 +97,15 @@ class WorkerManager:
 
     def _handle_gwm_error(self, vehicle_id: str, message: str) -> None:
         state = "reauth_required" if "reauth erforderlich" in (message or "").lower() else "error"
+        vehicle = self.config_store.get_vehicle(vehicle_id)
+        if vehicle:
+            vehicle.provider_state.auth_state = "error"
+            vehicle.provider_state.auth_message = message
+            if state == "reauth_required":
+                vehicle.provider_state.last_error = "Refresh Token abgelaufen"
+            else:
+                vehicle.provider_state.last_error = message
+            self.config_store.upsert_vehicle(vehicle)
         self._set_runtime_state(vehicle_id, state, message)
 
     def _runtime_topics(self, vehicle, settings, callback_topic: str = "") -> tuple[str, str]:
@@ -119,6 +128,9 @@ class WorkerManager:
 
         sticky_reauth = previous_state == "reauth_required" and state in {"disconnected", "error"}
         if sticky_reauth:
+            runtime.connection_state = "reauth_required"
+            if previous_detail:
+                runtime.connection_detail = previous_detail
             runtime.auth_state = vehicle.provider_state.auth_state
             runtime.raw_topic = raw_topic
             runtime.mapped_topic = mapped
