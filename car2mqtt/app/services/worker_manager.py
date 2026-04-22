@@ -220,6 +220,14 @@ class WorkerManager:
             relative_parts = topic_parts
 
         relative = "/".join(relative_parts)
+        relative_parts_lower = [part.lower() for part in relative_parts]
+        if "status" not in relative_parts_lower:
+            return
+        status_idx = relative_parts_lower.index("status")
+        metric_parts = relative_parts[status_idx + 1:]
+        relative = "/".join(metric_parts)
+        if not discovered_source_id and len(topic_parts) >= 4:
+            discovered_source_id = topic_parts[3]
         source_root = f"{vehicle_root_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)}/{discovered_source_id}" if discovered_source_id else raw_topic_base
 
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
@@ -228,13 +236,13 @@ class WorkerManager:
         for key in obsolete_present:
             metrics.pop(key, None)
         item_id = ""
-        field_name = relative_parts[-1] if relative_parts else ""
-        if "items" in relative_parts:
-            idx = relative_parts.index("items")
-            if len(relative_parts) > idx + 1:
-                item_id = relative_parts[idx + 1]
-            if len(relative_parts) > idx + 2:
-                field_name = relative_parts[idx + 2]
+        field_name = metric_parts[-1] if metric_parts else ""
+        if "items" in [part.lower() for part in metric_parts]:
+            idx = [part.lower() for part in metric_parts].index("items")
+            if len(metric_parts) > idx + 1:
+                item_id = metric_parts[idx + 1]
+            if len(metric_parts) > idx + 2:
+                field_name = metric_parts[idx + 2]
         metrics = apply_gwm_metric(metrics, item_id, payload, field_name)
 
         runtime.connection_state = "connected"
@@ -247,7 +255,7 @@ class WorkerManager:
             "vehicle_id": vehicle.provider_config.get("vehicle_id", vehicle.id),
             "source_topic": source_topic,
             "source_root": source_root,
-            "relative_topic": relative,
+            "relative_topic": "/".join(metric_parts),
             "direct_source_enabled": True,
         }
 
@@ -264,7 +272,7 @@ class WorkerManager:
         finally:
             client.disconnect()
 
-        self.log_store.append(vehicle_id, f"ORA Datenpunkt empfangen: {source_topic} -> mapped aus car/... = {payload}")
+        self.log_store.append(vehicle_id, f"ORA Datenpunkt empfangen: {source_topic} -> mapped aus {field_name or relative or "status"} = {payload}")
         self._publish_meta(vehicle, runtime, mqtt_settings)
 
     def publish_vehicle_saved_meta(self, vehicle_id: str) -> None:

@@ -101,9 +101,12 @@ class GwmIntegratedWorker:
 
     def _source_topics(self) -> tuple[str, str]:
         base_topic = str(getattr(self.settings, "base_topic", "car") or "car").strip().strip("/") or "car"
+        source_base = gwm_direct_source_root(base_topic, self.vehicle.license_plate)
+        # Broad subscribe on the configured vehicle root. We filter down to /status/... in the mapper,
+        # which is more tolerant if ora2mqtt publishes slightly different subpaths.
         return (
-            gwm_direct_status_topic(base_topic, self.vehicle.license_plate),
-            gwm_direct_source_root(base_topic, self.vehicle.license_plate),
+            f"{source_base}/#",
+            source_base,
         )
 
     def _ora_bin(self) -> Path:
