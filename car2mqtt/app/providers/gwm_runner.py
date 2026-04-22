@@ -42,6 +42,15 @@ class GwmIntegratedWorker:
         ]
         return any(m in lowered for m in markers)
 
+    def _is_reauth_required(self, text: str) -> bool:
+        lowered = (text or "").lower()
+        markers = [
+            "refresh token has expired",
+            "login token has expired",
+            "access token expired",
+        ]
+        return any(m in lowered for m in markers)
+
     def __init__(
         self,
         vehicle: VehicleConfig,
@@ -69,6 +78,7 @@ class GwmIntegratedWorker:
         self._thread: threading.Thread | None = None
         self._monitor_client: mqtt.Client | None = None
         self._proc: subprocess.Popen | None = None
+        self._reauth_required = False
 
     def _session_marker_path(self) -> Path:
         return self.vehicle_dir / ".ora_session_ready"
@@ -273,7 +283,10 @@ class GwmIntegratedWorker:
         for line in self._proc.stdout:
             if self._stop.is_set():
                 break
-            self.log(f"[ora2mqtt run] {line.rstrip()}")
+            cleaned = line.rstrip()
+            self.log(f"[ora2mqtt run] {cleaned}")
+            if self._is_reauth_required(cleaned):
+                self._reauth_required = True
 
     def _run(self) -> None:
         while not self._stop.is_set():
@@ -304,6 +317,7 @@ class GwmIntegratedWorker:
                     self.log("ORA Start ohne configure - Tokens vorhanden")
 
                 source_topic, source_base = self._source_topics()
+                self._reauth_required = False
                 self._start_monitor(source_topic, source_base)
                 self._start_run(config_path)
                 self._stream_runner_logs()
@@ -311,6 +325,10 @@ class GwmIntegratedWorker:
                     break
                 rc = self._proc.wait(timeout=1) if self._proc else -1
                 self.log(f"ORA Runner beendet (rc={rc})")
+                if self._reauth_required:
+                    self.on_error("ReAuth erforderlich - Refresh Token abgelaufen")
+                    self.log("ORA ReAuth erforderlich erkannt - kein automatischer Retry")
+                    break
                 self.on_disconnect(str(rc))
 
             except Exception as exc:

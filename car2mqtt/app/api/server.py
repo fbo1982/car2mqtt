@@ -28,6 +28,8 @@ from app.providers.gwm_config import (
     apply_ora_token_bundle,
     extract_ora_token_bundle,
     publish_ora_token_backup,
+    clear_ora_token_bundle,
+    clear_ora_token_backup,
 )
 from app.services.worker_manager import WorkerManager
 
@@ -139,7 +141,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.17",
+                "version": "1.1.18",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
@@ -403,6 +405,45 @@ def create_app() -> FastAPI:
         log_store.append(vehicle_id, "BMW Re-Auth gestartet")
         return session.model_dump(mode="json")
 
+
+
+    @app.post("/api/vehicles/{vehicle_id}/gwm/reauth/start")
+    async def gwm_reauth_start(vehicle_id: str):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle or vehicle.manufacturer != "gwm":
+            raise HTTPException(status_code=404, detail="ORA Fahrzeug nicht gefunden")
+        if not vehicle.enabled:
+            raise HTTPException(status_code=400, detail="Fahrzeug ist inaktiv. Bitte zuerst aktivieren.")
+        account = str(vehicle.provider_config.get("account", "")).strip()
+        password = str(vehicle.provider_config.get("password", "")).strip()
+        if not account or not password:
+            raise HTTPException(status_code=400, detail="ORA Benutzerkonto und Passwort müssen gesetzt sein")
+
+        settings = load_runtime_mqtt_settings()
+        worker_manager.stop_vehicle(vehicle.id)
+
+        provider_dir = Path(data_dir) / "providers" / vehicle.id
+        provider_dir.mkdir(parents=True, exist_ok=True)
+        config_path = provider_dir / "ora2mqtt.yml"
+        verification_path = provider_dir / "verification_code.txt"
+        for path in (config_path, verification_path):
+            try:
+                path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        clear_ora_token_bundle(vehicle.provider_config)
+        clear_ora_token_backup(settings, vehicle.id, lambda message: log_store.append(vehicle_id, message))
+        vehicle.provider_state.auth_state = "error"
+        vehicle.provider_state.auth_message = "ReAuth erforderlich - neue ORA Anmeldung wird aufgebaut"
+        vehicle.provider_state.last_error = "Refresh Token abgelaufen"
+        store.upsert_vehicle(vehicle)
+        log_store.append(vehicle_id, "ORA ReAuth angefordert - gespeicherte Tokens entfernt")
+
+        if settings.host:
+            worker_manager.start_or_restart_vehicle(vehicle.id, settings)
+
+        return {"status": "ok", "vehicle_id": vehicle_id, "message": "ORA ReAuth gestartet - bitte ggf. Verifikationscode eingeben."}
 
 
     @app.post("/api/vehicles/{vehicle_id}/gwm/test-map")

@@ -186,3 +186,41 @@ def restore_ora_tokens_from_mqtt(provider_config: Dict[str, Any], mqtt_settings,
             log_callback(f"ORA Tokens aus MQTT wiederhergestellt: {topic}")
         return True
     return False
+
+
+def clear_ora_token_bundle(provider_config: Dict[str, Any]) -> Dict[str, Any]:
+    for key in ORA_TOKEN_KEYS:
+        provider_config.pop(key, None)
+    return provider_config
+
+
+def clear_ora_token_backup(mqtt_settings, vehicle_id: str, log_callback=None) -> bool:
+    if not getattr(mqtt_settings, "host", ""):
+        if log_callback:
+            log_callback("ORA MQTT-Token-Backup löschen übersprungen - kein MQTT Host konfiguriert")
+        return False
+    topic = _ora_token_topic(vehicle_id, mqtt_settings)
+    client = mqtt.Client(client_id=f"car2mqtt-gwmclear-{uuid.uuid4().hex[:8]}")
+    if getattr(mqtt_settings, "username", ""):
+        client.username_pw_set(mqtt_settings.username, getattr(mqtt_settings, "password", ""))
+    if getattr(mqtt_settings, "tls", False):
+        client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
+    try:
+        client.connect(mqtt_settings.host, int(getattr(mqtt_settings, "port", 1883)), 10)
+        client.loop_start()
+        info = client.publish(topic, "", qos=int(getattr(mqtt_settings, "qos", 1)), retain=True)
+        info.wait_for_publish(timeout=5)
+        client.loop_stop()
+        client.disconnect()
+        if log_callback:
+            log_callback(f"ORA MQTT-Token-Backup gelöscht: {topic}")
+        return True
+    except Exception as exc:
+        if log_callback:
+            log_callback(f"ORA MQTT-Token-Backup konnte nicht gelöscht werden: {exc}")
+        try:
+            client.loop_stop()
+            client.disconnect()
+        except Exception:
+            pass
+        return False

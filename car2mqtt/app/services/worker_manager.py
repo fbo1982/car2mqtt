@@ -68,7 +68,7 @@ class WorkerManager:
                 vehicle_dir=vehicle_dir,
                 on_connect=lambda vid=vehicle_id: self._set_runtime_state(vid, "connected", "ORA Runner aktiv und lokaler MQTT Stream verbunden"),
                 on_disconnect=lambda rc, vid=vehicle_id: self._set_runtime_state(vid, "disconnected", f"ORA Verbindung getrennt (rc={rc})"),
-                on_error=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "error", message),
+                on_error=lambda message, vid=vehicle_id: self._handle_gwm_error(vid, message),
                 on_waiting=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "waiting_for_code", message),
                 on_detail=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "starting", message),
                 on_message=lambda topic, payload, vid=vehicle_id: self._handle_gwm_payload(vid, topic, payload, mqtt_settings),
@@ -94,6 +94,10 @@ class WorkerManager:
         self.log_store.append(vehicle_id, "Workerstart angefordert")
         self._set_runtime_state(vehicle_id, "starting", "Worker startet")
         self.workers[vehicle_id].start()
+
+    def _handle_gwm_error(self, vehicle_id: str, message: str) -> None:
+        state = "reauth_required" if "reauth erforderlich" in (message or "").lower() else "error"
+        self._set_runtime_state(vehicle_id, state, message)
 
     def _runtime_topics(self, vehicle, settings, callback_topic: str = "") -> tuple[str, str]:
         raw_topic = raw_vehicle_topic(
