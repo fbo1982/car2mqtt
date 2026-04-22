@@ -89,15 +89,9 @@ def apply_gwm_metric(mapped: dict[str, Any], item_id: str, value: Any, field_nam
             mapped["plugged_ts"] = ts
             mapped["charging"] = False
             mapped["charging_ts"] = ts
-    elif item_id in {"2042082", "2210012"} and boo is not None:
-        mapped["chargingPortConnected"] = boo
-        mapped["chargingPortConnected_ts"] = ts
     elif item_id == "2041301" and num is not None:
         mapped["limitSoc"] = num
         mapped["limitSoc_ts"] = ts
-    elif item_id == "2210005" and num is not None:
-        mapped["chargeLimitMode"] = num
-        mapped["chargeLimitMode_ts"] = ts
     elif item_id in {"2210010", "2220001"} and num is not None:
         mapped["altitude"] = num
         mapped["altitude_ts"] = ts
@@ -123,9 +117,6 @@ def apply_gwm_metric(mapped: dict[str, Any], item_id: str, value: Any, field_nam
     elif name == "updatetime" and num is not None:
         mapped["lastUpdateTimeRaw"] = num
         mapped["lastUpdateTimeRaw_ts"] = ts
-    elif name == "chargingport" and boo is not None:
-        mapped["chargingPortConnected"] = boo
-        mapped["chargingPortConnected_ts"] = ts
     elif name == "status" and raw.upper() in {"DISCONNECTED", "CONNECTED", "NOCHARGING", "CHARGING", "FASTCHARGING"}:
         if raw.upper() in {"DISCONNECTED"}:
             mapped["plugged"] = False
