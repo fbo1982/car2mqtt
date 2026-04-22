@@ -513,70 +513,74 @@ function buildConfigurationYamlTemplate(){
 }
 function buildAutomationsYamlTemplate(){
   const { entityBase, title, varPrefix } = getCopyConfigContext();
+  const J2O = "{{ '{{' }}";
+  const J2C = "{{ '}}' }}";
+  const J2SO = "{{ '{%' }}";
+  const J2SC = "{{ '%}' }}";
   return `    ##################################################
     # ${title}
     ##################################################
     ${varPrefix}vehicle: "${yamlEscape(title)}"
-    ${varPrefix}plugged_raw: "{{ states('sensor.${entityBase}_plugged') }}"
-    ${varPrefix}plugged_ts_raw: "{{ states('sensor.${entityBase}_plugged_ts') }}"
-    ${varPrefix}lat_raw: "{{ states('sensor.${entityBase}_latitude') }}"
-    ${varPrefix}lon_raw: "{{ states('sensor.${entityBase}_longitude') }}"
+    ${varPrefix}plugged_raw: "${J2O} states('sensor.${entityBase}_plugged') ${J2C}"
+    ${varPrefix}plugged_ts_raw: "${J2O} states('sensor.${entityBase}_plugged_ts') ${J2C}"
+    ${varPrefix}lat_raw: "${J2O} states('sensor.${entityBase}_latitude') ${J2C}"
+    ${varPrefix}lon_raw: "${J2O} states('sensor.${entityBase}_longitude') ${J2C}"
 
-    ${varPrefix}plugged: "{{ ${varPrefix}plugged_raw in ['true', 'True', 'on', '1'] }}"
+    ${varPrefix}plugged: "${J2O} ${varPrefix}plugged_raw in ['true', 'True', 'on', '1'] ${J2C}"
 
     ${varPrefix}ts: >
-      {% if ${varPrefix}plugged_ts_raw not in ['unknown', 'unavailable', '', none] %}
-        {{ as_timestamp(as_datetime(${varPrefix}plugged_ts_raw)) }}
-      {% else %}
-        {{ none }}
-      {% endif %}
+      ${J2SO} if ${varPrefix}plugged_ts_raw not in ['unknown', 'unavailable', '', none] ${J2SC}
+        ${J2O} as_timestamp(as_datetime(${varPrefix}plugged_ts_raw)) ${J2C}
+      ${J2SO} else ${J2SC}
+        ${J2O} none ${J2C}
+      ${J2SO} endif ${J2SC}
 
     ${varPrefix}has_gps: >
-      {{ ${varPrefix}lat_raw not in ['unknown', 'unavailable', '', none]
-         and ${varPrefix}lon_raw not in ['unknown', 'unavailable', '', none] }}
+      ${J2O} ${varPrefix}lat_raw not in ['unknown', 'unavailable', '', none]
+         and ${varPrefix}lon_raw not in ['unknown', 'unavailable', '', none] ${J2C}
 
     ${varPrefix}lat: >
-      {% if ${varPrefix}has_gps %}
-        {{ ${varPrefix}lat_raw | float(0) }}
-      {% else %}
-        {{ none }}
-      {% endif %}
+      ${J2SO} if ${varPrefix}has_gps ${J2SC}
+        ${J2O} ${varPrefix}lat_raw | float(0) ${J2C}
+      ${J2SO} else ${J2SC}
+        ${J2O} none ${J2C}
+      ${J2SO} endif ${J2SC}
 
     ${varPrefix}lon: >
-      {% if ${varPrefix}has_gps %}
-        {{ ${varPrefix}lon_raw | float(0) }}
-      {% else %}
-        {{ none }}
-      {% endif %}
+      ${J2SO} if ${varPrefix}has_gps ${J2SC}
+        ${J2O} ${varPrefix}lon_raw | float(0) ${J2C}
+      ${J2SO} else ${J2SC}
+        ${J2O} none ${J2C}
+      ${J2SO} endif ${J2SC}
 
     ${varPrefix}delta: >
-      {% if connect_ts is not none and ${varPrefix}ts is not none %}
-        {{ (connect_ts - ${varPrefix}ts) | abs }}
-      {% else %}
-        {{ 999999 }}
-      {% endif %}
+      ${J2SO} if connect_ts is not none and ${varPrefix}ts is not none ${J2SC}
+        ${J2O} (connect_ts - ${varPrefix}ts) | abs ${J2C}
+      ${J2SO} else ${J2SC}
+        ${J2O} 999999 ${J2C}
+      ${J2SO} endif ${J2SC}
 
     ${varPrefix}distance_m: >
-      {% if ${varPrefix}lat is not none and ${varPrefix}lon is not none and home_lat != 0 and home_lon != 0 %}
-        {% set pi = 3.141592653589793 %}
-        {% set r = 6371000 %}
-        {% set lat1 = home_lat * pi / 180 %}
-        {% set lon1 = home_lon * pi / 180 %}
-        {% set lat2 = ${varPrefix}lat * pi / 180 %}
-        {% set lon2 = ${varPrefix}lon * pi / 180 %}
-        {% set dlat = lat2 - lat1 %}
-        {% set dlon = lon2 - lon1 %}
-        {% set a = (sin(dlat / 2) ** 2) + cos(lat1) * cos(lat2) * (sin(dlon / 2) ** 2) %}
-        {% set c = 2 * atan2(sqrt(a), sqrt(1 - a)) %}
-        {{ r * c }}
-      {% else %}
-        {{ 999999 }}
-      {% endif %}
+      ${J2SO} if ${varPrefix}lat is not none and ${varPrefix}lon is not none and home_lat != 0 and home_lon != 0 ${J2SC}
+        ${J2SO} set pi = 3.141592653589793 ${J2SC}
+        ${J2SO} set r = 6371000 ${J2SC}
+        ${J2SO} set lat1 = home_lat * pi / 180 ${J2SC}
+        ${J2SO} set lon1 = home_lon * pi / 180 ${J2SC}
+        ${J2SO} set lat2 = ${varPrefix}lat * pi / 180 ${J2SC}
+        ${J2SO} set lon2 = ${varPrefix}lon * pi / 180 ${J2SC}
+        ${J2SO} set dlat = lat2 - lat1 ${J2SC}
+        ${J2SO} set dlon = lon2 - lon1 ${J2SC}
+        ${J2SO} set a = (sin(dlat / 2) ** 2) + cos(lat1) * cos(lat2) * (sin(dlon / 2) ** 2) ${J2SC}
+        ${J2SO} set c = 2 * atan2(sqrt(a), sqrt(1 - a)) ${J2SC}
+        ${J2O} r * c ${J2C}
+      ${J2SO} else ${J2SC}
+        ${J2O} 999999 ${J2C}
+      ${J2SO} endif ${J2SC}
 
     ${varPrefix}match: >
-      {{ ${varPrefix}plugged
+      ${J2O} ${varPrefix}plugged
          and (${varPrefix}delta | float(999999) <= 20)
-         and (${varPrefix}distance_m | float(999999) <= 100) }}`;
+         and (${varPrefix}distance_m | float(999999) <= 100) ${J2C}`;
 }
 async function copyTextRobust(content){
   if(navigator.clipboard){
