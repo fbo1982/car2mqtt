@@ -117,21 +117,5 @@ def apply_gwm_metric(mapped: dict[str, Any], item_id: str, value: Any, field_nam
     elif name == "updatetime" and num is not None:
         mapped["lastUpdateTimeRaw"] = num
         mapped["lastUpdateTimeRaw_ts"] = ts
-    elif name == "status" and raw.upper() in {"DISCONNECTED", "CONNECTED", "NOCHARGING", "CHARGING", "FASTCHARGING"}:
-        if raw.upper() in {"DISCONNECTED"}:
-            mapped["plugged"] = False
-            mapped["plugged_ts"] = ts
-            mapped["charging"] = False
-            mapped["charging_ts"] = ts
-        elif raw.upper() in {"CONNECTED", "NOCHARGING"}:
-            mapped["plugged"] = True
-            mapped["plugged_ts"] = ts
-            mapped["charging"] = False
-            mapped["charging_ts"] = ts
-        elif raw.upper() in {"CHARGING", "FASTCHARGING"}:
-            mapped["plugged"] = True
-            mapped["plugged_ts"] = ts
-            mapped["charging"] = True
-            mapped["charging_ts"] = ts
 
     return mapped

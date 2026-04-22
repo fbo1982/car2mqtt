@@ -224,6 +224,9 @@ class WorkerManager:
 
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
         metrics = dict(runtime.metrics or {})
+        obsolete_present = {key for key in GWM_OBSOLETE_MAPPED_KEYS if key in metrics}
+        for key in obsolete_present:
+            metrics.pop(key, None)
         item_id = ""
         field_name = relative_parts[-1] if relative_parts else ""
         if "items" in relative_parts:
@@ -251,14 +254,15 @@ class WorkerManager:
         runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         self.state_store.upsert(runtime)
 
-        if metrics:
-            client = LocalMqttClient(mqtt_settings)
-            try:
-                client.connect()
-                for key, value in metrics.items():
-                    client.publish(f"{mapped}/{key}", value)
-            finally:
-                client.disconnect()
+        client = LocalMqttClient(mqtt_settings)
+        try:
+            client.connect()
+            for key in sorted(obsolete_present):
+                client.publish(f"{mapped}/{key}", "", retain=True)
+            for key, value in metrics.items():
+                client.publish(f"{mapped}/{key}", value)
+        finally:
+            client.disconnect()
 
         self.log_store.append(vehicle_id, f"ORA Datenpunkt empfangen: {source_topic} -> mapped aus car/... = {payload}")
         self._publish_meta(vehicle, runtime, mqtt_settings)
