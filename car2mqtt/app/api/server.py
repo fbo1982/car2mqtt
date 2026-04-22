@@ -64,6 +64,45 @@ def _normalize_vehicle_id(license_plate: str) -> str:
 
 
 
+
+
+def _read_existing_homezone() -> dict[str, str | bool]:
+    candidates = [
+        Path(os.getenv("HA_CONFIG_DIR", "/config")) / "automations.yaml",
+        Path("/config/automations.yaml"),
+    ]
+    seen: set[str] = set()
+    for path in candidates:
+        try:
+            resolved = path.resolve()
+        except Exception:
+            resolved = path
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        if not path.exists():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        lat_match = re.search(r"""(?m)^\s*home_lat\s*:\s*([\"']?)(.+?)\1\s*$""", text)
+        lon_match = re.search(r"""(?m)^\s*home_lon\s*:\s*([\"']?)(.+?)\1\s*$""", text)
+        if lat_match and lon_match:
+            return {
+                "found": True,
+                "home_lat": lat_match.group(2).strip(),
+                "home_lon": lon_match.group(2).strip(),
+                "source": str(path),
+            }
+    return {
+        "found": False,
+        "home_lat": "{{ state_attr('zone.home', 'latitude') | float(0) }}",
+        "home_lon": "{{ state_attr('zone.home', 'longitude') | float(0) }}",
+        "source": "",
+    }
+
 def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, base_topic: str) -> dict:
     metrics = (runtime_state or {}).get("metrics", {})
     provider_meta = (runtime_state or {}).get("provider_meta", {})
@@ -153,11 +192,15 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.21",
+                "version": "1.1.22",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
         )
+
+    @app.get("/api/helper/homezone")
+    async def get_helper_homezone():
+        return _read_existing_homezone()
 
     @app.get("/api/providers")
     async def get_providers():

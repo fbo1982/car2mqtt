@@ -523,12 +523,20 @@ function buildHelperConfigurationYamlTemplate(){
 
 `);
 }
-function buildHelperAutomationsYamlTemplate(){
+function escapeHelperValue(value, fallback){
+  const v = (value || '').toString().trim();
+  return yamlEscape(v || fallback || '');
+}
+
+function buildHelperAutomationsYamlTemplate(homezone){
   const helperCards = getHelperCards();
   const J2O = "{{ '{{' }}";
   const J2C = "{{ '}}' }}";
   const J2SO = "{{ '{%' }}";
   const J2SC = "{{ '%}' }}";
+  const homeLatValue = escapeHelperValue(homezone?.home_lat, `${J2O} state_attr('zone.home', 'latitude') | float(0) ${J2C}`);
+  const homeLonValue = escapeHelperValue(homezone?.home_lon, `${J2O} state_attr('zone.home', 'longitude') | float(0) ${J2C}`);
+  const foundExisting = !!homezone?.found;
   const cardVars = helperCards.map((card, index) => {
     const id = normalizeVehicleIdFromPlate(card.license_plate || card.id || '');
     const entityBase = `car_${manufacturerTopicPrefix(card.manufacturer)}_${id.toLowerCase()}`;
@@ -617,12 +625,14 @@ function buildHelperAutomationsYamlTemplate(){
     ##################################################
     # Homezone: Standort der Wallbox einsetzen
     # Hier deine Home-Assistant-Zone oder feste Koordinaten eintragen
+    # ${J2O} 'Vorhandene Homezone aus automations.yaml übernommen' if false else '' ${J2C}
     # Beispiel Zone:
     # home_lat: "${J2O} state_attr('zone.home', 'latitude') | float(0) ${J2C}"
     # home_lon: "${J2O} state_attr('zone.home', 'longitude') | float(0) ${J2C}"
     ##################################################
-    home_lat: "${J2O} state_attr('zone.home', 'latitude') | float(0) ${J2C}"
-    home_lon: "${J2O} state_attr('zone.home', 'longitude') | float(0) ${J2C}"
+    ${foundExisting ? '# Vorhandene Homezone aus automations.yaml übernommen' : '# Keine vorhandene Homezone gefunden - Standard zone.home verwendet'}
+    home_lat: "${homeLatValue}"
+    home_lon: "${homeLonValue}"
     connect_ts: "${J2O} as_timestamp(states.sensor.evcc_loadpoint_1_connected.last_updated) ${J2C}"
 
 ${cardVars}
@@ -1074,7 +1084,12 @@ function openHelperConfigDialog(){
   const scriptsTa = field('helperScriptsConfigTextarea');
   if(!dlg || !cfgTa || !autoTa || !scriptsTa) return;
   cfgTa.value = buildHelperConfigurationYamlTemplate();
-  autoTa.value = buildHelperAutomationsYamlTemplate();
+  let helperHomezone = null;
+  try {
+    const resp = await fetch('/api/helper/homezone');
+    if(resp.ok) helperHomezone = await resp.json();
+  } catch(e) {}
+  autoTa.value = buildHelperAutomationsYamlTemplate(helperHomezone);
   scriptsTa.value = buildHelperScriptsYamlTemplate();
   try {
     dlg.showModal();
