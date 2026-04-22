@@ -51,24 +51,47 @@ def apply_gwm_metric(mapped: dict[str, Any], item_id: str, value: Any, field_nam
     elif item_id in {"2103010", "2210002"} and num is not None:  # odometer km
         mapped["odometer"] = num
         mapped["odometer_ts"] = ts
-    elif item_id in {"2041142"}:
-        if boo is not None:
-            mapped["charging"] = boo
+    elif item_id == "2041142":
+        status_num = None
+        if num is not None:
+            try:
+                status_num = int(num)
+            except Exception:
+                status_num = None
+
+        if status_num == 0:
+            mapped["plugged"] = False
+            mapped["plugged_ts"] = ts
+            mapped["charging"] = False
             mapped["charging_ts"] = ts
-            if boo:
-                mapped["plugged"] = True
-                mapped["plugged_ts"] = ts
-        elif raw.upper() in {"CHARGING", "FASTCHARGING"}:
-            mapped["charging"] = True
-            mapped["charging_ts"] = ts
+        elif status_num == 1:
             mapped["plugged"] = True
             mapped["plugged_ts"] = ts
-        elif raw.upper() in {"NOCHARGING", "STOPPED"}:
+            mapped["charging"] = True
+            mapped["charging_ts"] = ts
+        elif status_num in {2, 5}:
+            mapped["plugged"] = True
+            mapped["plugged_ts"] = ts
+            mapped["charging"] = False
+            mapped["charging_ts"] = ts
+        elif raw.upper() in {"CHARGING", "FASTCHARGING"}:
+            mapped["plugged"] = True
+            mapped["plugged_ts"] = ts
+            mapped["charging"] = True
+            mapped["charging_ts"] = ts
+        elif raw.upper() in {"DISCONNECTED", "UNPLUGGED", "NOT CHARGING", "NOT_CHARGING"}:
+            mapped["plugged"] = False
+            mapped["plugged_ts"] = ts
+            mapped["charging"] = False
+            mapped["charging_ts"] = ts
+        elif raw.upper() in {"CONNECTED", "NOCHARGING", "STOPPED", "AWAITING CHARGING", "WAITING FOR POWER"}:
+            mapped["plugged"] = True
+            mapped["plugged_ts"] = ts
             mapped["charging"] = False
             mapped["charging_ts"] = ts
     elif item_id in {"2042082", "2210012"} and boo is not None:
-        mapped["plugged"] = boo
-        mapped["plugged_ts"] = ts
+        mapped["chargingPortConnected"] = boo
+        mapped["chargingPortConnected_ts"] = ts
     elif item_id == "2041301" and num is not None:
         mapped["limitSoc"] = num
         mapped["limitSoc_ts"] = ts
@@ -101,8 +124,8 @@ def apply_gwm_metric(mapped: dict[str, Any], item_id: str, value: Any, field_nam
         mapped["lastUpdateTimeRaw"] = num
         mapped["lastUpdateTimeRaw_ts"] = ts
     elif name == "chargingport" and boo is not None:
-        mapped["plugged"] = boo
-        mapped["plugged_ts"] = ts
+        mapped["chargingPortConnected"] = boo
+        mapped["chargingPortConnected_ts"] = ts
     elif name == "status" and raw.upper() in {"DISCONNECTED", "CONNECTED", "NOCHARGING", "CHARGING", "FASTCHARGING"}:
         if raw.upper() in {"DISCONNECTED"}:
             mapped["plugged"] = False
