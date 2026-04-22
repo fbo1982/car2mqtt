@@ -80,7 +80,7 @@ select, option {
 
   <section class="section-header">
     <div><div class="eyebrow">Live Übersicht</div><h2>Fahrzeuge</h2></div>
-    <div class="toolbar"><button id="mqttTestBtn" class="ghost-btn">MQTT testen</button></div>
+    <div class="toolbar"><button id="copyHelperBtn" class="ghost-btn">Copy Helper</button><button id="mqttTestBtn" class="ghost-btn">MQTT testen</button></div>
   </section>
 
   <section id="cardsGrid" class="cards-grid"></section>
@@ -358,6 +358,36 @@ select, option {
 
 
 
+<dialog id="helperConfigDialog" class="modal">
+  <div class="panel wide">
+    <div class="modal-head">
+      <div><div class="eyebrow">Copy</div><h3>Copy Helper</h3></div>
+      <button id="closeHelperConfigBtn" type="button" class="icon-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="howto-content">
+        <div class="howto-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h4>configuration.yaml</h4><button id="copyHelperConfigurationSectionBtn" type="button" class="ghost-btn">Kopieren</button></div>
+          <div class="field"><label>MQTT Sensoren und Topics für EVCC-Fahrzeugerkennung</label><textarea id="helperConfigurationConfigTextarea" style="min-height:420px"></textarea></div>
+        </div>
+        <div class="howto-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h4>automations.yaml</h4><button id="copyHelperAutomationsSectionBtn" type="button" class="ghost-btn">Kopieren</button></div>
+          <div class="field"><label>Automation für Fahrzeugerkennung und Übergabe an EVCC</label><textarea id="helperAutomationsConfigTextarea" style="min-height:520px"></textarea></div>
+        </div>
+        <div class="howto-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h4>scripts.yaml</h4><button id="copyHelperScriptsSectionBtn" type="button" class="ghost-btn">Kopieren</button></div>
+          <div class="field"><label>Skript zum Setzen des Fahrzeugs in EVCC</label><textarea id="helperScriptsConfigTextarea" style="min-height:320px"></textarea></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <div class="spacer"></div>
+      <button id="closeHelperConfigBottomBtn" type="button" class="ghost-btn">Schließen</button>
+    </div>
+  </div>
+</dialog>
+
+
 <dialog id="evccConfigDialog" class="modal">
   <div class="panel wide">
     <div class="modal-head">
@@ -426,6 +456,249 @@ function getCopyConfigContext(){
   const varPrefix = `${id.toLowerCase()}_`;
   return { manufacturer, manufacturerPrefix, id, rawPlate, title, current, capacity, topicBase, entityBase, varPrefix };
 }
+function getHelperCards(){
+  return (cards || []).filter(card => card && card.license_plate && card.manufacturer);
+}
+function buildHelperConfigurationYamlTemplate(){
+  const helperCards = getHelperCards();
+  const blocks = [];
+  blocks.push(`#######################################
+## EVCC Basis-Topics ##
+#######################################
+
+    - name: "evcc Loadpoint 1 Connected"
+      unique_id: evcc_lp1_connected
+      state_topic: "evcc/loadpoints/1/connected"
+      availability_topic: "evcc/status"
+      payload_available: "online"
+      payload_not_available: "offline"
+
+    - name: "evcc Loadpoint 1 Vehicle"
+      unique_id: evcc_lp1_vehicle
+      state_topic: "evcc/loadpoints/1/vehicleTitle"
+      availability_topic: "evcc/status"
+      payload_available: "online"
+      payload_not_available: "offline"`);
+  helperCards.forEach(card => {
+    const manufacturer = manufacturerTopicPrefix(card.manufacturer);
+    const id = normalizeVehicleIdFromPlate(card.license_plate || card.id || '');
+    const rawPlate = String(card.license_plate || id);
+    const title = String(card.label || id);
+    const topicBase = `car/${manufacturer}/${id}/mapped`;
+    const entityBase = `car_${manufacturer}_${id.toLowerCase()}`;
+    const displayManufacturer = manufacturer.toUpperCase();
+    blocks.push(`#######################################
+## ${rawPlate} ${title} ##
+#######################################
+
+    - name: "Car ${displayManufacturer} ${id} Plugged TS"
+      unique_id: ${entityBase}_plugged_ts
+      state_topic: "${topicBase}/plugged_ts"
+      availability_topic: "evcc/status"
+      payload_available: "online"
+      payload_not_available: "offline"
+
+    - name: "Car ${displayManufacturer} ${id} Plugged"
+      unique_id: ${entityBase}_plugged
+      state_topic: "${topicBase}/plugged"
+      availability_topic: "evcc/status"
+      payload_available: "online"
+      payload_not_available: "offline"
+
+    - name: "Car ${displayManufacturer} ${id} Latitude"
+      unique_id: ${entityBase}_latitude
+      state_topic: "${topicBase}/latitude"
+      availability_topic: "evcc/status"
+      payload_available: "online"
+      payload_not_available: "offline"
+
+    - name: "Car ${displayManufacturer} ${id} Longitude"
+      unique_id: ${entityBase}_longitude
+      state_topic: "${topicBase}/longitude"
+      availability_topic: "evcc/status"
+      payload_available: "online"
+      payload_not_available: "offline"`);
+  });
+  return blocks.join(`
+
+`);
+}
+function buildHelperAutomationsYamlTemplate(){
+  const helperCards = getHelperCards();
+  const J2O = "{{ '{{' }}";
+  const J2C = "{{ '}}' }}";
+  const J2SO = "{{ '{%' }}";
+  const J2SC = "{{ '%}' }}";
+  const cardVars = helperCards.map((card, index) => {
+    const id = normalizeVehicleIdFromPlate(card.license_plate || card.id || '');
+    const entityBase = `car_${manufacturerTopicPrefix(card.manufacturer)}_${id.toLowerCase()}`;
+    const prefix = `v${index + 1}_`;
+    const title = String(card.label || id);
+    return `    ##################################################
+    # ${title}
+    ##################################################
+    ${prefix}vehicle: "${yamlEscape(title)}"
+    ${prefix}plugged_raw: "${J2O} states('sensor.${entityBase}_plugged') ${J2C}"
+    ${prefix}plugged_ts_raw: "${J2O} states('sensor.${entityBase}_plugged_ts') ${J2C}"
+    ${prefix}lat_raw: "${J2O} states('sensor.${entityBase}_latitude') ${J2C}"
+    ${prefix}lon_raw: "${J2O} states('sensor.${entityBase}_longitude') ${J2C}"
+
+    ${prefix}plugged: "${J2O} ${prefix}plugged_raw in ['true', 'True', 'on', '1'] ${J2C}"
+
+    ${prefix}ts: >
+      ${J2SO} if ${prefix}plugged_ts_raw not in ['unknown', 'unavailable', '', none] ${J2SC}
+        ${J2O} as_timestamp(as_datetime(${prefix}plugged_ts_raw)) ${J2C}
+      ${J2SO} else ${J2SC}
+        ${J2O} none ${J2C}
+      ${J2SO} endif ${J2SC}
+
+    ${prefix}has_gps: >
+      ${J2O} ${prefix}lat_raw not in ['unknown', 'unavailable', '', none]
+         and ${prefix}lon_raw not in ['unknown', 'unavailable', '', none] ${J2C}
+
+    ${prefix}lat: >
+      ${J2SO} if ${prefix}has_gps ${J2SC}
+        ${J2O} ${prefix}lat_raw | float(0) ${J2C}
+      ${J2SO} else ${J2SC}
+        ${J2O} none ${J2C}
+      ${J2SO} endif ${J2SC}
+
+    ${prefix}lon: >
+      ${J2SO} if ${prefix}has_gps ${J2SC}
+        ${J2O} ${prefix}lon_raw | float(0) ${J2C}
+      ${J2SO} else ${J2SC}
+        ${J2O} none ${J2C}
+      ${J2SO} endif ${J2SC}
+
+    ${prefix}delta: >
+      ${J2SO} if connect_ts is not none and ${prefix}ts is not none ${J2SC}
+        ${J2O} (connect_ts - ${prefix}ts) | abs ${J2C}
+      ${J2SO} else ${J2SC}
+        ${J2O} 999999 ${J2C}
+      ${J2SO} endif ${J2SC}
+
+    ${prefix}distance_m: >
+      ${J2SO} if ${prefix}has_gps ${J2SC}
+        ${J2O} distance(${prefix}lat, ${prefix}lon, home_lat, home_lon) * 1000 ${J2C}
+      ${J2SO} else ${J2SC}
+        ${J2O} 999999 ${J2C}
+      ${J2SO} endif ${J2SC}
+
+    ${prefix}match: >
+      ${J2O} ${prefix}plugged
+         and ${prefix}ts is not none
+         and ${prefix}delta | float(999999) < 300
+         and ${prefix}distance_m | float(999999) < 300 ${J2C}`;
+  }).join(`
+
+`);
+  const matchConditions = helperCards.map((card, index) => `      ${J2SO} if v${index+1}_match and v${index+1}_delta | float(999999) < ns.delta ${J2SC}
+        ${J2SO} set ns.vehicle = v${index+1}_vehicle ${J2SC}
+        ${J2SO} set ns.delta = v${index+1}_delta | float(999999) ${J2SC}
+      ${J2SO} endif ${J2SC}`).join(`
+`);
+  const logDetails = helperCards.map((card, index) => `          ${yamlEscape(card.label || card.license_plate || card.id || ('Vehicle ' + (index+1)))}: plugged='${J2O} v${index+1}_plugged ${J2C}' ts='${J2O} v${index+1}_ts ${J2C}' delta='${J2O} v${index+1}_delta ${J2C}'
+          dist='${J2O} v${index+1}_distance_m | round(1) ${J2C}m' match='${J2O} v${index+1}_match ${J2C}'`).join(`
+`);
+  return `##########################################
+########## EVCC AUTOMATISIERUNG ##########
+##########################################
+
+- alias: Daheimladen Start HA Fahrzeugentscheidung
+  id: daheimladen_start_ha_vehicle_decision
+  mode: restart
+
+  trigger:
+    - platform: state
+      entity_id: sensor.evcc_loadpoint_1_connected
+      to: "true"
+
+  variables:
+    ##################################################
+    # Referenz: Standort über Zone (CAE)
+    ##################################################
+    home_lat: "${J2O} state_attr('zone.cae_automation_gmbh', 'latitude') | float(0) ${J2C}"
+    home_lon: "${J2O} state_attr('zone.cae_automation_gmbh', 'longitude') | float(0) ${J2C}"
+    connect_ts: "${J2O} as_timestamp(states.sensor.evcc_loadpoint_1_connected.last_updated) ${J2C}"
+
+${cardVars}
+
+    matched_vehicle: >
+      ${J2SO} set ns = namespace(vehicle='unknown', delta=999999) ${J2SC}
+${matchConditions}
+      ${J2O} ns.vehicle ${J2C}
+
+  action:
+    - service: system_log.write
+      data:
+        level: warning
+        message: >
+          [HA DECISION]
+          connect_ts='${J2O} connect_ts ${J2C}'
+${logDetails}
+          matched='${J2O} matched_vehicle ${J2C}'
+
+    - if:
+        - condition: template
+          value_template: "${J2O} matched_vehicle != 'unknown' ${J2C}"
+      then:
+        - service: script.daheimladen_force_evcc_vehicle
+          data:
+            vehicle: "${J2O} matched_vehicle ${J2C}"`;
+}
+function buildHelperScriptsYamlTemplate(){
+  const J2O = "{{ '{{' }}";
+  const J2C = "{{ '}}' }}";
+  return `##########################################
+########## DAHEIMLADEN SCRIPTS ###########
+##########################################
+
+daheimladen_force_evcc_vehicle:
+  alias: Daheimladen - Fahrzeug hart in evcc setzen
+  mode: queued
+  max: 20
+  fields:
+    vehicle:
+      description: Fahrzeugname
+      example: Fahrzeugname aus Automation
+
+  sequence:
+    - variables:
+        car: "${J2O} vehicle | default('unknown') ${J2C}"
+
+    - if:
+        - condition: template
+          value_template: "${J2O} car not in ['', 'unknown', 'unavailable', none] ${J2C}"
+      then:
+        - service: mqtt.publish
+          data:
+            topic: "evcc/loadpoints/1/vehicle/set"
+            payload: ""
+            qos: 1
+            retain: false
+
+        - service: mqtt.publish
+          data:
+            topic: "evcc/loadpoints/1/vehicle/set"
+            payload: "${J2O} car ${J2C}"
+            qos: 1
+            retain: false
+
+        - service: mqtt.publish
+          data:
+            topic: "evcc/loadpoints/1/vehicle/set"
+            payload: "${J2O} car ${J2C}"
+            qos: 1
+            retain: false
+
+        - service: mqtt.publish
+          data:
+            topic: "evcc/loadpoints/1/vehicle/set"
+            payload: "${J2O} car ${J2C}"
+            qos: 1
+            retain: false`;
+}
+
 function buildEvccCustomTemplate(){
   const { id, title, capacity, topicBase } = getCopyConfigContext();
   return `###########################################
@@ -743,7 +1016,18 @@ const copyConfigurationSectionBtn = field('copyConfigurationSectionBtn');
 if(copyConfigurationSectionBtn) copyConfigurationSectionBtn.onclick = async (ev)=>{ ev.preventDefault(); await copyTextRobust(field('configurationConfigTextarea')?.value || ''); };
 const copyAutomationsSectionBtn = field('copyAutomationsSectionBtn');
 if(copyAutomationsSectionBtn) copyAutomationsSectionBtn.onclick = async (ev)=>{ ev.preventDefault(); await copyTextRobust(field('automationsConfigTextarea')?.value || ''); };
-
+const helperConfigBtn = field('copyHelperBtn');
+if(helperConfigBtn) helperConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openHelperConfigDialog(); };
+const closeHelperConfigBtn = field('closeHelperConfigBtn');
+if(closeHelperConfigBtn) closeHelperConfigBtn.onclick = (ev)=>{ ev.preventDefault(); closeHelperConfigDialog(); };
+const closeHelperConfigBottomBtn = field('closeHelperConfigBottomBtn');
+if(closeHelperConfigBottomBtn) closeHelperConfigBottomBtn.onclick = (ev)=>{ ev.preventDefault(); closeHelperConfigDialog(); };
+const copyHelperConfigurationSectionBtn = field('copyHelperConfigurationSectionBtn');
+if(copyHelperConfigurationSectionBtn) copyHelperConfigurationSectionBtn.onclick = async (ev)=>{ ev.preventDefault(); await copyTextRobust(field('helperConfigurationConfigTextarea')?.value || ''); };
+const copyHelperAutomationsSectionBtn = field('copyHelperAutomationsSectionBtn');
+if(copyHelperAutomationsSectionBtn) copyHelperAutomationsSectionBtn.onclick = async (ev)=>{ ev.preventDefault(); await copyTextRobust(field('helperAutomationsConfigTextarea')?.value || ''); };
+const copyHelperScriptsSectionBtn = field('copyHelperScriptsSectionBtn');
+if(copyHelperScriptsSectionBtn) copyHelperScriptsSectionBtn.onclick = async (ev)=>{ ev.preventDefault(); await copyTextRobust(field('helperScriptsConfigTextarea')?.value || ''); };
 
 
 function openBmwHowto(){
@@ -775,6 +1059,28 @@ function openEvccConfigDialog(){
 }
 function closeEvccConfigDialog(){
   const d = field('evccConfigDialog');
+  if(d){
+    try{ d.close(); }catch(e){ d.removeAttribute('open'); d.style.display = 'none'; }
+  }
+}
+function openHelperConfigDialog(){
+  const dlg = field('helperConfigDialog');
+  const cfgTa = field('helperConfigurationConfigTextarea');
+  const autoTa = field('helperAutomationsConfigTextarea');
+  const scriptsTa = field('helperScriptsConfigTextarea');
+  if(!dlg || !cfgTa || !autoTa || !scriptsTa) return;
+  cfgTa.value = buildHelperConfigurationYamlTemplate();
+  autoTa.value = buildHelperAutomationsYamlTemplate();
+  scriptsTa.value = buildHelperScriptsYamlTemplate();
+  try {
+    dlg.showModal();
+  } catch(e) {
+    dlg.setAttribute('open','open');
+    dlg.style.display = 'flex';
+  }
+}
+function closeHelperConfigDialog(){
+  const d = field('helperConfigDialog');
   if(d){
     try{ d.close(); }catch(e){ d.removeAttribute('open'); d.style.display = 'none'; }
   }
