@@ -615,10 +615,14 @@ function buildHelperAutomationsYamlTemplate(){
 
   variables:
     ##################################################
-    # Referenz: Standort über Zone (CAE)
+    # Homezone: Standort der Wallbox einsetzen
+    # Hier deine Home-Assistant-Zone oder feste Koordinaten eintragen
+    # Beispiel Zone:
+    # home_lat: "${J2O} state_attr('zone.home', 'latitude') | float(0) ${J2C}"
+    # home_lon: "${J2O} state_attr('zone.home', 'longitude') | float(0) ${J2C}"
     ##################################################
-    home_lat: "${J2O} state_attr('zone.cae_automation_gmbh', 'latitude') | float(0) ${J2C}"
-    home_lon: "${J2O} state_attr('zone.cae_automation_gmbh', 'longitude') | float(0) ${J2C}"
+    home_lat: "${J2O} state_attr('zone.home', 'latitude') | float(0) ${J2C}"
+    home_lon: "${J2O} state_attr('zone.home', 'longitude') | float(0) ${J2C}"
     connect_ts: "${J2O} as_timestamp(states.sensor.evcc_loadpoint_1_connected.last_updated) ${J2C}"
 
 ${cardVars}
