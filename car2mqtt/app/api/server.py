@@ -74,177 +74,130 @@ def _extract_assignment_value(line: str, key: str) -> str | None:
 
 
 def _read_existing_homezone() -> dict[str, Any]:
-    candidate_roots = [
-        Path(os.getenv("HA_CONFIG_DIR", "/config")),
-        Path("/config"),
-        Path("/homeassistant"),
-        Path("/homeassistant/config"),
-        Path("/data"),
-        Path("/addon_configs"),
-        Path("/mnt/data"),
-    ]
-
     default_home_lat = "{{ state_attr('zone.home', 'latitude') | float(0) }}"
     default_home_lon = "{{ state_attr('zone.home', 'longitude') | float(0) }}"
 
-    candidates: list[Path] = []
-
-    def _append_candidate(path: Path | None):
-        if path is None:
-            return
-        try:
-            candidates.append(path)
-        except Exception:
-            pass
-
-    def _resolve_automation_include(config_path: Path) -> Path | None:
-        try:
-            cfg_text = config_path.read_text(encoding="utf-8")
-        except Exception:
-            return None
-        m = re.search(r"(?m)^\s*automation\s*:\s*!include\s+(.+?)\s*$", cfg_text)
-        if not m:
-            return None
-        rel = m.group(1).strip().strip('"').strip("'")
-        if not rel:
-            return None
-        return (config_path.parent / rel).resolve()
-
-    for root in candidate_roots:
-        try:
-            _append_candidate(root / "automations.yaml")
-            config_path = root / "configuration.yaml"
-            if config_path.exists() and config_path.is_file():
-                _append_candidate(_resolve_automation_include(config_path))
-        except Exception:
-            pass
-
-    seen: set[str] = set()
     checked_paths: list[str] = []
-    for root in candidate_roots:
-        try:
-            if not root.exists() or not root.is_dir():
-                continue
-            for pattern in ("configuration.yaml", "automations.yaml", "*.yaml", "*.yml"):
-                for path in root.rglob(pattern):
-                    if path.name == "configuration.yaml":
-                        _append_candidate(_resolve_automation_include(path))
-                    _append_candidate(path)
-        except Exception:
-            pass
 
-    def _scan_lines(lines: list[str], *, preferred_block: bool = False) -> tuple[str | None, str | None, str | None, str | None]:
-        active_lat = active_lon = None
-        commented_lat = commented_lon = None
-        in_target = not preferred_block
+    def _extract_from_lines(lines: list[str]) -> tuple[str | None, str | None]:
+        in_target = False
+        current_indent: int | None = None
+        in_variables = False
+        variables_indent: int | None = None
+        active_lat = None
+        active_lon = None
 
         for raw_line in lines:
-            stripped = raw_line.strip()
-            if not stripped:
+            if not raw_line.strip():
                 continue
 
-            if preferred_block:
-                if re.match(r"^\s*(?:-\s*)?id\s*:\s*daheimladen_start_ha_vehicle_decision\s*$", raw_line):
-                    in_target = True
-                    continue
-                if in_target and re.match(r"^\s*-\s+alias\s*:", raw_line):
+            line_indent = len(raw_line) - len(raw_line.lstrip(' '))
+            stripped = raw_line.strip()
+
+            if re.match(r"^\s*-\s+alias\s*:", raw_line):
+                if in_target and current_indent is not None and line_indent <= current_indent:
                     break
                 if not in_target:
-                    continue
+                    current_indent = line_indent
 
-            if stripped.startswith("#"):
-                uncommented = stripped.lstrip("#").strip()
-                if commented_lat is None:
-                    commented_lat = _extract_assignment_value(uncommented, "home_lat")
-                if commented_lon is None:
-                    commented_lon = _extract_assignment_value(uncommented, "home_lon")
+            if re.match(r"^\s*(?:-\s*)?id\s*:\s*daheimladen_start_ha_vehicle_decision\s*$", raw_line):
+                in_target = True
+                current_indent = min(line_indent, current_indent if current_indent is not None else line_indent)
+                in_variables = False
                 continue
 
-            if active_lat is None:
-                active_lat = _extract_assignment_value(stripped, "home_lat")
-            if active_lon is None:
-                active_lon = _extract_assignment_value(stripped, "home_lon")
+            if not in_target:
+                continue
 
-        return active_lat, active_lon, commented_lat, commented_lon
+            if stripped.startswith('#'):
+                continue
 
-    def _score(path: Path, *, preferred_block: bool, found_active: bool) -> tuple[int, int, float, str]:
-        path_str = str(path)
-        base = 0
-        if path.name == "automations.yaml":
-            base += 100
-        if preferred_block:
-            base += 50
-        if found_active:
-            base += 20
-        if "/config/" in path_str or path_str.startswith("/config"):
-            base += 10
-        try:
-            mtime = path.stat().st_mtime
-        except Exception:
-            mtime = 0.0
-        return (base, int(preferred_block), mtime, path_str)
+            if re.match(r"^\s*variables\s*:\s*$", raw_line):
+                in_variables = True
+                variables_indent = line_indent
+                continue
 
-    best_active: dict[str, Any] | None = None
-    best_commented: dict[str, Any] | None = None
+            if in_variables:
+                if line_indent <= (variables_indent or 0):
+                    break
+                if active_lat is None:
+                    active_lat = _extract_assignment_value(raw_line, 'home_lat')
+                if active_lon is None:
+                    active_lon = _extract_assignment_value(raw_line, 'home_lon')
+                if active_lat and active_lon:
+                    return active_lat, active_lon
 
-    for path in candidates:
-        try:
-            resolved = path.resolve()
-        except Exception:
-            resolved = path
-        key = str(resolved)
-        if key in seen:
-            continue
-        seen.add(key)
+        return active_lat, active_lon
+
+    def _candidate_config_paths() -> list[Path]:
+        roots = []
+        for p in [os.getenv('HA_CONFIG_DIR'), '/config', '/homeassistant', '/homeassistant/config', '/data']:
+            if p:
+                roots.append(Path(p))
+        paths: list[Path] = []
+        seen: set[str] = set()
+        for root in roots:
+            for cfg in (root / 'configuration.yaml',):
+                key = str(cfg)
+                if key not in seen:
+                    seen.add(key)
+                    paths.append(cfg)
+        return paths
+
+    def _resolve_automation_paths() -> list[Path]:
+        result: list[Path] = []
+        seen: set[str] = set()
+        for cfg_path in _candidate_config_paths():
+            checked_paths.append(str(cfg_path))
+            if not cfg_path.exists() or not cfg_path.is_file():
+                continue
+            try:
+                cfg_text = cfg_path.read_text(encoding='utf-8')
+            except Exception:
+                continue
+            for line in cfg_text.splitlines():
+                m = re.match(r"^\s*automation\s*:\s*!include\s+(.+?)\s*$", line)
+                if not m:
+                    continue
+                rel = m.group(1).strip().strip('"').strip("'")
+                if not rel:
+                    continue
+                candidate = (cfg_path.parent / rel)
+                key = str(candidate)
+                if key not in seen:
+                    seen.add(key)
+                    result.append(candidate)
+        for extra in [Path('/config/automations.yaml'), Path('/homeassistant/automations.yaml')]:
+            key = str(extra)
+            if key not in seen:
+                seen.add(key)
+                result.append(extra)
+        return result
+
+    for path in _resolve_automation_paths():
         checked_paths.append(str(path))
         if not path.exists() or not path.is_file():
             continue
         try:
-            lines = path.read_text(encoding="utf-8").splitlines()
+            lines = path.read_text(encoding='utf-8').splitlines()
         except Exception:
             continue
-
-        for preferred_block in (True, False):
-            active_lat, active_lon, commented_lat, commented_lon = _scan_lines(lines, preferred_block=preferred_block)
-            if active_lat and active_lon:
-                candidate = {
-                    "found": True,
-                    "home_lat": active_lat,
-                    "home_lon": active_lon,
-                    "source": str(path),
-                    "checked_paths": checked_paths.copy(),
-                    "_score": _score(path, preferred_block=preferred_block, found_active=True),
-                }
-                if best_active is None or candidate["_score"] > best_active["_score"]:
-                    best_active = candidate
-            if commented_lat and commented_lon:
-                candidate = {
-                    "found": False,
-                    "home_lat": commented_lat,
-                    "home_lon": commented_lon,
-                    "source": str(path),
-                    "checked_paths": checked_paths.copy(),
-                    "_score": _score(path, preferred_block=preferred_block, found_active=False),
-                }
-                if best_commented is None or candidate["_score"] > best_commented["_score"]:
-                    best_commented = candidate
-
-    if best_active:
-        best_active.pop("_score", None)
-        best_active["checked_paths"] = checked_paths
-        return best_active
-
-    if best_commented:
-        best_commented.pop("_score", None)
-        best_commented["checked_paths"] = checked_paths
-        return best_commented
+        active_lat, active_lon = _extract_from_lines(lines)
+        if active_lat and active_lon:
+            return {
+                'found': True,
+                'home_lat': active_lat,
+                'home_lon': active_lon,
+                'source': str(path),
+                'checked_paths': checked_paths,
+            }
 
     return {
-        "found": False,
-        "home_lat": default_home_lat,
-        "home_lon": default_home_lon,
-        "source": "",
-        "checked_paths": checked_paths,
+        'found': False,
+        'home_lat': default_home_lat,
+        'home_lon': default_home_lon,
+        'source': '',
+        'checked_paths': checked_paths,
     }
 
 def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, base_topic: str) -> dict:
