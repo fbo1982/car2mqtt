@@ -94,11 +94,16 @@ def _read_existing_homezone() -> dict[str, str | bool]:
     seen: set[str] = set()
     for root in candidate_roots:
         try:
-            if root.exists() and root.is_dir():
-                for path in root.rglob("automations.yaml"):
+            if not root.exists() or not root.is_dir():
+                continue
+            for pattern in ("automations.yaml", "*.yaml", "*.yml"):
+                for path in root.rglob(pattern):
                     candidates.append(path)
         except Exception:
             pass
+
+    best_active: dict[str, str | bool] | None = None
+    best_commented: dict[str, str | bool] | None = None
 
     for path in candidates:
         try:
@@ -137,16 +142,24 @@ def _read_existing_homezone() -> dict[str, str | bool]:
             if active_lon is None:
                 active_lon = _extract_assignment_value(stripped, "home_lon")
 
-        found_lat = active_lat or commented_lat
-        found_lon = active_lon or commented_lon
-
-        if found_lat and found_lon:
+        if active_lat and active_lon:
             return {
-                "found": bool(active_lat and active_lon),
-                "home_lat": found_lat,
-                "home_lon": found_lon,
+                "found": True,
+                "home_lat": active_lat,
+                "home_lon": active_lon,
                 "source": str(path),
             }
+
+        if commented_lat and commented_lon and best_commented is None:
+            best_commented = {
+                "found": False,
+                "home_lat": commented_lat,
+                "home_lon": commented_lon,
+                "source": str(path),
+            }
+
+    if best_commented:
+        return best_commented
 
     return {
         "found": False,
