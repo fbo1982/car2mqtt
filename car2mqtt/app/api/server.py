@@ -102,7 +102,40 @@ def _read_existing_homezone() -> dict[str, str | bool]:
         except Exception:
             pass
 
-    best_active: dict[str, str | bool] | None = None
+    def _scan_lines(lines: list[str], *, preferred_block: bool = False) -> tuple[str | None, str | None, str | None, str | None]:
+        active_lat = active_lon = None
+        commented_lat = commented_lon = None
+        in_target = not preferred_block
+
+        for raw_line in lines:
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+
+            if preferred_block:
+                if re.match(r"^\s*id\s*:\s*daheimladen_start_ha_vehicle_decision\s*$", raw_line):
+                    in_target = True
+                    continue
+                if in_target and re.match(r"^\s*-\s+alias\s*:", raw_line):
+                    break
+                if not in_target:
+                    continue
+
+            if stripped.startswith("#"):
+                uncommented = stripped.lstrip("#").strip()
+                if commented_lat is None:
+                    commented_lat = _extract_assignment_value(uncommented, "home_lat")
+                if commented_lon is None:
+                    commented_lon = _extract_assignment_value(uncommented, "home_lon")
+                continue
+
+            if active_lat is None:
+                active_lat = _extract_assignment_value(stripped, "home_lat")
+            if active_lon is None:
+                active_lon = _extract_assignment_value(stripped, "home_lon")
+
+        return active_lat, active_lon, commented_lat, commented_lon
+
     best_commented: dict[str, str | bool] | None = None
 
     for path in candidates:
@@ -121,27 +154,7 @@ def _read_existing_homezone() -> dict[str, str | bool]:
         except Exception:
             continue
 
-        active_lat = active_lon = None
-        commented_lat = commented_lon = None
-
-        for raw_line in lines:
-            stripped = raw_line.strip()
-            if not stripped:
-                continue
-
-            if stripped.startswith("#"):
-                uncommented = stripped.lstrip("#").strip()
-                if commented_lat is None:
-                    commented_lat = _extract_assignment_value(uncommented, "home_lat")
-                if commented_lon is None:
-                    commented_lon = _extract_assignment_value(uncommented, "home_lon")
-                continue
-
-            if active_lat is None:
-                active_lat = _extract_assignment_value(stripped, "home_lat")
-            if active_lon is None:
-                active_lon = _extract_assignment_value(stripped, "home_lon")
-
+        active_lat, active_lon, commented_lat, commented_lon = _scan_lines(lines, preferred_block=True)
         if active_lat and active_lon:
             return {
                 "found": True,
@@ -149,7 +162,23 @@ def _read_existing_homezone() -> dict[str, str | bool]:
                 "home_lon": active_lon,
                 "source": str(path),
             }
+        if commented_lat and commented_lon and best_commented is None:
+            best_commented = {
+                "found": False,
+                "home_lat": commented_lat,
+                "home_lon": commented_lon,
+                "source": str(path),
+            }
+            continue
 
+        active_lat, active_lon, commented_lat, commented_lon = _scan_lines(lines, preferred_block=False)
+        if active_lat and active_lon:
+            return {
+                "found": True,
+                "home_lat": active_lat,
+                "home_lon": active_lon,
+                "source": str(path),
+            }
         if commented_lat and commented_lon and best_commented is None:
             best_commented = {
                 "found": False,
@@ -257,7 +286,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.25",
+                "version": "1.1.28",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
