@@ -66,23 +66,40 @@ def _normalize_vehicle_id(license_plate: str) -> str:
 
 
 
+def _extract_assignment_value(line: str, key: str) -> str | None:
+    m = re.match(rf"^\s*{re.escape(key)}\s*:\s*(.+?)\s*$", line)
+    if not m:
+        return None
+    return m.group(1).strip().strip('"').strip("'")
+
+
 def _read_existing_homezone() -> dict[str, str | bool]:
-    candidates = [
-        Path(os.getenv("HA_CONFIG_DIR", "/config")) / "automations.yaml",
-        Path("/config/automations.yaml"),
-        Path("/homeassistant/automations.yaml"),
-        Path("/mnt/data/automations.yaml"),
+    candidate_roots = [
+        Path(os.getenv("HA_CONFIG_DIR", "/config")),
+        Path("/config"),
+        Path("/homeassistant"),
+        Path("/homeassistant/config"),
+        Path("/data"),
+        Path("/addon_configs"),
+        Path("/mnt/data"),
     ]
-    config_root = Path(os.getenv("HA_CONFIG_DIR", "/config"))
-    try:
-        if config_root.exists():
-            for path in sorted(config_root.rglob("*.yaml")):
-                if path.name.lower() == "automations.yaml":
-                    candidates.append(path)
-    except Exception:
-        pass
+
+    candidates: list[Path] = []
+    for root in candidate_roots:
+        try:
+            candidates.append(root / "automations.yaml")
+        except Exception:
+            pass
 
     seen: set[str] = set()
+    for root in candidate_roots:
+        try:
+            if root.exists() and root.is_dir():
+                for path in root.rglob("automations.yaml"):
+                    candidates.append(path)
+        except Exception:
+            pass
+
     for path in candidates:
         try:
             resolved = path.resolve()
@@ -99,26 +116,38 @@ def _read_existing_homezone() -> dict[str, str | bool]:
         except Exception:
             continue
 
-        found_lat = None
-        found_lon = None
+        active_lat = active_lon = None
+        commented_lat = commented_lon = None
+
         for raw_line in lines:
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
+            stripped = raw_line.strip()
+            if not stripped:
                 continue
-            if line.startswith("home_lat:"):
-                found_lat = line.split(":", 1)[1].strip().strip('"').strip("'")
+
+            if stripped.startswith("#"):
+                uncommented = stripped.lstrip("#").strip()
+                if commented_lat is None:
+                    commented_lat = _extract_assignment_value(uncommented, "home_lat")
+                if commented_lon is None:
+                    commented_lon = _extract_assignment_value(uncommented, "home_lon")
                 continue
-            if line.startswith("home_lon:"):
-                found_lon = line.split(":", 1)[1].strip().strip('"').strip("'")
-                continue
+
+            if active_lat is None:
+                active_lat = _extract_assignment_value(stripped, "home_lat")
+            if active_lon is None:
+                active_lon = _extract_assignment_value(stripped, "home_lon")
+
+        found_lat = active_lat or commented_lat
+        found_lon = active_lon or commented_lon
 
         if found_lat and found_lon:
             return {
-                "found": True,
+                "found": bool(active_lat and active_lon),
                 "home_lat": found_lat,
                 "home_lon": found_lon,
                 "source": str(path),
             }
+
     return {
         "found": False,
         "home_lat": "{{ state_attr('zone.home', 'latitude') | float(0) }}",
@@ -215,7 +244,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.24",
+                "version": "1.1.25",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
