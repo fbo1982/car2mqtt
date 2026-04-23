@@ -73,7 +73,7 @@ def _extract_assignment_value(line: str, key: str) -> str | None:
     return m.group(1).strip().strip('"').strip("'")
 
 
-def _read_existing_homezone() -> dict[str, str | bool]:
+def _read_existing_homezone() -> dict[str, Any]:
     candidate_roots = [
         Path(os.getenv("HA_CONFIG_DIR", "/config")),
         Path("/config"),
@@ -92,6 +92,7 @@ def _read_existing_homezone() -> dict[str, str | bool]:
             pass
 
     seen: set[str] = set()
+    checked_paths: list[str] = []
     for root in candidate_roots:
         try:
             if not root.exists() or not root.is_dir():
@@ -136,7 +137,7 @@ def _read_existing_homezone() -> dict[str, str | bool]:
 
         return active_lat, active_lon, commented_lat, commented_lon
 
-    best_commented: dict[str, str | bool] | None = None
+    best_commented: dict[str, Any] | None = None
 
     for path in candidates:
         try:
@@ -147,6 +148,7 @@ def _read_existing_homezone() -> dict[str, str | bool]:
         if key in seen:
             continue
         seen.add(key)
+        checked_paths.append(str(path))
         if not path.exists() or not path.is_file():
             continue
         try:
@@ -161,6 +163,7 @@ def _read_existing_homezone() -> dict[str, str | bool]:
                 "home_lat": active_lat,
                 "home_lon": active_lon,
                 "source": str(path),
+                "checked_paths": checked_paths,
             }
         if commented_lat and commented_lon and best_commented is None:
             best_commented = {
@@ -168,6 +171,7 @@ def _read_existing_homezone() -> dict[str, str | bool]:
                 "home_lat": commented_lat,
                 "home_lon": commented_lon,
                 "source": str(path),
+                "checked_paths": checked_paths.copy(),
             }
             continue
 
@@ -178,6 +182,7 @@ def _read_existing_homezone() -> dict[str, str | bool]:
                 "home_lat": active_lat,
                 "home_lon": active_lon,
                 "source": str(path),
+                "checked_paths": checked_paths,
             }
         if commented_lat and commented_lon and best_commented is None:
             best_commented = {
@@ -185,9 +190,12 @@ def _read_existing_homezone() -> dict[str, str | bool]:
                 "home_lat": commented_lat,
                 "home_lon": commented_lon,
                 "source": str(path),
+                "checked_paths": checked_paths.copy(),
             }
 
     if best_commented:
+        if "checked_paths" not in best_commented:
+            best_commented["checked_paths"] = checked_paths
         return best_commented
 
     return {
@@ -195,6 +203,7 @@ def _read_existing_homezone() -> dict[str, str | bool]:
         "home_lat": "{{ state_attr('zone.home', 'latitude') | float(0) }}",
         "home_lon": "{{ state_attr('zone.home', 'longitude') | float(0) }}",
         "source": "",
+        "checked_paths": checked_paths,
     }
 
 def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, base_topic: str) -> dict:
@@ -286,7 +295,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.28",
+                "version": "1.1.29",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
