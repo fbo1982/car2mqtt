@@ -1088,11 +1088,13 @@ async function openHelperConfigDialog(){
   const scriptsTa = field('helperScriptsConfigTextarea');
   if(!dlg || !cfgTa || !autoTa || !scriptsTa) return;
   cfgTa.value = buildHelperConfigurationYamlTemplate();
-  let helperHomezone = null;
-  try {
-    const resp = await fetch('/api/helper/homezone');
-    if(resp.ok) helperHomezone = await resp.json();
-  } catch(e) {}
+  let helperHomezone = INITIAL_HELPER_HOMEZONE || null;
+  if(!helperHomezone){
+    try {
+      const resp = await fetch('/api/helper/homezone');
+      if(resp.ok) helperHomezone = await resp.json();
+    } catch(e) {}
+  }
   autoTa.value = buildHelperAutomationsYamlTemplate(helperHomezone);
   scriptsTa.value = buildHelperScriptsYamlTemplate();
   try {
