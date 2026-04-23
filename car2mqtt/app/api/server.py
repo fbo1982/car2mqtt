@@ -84,6 +84,9 @@ def _read_existing_homezone() -> dict[str, Any]:
         Path("/mnt/data"),
     ]
 
+    default_home_lat = "{{ state_attr('zone.home', 'latitude') | float(0) }}"
+    default_home_lon = "{{ state_attr('zone.home', 'longitude') | float(0) }}"
+
     candidates: list[Path] = []
     for root in candidate_roots:
         try:
@@ -137,6 +140,24 @@ def _read_existing_homezone() -> dict[str, Any]:
 
         return active_lat, active_lon, commented_lat, commented_lon
 
+    def _score(path: Path, *, preferred_block: bool, found_active: bool) -> tuple[int, int, float, str]:
+        path_str = str(path)
+        base = 0
+        if path.name == "automations.yaml":
+            base += 100
+        if preferred_block:
+            base += 50
+        if found_active:
+            base += 20
+        if "/config/" in path_str or path_str.startswith("/config"):
+            base += 10
+        try:
+            mtime = path.stat().st_mtime
+        except Exception:
+            mtime = 0.0
+        return (base, int(preferred_block), mtime, path_str)
+
+    best_active: dict[str, Any] | None = None
     best_commented: dict[str, Any] | None = None
 
     for path in candidates:
@@ -156,52 +177,45 @@ def _read_existing_homezone() -> dict[str, Any]:
         except Exception:
             continue
 
-        active_lat, active_lon, commented_lat, commented_lon = _scan_lines(lines, preferred_block=True)
-        if active_lat and active_lon:
-            return {
-                "found": True,
-                "home_lat": active_lat,
-                "home_lon": active_lon,
-                "source": str(path),
-                "checked_paths": checked_paths,
-            }
-        if commented_lat and commented_lon and best_commented is None:
-            best_commented = {
-                "found": False,
-                "home_lat": commented_lat,
-                "home_lon": commented_lon,
-                "source": str(path),
-                "checked_paths": checked_paths.copy(),
-            }
-            continue
+        for preferred_block in (True, False):
+            active_lat, active_lon, commented_lat, commented_lon = _scan_lines(lines, preferred_block=preferred_block)
+            if active_lat and active_lon:
+                candidate = {
+                    "found": True,
+                    "home_lat": active_lat,
+                    "home_lon": active_lon,
+                    "source": str(path),
+                    "checked_paths": checked_paths.copy(),
+                    "_score": _score(path, preferred_block=preferred_block, found_active=True),
+                }
+                if best_active is None or candidate["_score"] > best_active["_score"]:
+                    best_active = candidate
+            if commented_lat and commented_lon:
+                candidate = {
+                    "found": False,
+                    "home_lat": commented_lat,
+                    "home_lon": commented_lon,
+                    "source": str(path),
+                    "checked_paths": checked_paths.copy(),
+                    "_score": _score(path, preferred_block=preferred_block, found_active=False),
+                }
+                if best_commented is None or candidate["_score"] > best_commented["_score"]:
+                    best_commented = candidate
 
-        active_lat, active_lon, commented_lat, commented_lon = _scan_lines(lines, preferred_block=False)
-        if active_lat and active_lon:
-            return {
-                "found": True,
-                "home_lat": active_lat,
-                "home_lon": active_lon,
-                "source": str(path),
-                "checked_paths": checked_paths,
-            }
-        if commented_lat and commented_lon and best_commented is None:
-            best_commented = {
-                "found": False,
-                "home_lat": commented_lat,
-                "home_lon": commented_lon,
-                "source": str(path),
-                "checked_paths": checked_paths.copy(),
-            }
+    if best_active:
+        best_active.pop("_score", None)
+        best_active["checked_paths"] = checked_paths
+        return best_active
 
     if best_commented:
-        if "checked_paths" not in best_commented:
-            best_commented["checked_paths"] = checked_paths
+        best_commented.pop("_score", None)
+        best_commented["checked_paths"] = checked_paths
         return best_commented
 
     return {
         "found": False,
-        "home_lat": "{{ state_attr('zone.home', 'latitude') | float(0) }}",
-        "home_lon": "{{ state_attr('zone.home', 'longitude') | float(0) }}",
+        "home_lat": default_home_lat,
+        "home_lon": default_home_lon,
         "source": "",
         "checked_paths": checked_paths,
     }
@@ -295,7 +309,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.30",
+                "version": "1.1.31",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
