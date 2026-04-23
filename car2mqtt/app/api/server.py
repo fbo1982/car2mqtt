@@ -70,7 +70,18 @@ def _read_existing_homezone() -> dict[str, str | bool]:
     candidates = [
         Path(os.getenv("HA_CONFIG_DIR", "/config")) / "automations.yaml",
         Path("/config/automations.yaml"),
+        Path("/homeassistant/automations.yaml"),
+        Path("/mnt/data/automations.yaml"),
     ]
+    config_root = Path(os.getenv("HA_CONFIG_DIR", "/config"))
+    try:
+        if config_root.exists():
+            for path in sorted(config_root.rglob("*.yaml")):
+                if path.name.lower() == "automations.yaml":
+                    candidates.append(path)
+    except Exception:
+        pass
+
     seen: set[str] = set()
     for path in candidates:
         try:
@@ -81,19 +92,31 @@ def _read_existing_homezone() -> dict[str, str | bool]:
         if key in seen:
             continue
         seen.add(key)
-        if not path.exists():
+        if not path.exists() or not path.is_file():
             continue
         try:
-            text = path.read_text(encoding="utf-8")
+            lines = path.read_text(encoding="utf-8").splitlines()
         except Exception:
             continue
-        lat_match = re.search(r"""(?m)^\s*home_lat\s*:\s*([\"']?)(.+?)\1\s*$""", text)
-        lon_match = re.search(r"""(?m)^\s*home_lon\s*:\s*([\"']?)(.+?)\1\s*$""", text)
-        if lat_match and lon_match:
+
+        found_lat = None
+        found_lon = None
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("home_lat:"):
+                found_lat = line.split(":", 1)[1].strip().strip('"').strip("'")
+                continue
+            if line.startswith("home_lon:"):
+                found_lon = line.split(":", 1)[1].strip().strip('"').strip("'")
+                continue
+
+        if found_lat and found_lon:
             return {
                 "found": True,
-                "home_lat": lat_match.group(2).strip(),
-                "home_lon": lon_match.group(2).strip(),
+                "home_lat": found_lat,
+                "home_lon": found_lon,
                 "source": str(path),
             }
     return {
@@ -192,7 +215,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.23",
+                "version": "1.1.24",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
