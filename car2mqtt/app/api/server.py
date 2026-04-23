@@ -144,7 +144,7 @@ def _read_existing_homezone() -> dict[str, Any]:
                 continue
 
             if preferred_block:
-                if re.match(r"^\s*id\s*:\s*daheimladen_start_ha_vehicle_decision\s*$", raw_line):
+                if re.match(r"^\s*(?:-\s*)?id\s*:\s*daheimladen_start_ha_vehicle_decision\s*$", raw_line):
                     in_target = True
                     continue
                 if in_target and re.match(r"^\s*-\s+alias\s*:", raw_line):
@@ -336,10 +336,9 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.34",
+                "version": "1.1.35",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
-                "helper_homezone_json": json.dumps(_read_existing_homezone(), ensure_ascii=False),
             },
         )
 
