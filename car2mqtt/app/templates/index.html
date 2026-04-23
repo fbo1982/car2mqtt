@@ -539,6 +539,9 @@ function buildHelperAutomationsYamlTemplate(homezone){
   const foundExisting = !!homezone?.found;
   const homezoneSource = String(homezone?.source || '');
   const checkedPaths = Array.isArray(homezone?.checked_paths) ? homezone.checked_paths.filter(Boolean) : [];
+  const homezoneComment = foundExisting
+    ? `# Vorhandene Homezone übernommen${homezoneSource ? ` aus: ${homezoneSource}` : ''}`
+    : `# Keine vorhandene Homezone gefunden - Standard zone.home verwendet${checkedPaths.length ? ` | geprüft: ${checkedPaths.slice(0,4).join(', ')}` : ''}`;
   const cardVars = helperCards.map((card, index) => {
     const id = normalizeVehicleIdFromPlate(card.license_plate || card.id || '');
     const entityBase = `car_${manufacturerTopicPrefix(card.manufacturer)}_${id.toLowerCase()}`;
@@ -631,7 +634,7 @@ function buildHelperAutomationsYamlTemplate(homezone){
     # home_lat: "${J2O} state_attr('zone.home', 'latitude') | float(0) ${J2C}"
     # home_lon: "${J2O} state_attr('zone.home', 'longitude') | float(0) ${J2C}"
     ##################################################
-    ${foundExisting ? '# Vorhandene Homezone aus automations.yaml übernommen' : '# ${foundExisting ? `Vorhandene Homezone übernommen${homezoneSource ? ` aus: ${homezoneSource}` : ''}` : `Keine vorhandene Homezone gefunden - Standard zone.home verwendet${checkedPaths.length ? ` | geprüft: ${checkedPaths.slice(0,4).join(', ')}` : ''}`}'}
+    ${homezoneComment}
     home_lat: "${homeLatValue}"
     home_lon: "${homeLonValue}"
     connect_ts: "${J2O} as_timestamp(states.sensor.evcc_loadpoint_1_connected.last_updated) ${J2C}"
