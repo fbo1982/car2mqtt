@@ -421,6 +421,7 @@ select, option {
 <script>
 const providers = {{ providers | tojson }};
 let cards = {{ cards_json | safe }};
+let helperHomezonePreset = {{ helper_homezone_json | safe }};
 const createState = { manufacturer: null, authSessionId: null, authReady: false };
 const editState = { vehicleId: null, reauthSessionId: null, authReady: true, liveLogTimer: null, liveLogsEnabled: false, lastLogText: '', needsVerification: false };
 const field = (id) => document.getElementById(id);
@@ -1088,8 +1089,8 @@ async function openHelperConfigDialog(){
   const scriptsTa = field('helperScriptsConfigTextarea');
   if(!dlg || !cfgTa || !autoTa || !scriptsTa) return;
   cfgTa.value = buildHelperConfigurationYamlTemplate();
-  let helperHomezone = INITIAL_HELPER_HOMEZONE || null;
-  if(!helperHomezone){
+  let helperHomezone = helperHomezonePreset || null;
+  if(!helperHomezone || (!helperHomezone.home_lat && !helperHomezone.home_lon)){
     try {
       const resp = await fetch('/api/helper/homezone');
       if(resp.ok) helperHomezone = await resp.json();
