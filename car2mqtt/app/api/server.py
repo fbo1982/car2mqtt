@@ -88,9 +88,34 @@ def _read_existing_homezone() -> dict[str, Any]:
     default_home_lon = "{{ state_attr('zone.home', 'longitude') | float(0) }}"
 
     candidates: list[Path] = []
+
+    def _append_candidate(path: Path | None):
+        if path is None:
+            return
+        try:
+            candidates.append(path)
+        except Exception:
+            pass
+
+    def _resolve_automation_include(config_path: Path) -> Path | None:
+        try:
+            cfg_text = config_path.read_text(encoding="utf-8")
+        except Exception:
+            return None
+        m = re.search(r"(?m)^\s*automation\s*:\s*!include\s+(.+?)\s*$", cfg_text)
+        if not m:
+            return None
+        rel = m.group(1).strip().strip('"').strip("'")
+        if not rel:
+            return None
+        return (config_path.parent / rel).resolve()
+
     for root in candidate_roots:
         try:
-            candidates.append(root / "automations.yaml")
+            _append_candidate(root / "automations.yaml")
+            config_path = root / "configuration.yaml"
+            if config_path.exists() and config_path.is_file():
+                _append_candidate(_resolve_automation_include(config_path))
         except Exception:
             pass
 
@@ -100,9 +125,11 @@ def _read_existing_homezone() -> dict[str, Any]:
         try:
             if not root.exists() or not root.is_dir():
                 continue
-            for pattern in ("automations.yaml", "*.yaml", "*.yml"):
+            for pattern in ("configuration.yaml", "automations.yaml", "*.yaml", "*.yml"):
                 for path in root.rglob(pattern):
-                    candidates.append(path)
+                    if path.name == "configuration.yaml":
+                        _append_candidate(_resolve_automation_include(path))
+                    _append_candidate(path)
         except Exception:
             pass
 
@@ -309,7 +336,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.31",
+                "version": "1.1.32",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
             },
