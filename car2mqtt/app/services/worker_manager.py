@@ -279,12 +279,10 @@ class WorkerManager:
         if not discovered_source_id and len(topic_parts) >= 4:
             discovered_source_id = topic_parts[3]
         source_root = f"{vehicle_root_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)}/{discovered_source_id}" if discovered_source_id else raw_topic_base
+        is_meta_source = (discovered_source_id or "").lower() == "_meta"
+        is_meta_status = is_meta_source and [part.lower() for part in metric_parts] == []
 
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
-        is_meta_source = discovered_source_id.lower() == "_meta" if discovered_source_id else False
-        stable_source_root = runtime.raw_topic or raw_topic_base
-        if not is_meta_source and discovered_source_id:
-            stable_source_root = source_root
         metrics = dict(runtime.metrics or {})
         obsolete_present = {key for key in GWM_OBSOLETE_MAPPED_KEYS if key in metrics}
         for key in obsolete_present:
@@ -302,13 +300,16 @@ class WorkerManager:
         runtime.connection_state = "connected"
         runtime.connection_detail = "ORA Stream aktiv"
         runtime.auth_state = vehicle.provider_state.auth_state
-        runtime.raw_topic = stable_source_root
+        if not is_meta_source:
+            runtime.raw_topic = source_root
+        elif not runtime.raw_topic:
+            runtime.raw_topic = raw_topic_base
         runtime.mapped_topic = mapped
         runtime.metrics = metrics
         runtime.provider_meta = {
             "vehicle_id": vehicle.provider_config.get("vehicle_id", vehicle.id),
             "source_topic": source_topic,
-            "source_root": stable_source_root,
+            "source_root": source_root,
             "relative_topic": "/".join(metric_parts),
             "direct_source_enabled": True,
         }
@@ -326,7 +327,8 @@ class WorkerManager:
         finally:
             client.disconnect()
 
-        self.log_store.append(vehicle_id, f"ORA Datenpunkt empfangen: {source_topic} -> mapped aus {field_name or relative or "status"} = {payload}")
+        if not is_meta_status:
+            self.log_store.append(vehicle_id, f"ORA Datenpunkt empfangen: {source_topic} -> mapped aus {field_name or relative or 'status'} = {payload}")
         self._publish_meta(vehicle, runtime, mqtt_settings)
 
     def publish_vehicle_saved_meta(self, vehicle_id: str) -> None:
