@@ -1488,7 +1488,7 @@ if (field('editOraSendVerificationBtn')) field('editOraSendVerificationBtn').onc
 
 field('closeMqttClientsBtn').onclick = ()=> field('mqttClientsDialog').close();
 field('cancelMqttClientEditBtn').onclick = resetMqttClientForm;
-field('addMqttClientBtn').onclick = resetMqttClientForm;
+if (field('addMqttClientBtn')) field('addMqttClientBtn').onclick = resetMqttClientForm;
 field('saveMqttClientBtn').onclick = async()=>{
   try{
     const payload = { id: mqttClientState.editingId, name: field('mqttClientName').value.trim(), host: field('mqttClientHost').value.trim(), port: parseInt(field('mqttClientPort').value || '1883', 10), username: field('mqttClientUsername').value.trim(), password: field('mqttClientPassword').value, base_topic: field('mqttClientBaseTopic').value.trim(), enabled: field('mqttClientEnabled').checked, send_raw: field('mqttClientSendRaw').checked };
