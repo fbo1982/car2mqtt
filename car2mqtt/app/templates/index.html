@@ -80,7 +80,7 @@ select, option {
 
   <section class="section-header">
     <div><div class="eyebrow">Live Übersicht</div><h2>Fahrzeuge</h2></div>
-    <div class="toolbar"><button id="copyHelperBtn" class="ghost-btn">Copy Helper</button><button id="mqttTestBtn" class="ghost-btn">MQTT testen</button></div>
+    <div class="toolbar"><button id="settingsBtn" class="ghost-btn">Einstellungen</button><button id="copyHelperBtn" class="ghost-btn">Copy Helper</button><button id="mqttTestBtn" class="ghost-btn">MQTT testen</button></div>
   </section>
 
   <section id="cardsGrid" class="cards-grid"></section>
@@ -358,6 +358,33 @@ select, option {
 
 
 
+
+
+<dialog id="settingsDialog" class="modal">
+  <div class="panel">
+    <div class="modal-head">
+      <div><div class="eyebrow">System</div><h3>Einstellungen</h3></div>
+      <button id="closeSettingsBtn" type="button" class="icon-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="howto-content">
+        <div class="howto-card">
+          <div class="field">
+            <label>Home Zone</label>
+            <select id="settingsHomeZoneSelect"></select>
+            <div id="settingsHomeZoneInfo" class="muted" style="margin-top:10px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <div class="spacer"></div>
+      <button id="closeSettingsBottomBtn" type="button" class="ghost-btn">Schließen</button>
+      <button id="saveSettingsBtn" type="button" class="primary-btn">Speichern</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="helperConfigDialog" class="modal">
   <div class="panel wide">
     <div class="modal-head">
@@ -421,6 +448,8 @@ select, option {
 <script>
 const providers = {{ providers | tojson }};
 let cards = {{ cards_json | safe }};
+let helperHomezoneJson = {{ helper_homezone_json | safe }};
+let uiSettings = {{ ui_settings_json | safe }};
 const createState = { manufacturer: null, authSessionId: null, authReady: false };
 const editState = { vehicleId: null, reauthSessionId: null, authReady: true, liveLogTimer: null, liveLogsEnabled: false, lastLogText: '', needsVerification: false };
 const field = (id) => document.getElementById(id);
@@ -526,6 +555,63 @@ function buildHelperConfigurationYamlTemplate(){
 function escapeHelperValue(value, fallback){
   const v = (value || '').toString().trim();
   return yamlEscape(v || fallback || '');
+}
+function getSelectedHomeZoneEntityId(){
+  return String(uiSettings?.helper_home_zone_entity_id || '').trim();
+}
+function describeHomezone(homezone){
+  if(!homezone) return 'Keine Home Zone gewählt.';
+  if(homezone.selected_via_settings && homezone.entity_id){
+    return `Aktive Auswahl: ${homezone.entity_id}`;
+  }
+  if(homezone.found && homezone.source){
+    return `Automatisch erkannt aus ${homezone.source}`;
+  }
+  return 'Keine gespeicherte Home Zone - Standard zone.home wird verwendet.';
+}
+async function loadSettingsData(){
+  const resp = await fetch('/api/settings');
+  if(!resp.ok) throw new Error('Einstellungen konnten nicht geladen werden.');
+  const data = await resp.json();
+  uiSettings = data.ui_settings || {};
+  if(data.effective_homezone) helperHomezoneJson = data.effective_homezone;
+  return data;
+}
+function renderSettingsDialog(data){
+  const select = field('settingsHomeZoneSelect');
+  const info = field('settingsHomeZoneInfo');
+  if(!select) return;
+  const zones = Array.isArray(data?.zones) ? data.zones : [];
+  const selected = String(data?.ui_settings?.helper_home_zone_entity_id || '');
+  select.innerHTML = '';
+  const autoOpt = document.createElement('option');
+  autoOpt.value = '';
+  autoOpt.textContent = 'Automatisch erkennen';
+  select.appendChild(autoOpt);
+  zones.forEach(zone => {
+    const opt = document.createElement('option');
+    opt.value = zone.entity_id;
+    opt.textContent = `${zone.name} (${zone.entity_id})`;
+    if(zone.entity_id === selected) opt.selected = true;
+    select.appendChild(opt);
+  });
+  if(info) info.textContent = describeHomezone(data?.effective_homezone || helperHomezoneJson);
+}
+async function openSettingsDialog(){
+  const dlg = field('settingsDialog');
+  if(!dlg) return;
+  try{
+    const data = await loadSettingsData();
+    renderSettingsDialog(data);
+  }catch(err){
+    const info = field('settingsHomeZoneInfo');
+    if(info) info.textContent = err.message || 'Einstellungen konnten nicht geladen werden.';
+  }
+  try{ dlg.showModal(); }catch(e){ dlg.setAttribute('open','open'); dlg.style.display='flex'; }
+}
+function closeSettingsDialog(){
+  const d = field('settingsDialog');
+  if(d){ try{ d.close(); }catch(e){ d.removeAttribute('open'); d.style.display='none'; } }
 }
 
 function buildHelperAutomationsYamlTemplate(homezone){
@@ -1034,6 +1120,27 @@ const copyConfigurationSectionBtn = field('copyConfigurationSectionBtn');
 if(copyConfigurationSectionBtn) copyConfigurationSectionBtn.onclick = async (ev)=>{ ev.preventDefault(); await copyTextRobust(field('configurationConfigTextarea')?.value || ''); };
 const copyAutomationsSectionBtn = field('copyAutomationsSectionBtn');
 if(copyAutomationsSectionBtn) copyAutomationsSectionBtn.onclick = async (ev)=>{ ev.preventDefault(); await copyTextRobust(field('automationsConfigTextarea')?.value || ''); };
+const settingsBtn = field('settingsBtn');
+if(settingsBtn) settingsBtn.onclick = (ev)=>{ ev.preventDefault(); openSettingsDialog(); };
+const closeSettingsBtn = field('closeSettingsBtn');
+if(closeSettingsBtn) closeSettingsBtn.onclick = (ev)=>{ ev.preventDefault(); closeSettingsDialog(); };
+const closeSettingsBottomBtn = field('closeSettingsBottomBtn');
+if(closeSettingsBottomBtn) closeSettingsBottomBtn.onclick = (ev)=>{ ev.preventDefault(); closeSettingsDialog(); };
+const saveSettingsBtn = field('saveSettingsBtn');
+if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
+  ev.preventDefault();
+  try{
+    const select = field('settingsHomeZoneSelect');
+    const resp = await postJson('/api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '' });
+    uiSettings = resp.ui_settings || {};
+    helperHomezoneJson = resp.effective_homezone || helperHomezoneJson;
+    const info = field('settingsHomeZoneInfo');
+    if(info) info.textContent = describeHomezone(helperHomezoneJson);
+    closeSettingsDialog();
+  }catch(err){
+    alert(err.message || 'Einstellungen konnten nicht gespeichert werden.');
+  }
+};
 const helperConfigBtn = field('copyHelperBtn');
 if(helperConfigBtn) helperConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openHelperConfigDialog(); };
 const closeHelperConfigBtn = field('closeHelperConfigBtn');
@@ -1088,11 +1195,12 @@ async function openHelperConfigDialog(){
   const scriptsTa = field('helperScriptsConfigTextarea');
   if(!dlg || !cfgTa || !autoTa || !scriptsTa) return;
   cfgTa.value = buildHelperConfigurationYamlTemplate();
-  let helperHomezone = null;
+  let helperHomezone = helperHomezoneJson || null;
   try {
     const resp = await fetch('/api/helper/homezone');
     if(resp.ok) helperHomezone = await resp.json();
   } catch(e) {}
+  if(helperHomezone) helperHomezoneJson = helperHomezone;
   autoTa.value = buildHelperAutomationsYamlTemplate(helperHomezone);
   scriptsTa.value = buildHelperScriptsYamlTemplate();
   try {

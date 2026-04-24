@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict
 
+import requests
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
@@ -58,6 +60,10 @@ class GwmVerificationPayload(BaseModel):
     verification_code: str
 
 
+class HomeZoneSettingsPayload(BaseModel):
+    helper_home_zone_entity_id: str = ""
+
+
 def _normalize_vehicle_id(license_plate: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9]", "", (license_plate or "").upper())
     return cleaned
@@ -73,9 +79,77 @@ def _extract_assignment_value(line: str, key: str) -> str | None:
     return m.group(1).strip().strip('"').strip("'")
 
 
-def _read_existing_homezone() -> dict[str, Any]:
+def _homezone_payload_from_entity(entity_id: str) -> dict[str, Any]:
+    entity_id = str(entity_id or '').strip()
+    if not entity_id:
+        return {}
+    return {
+        'found': True,
+        'home_lat': "{{ state_attr('%s', 'latitude') | float(0) }}" % entity_id,
+        'home_lon': "{{ state_attr('%s', 'longitude') | float(0) }}" % entity_id,
+        'source': f'settings:{entity_id}',
+        'checked_paths': [],
+        'entity_id': entity_id,
+    }
+
+
+def _ha_supervisor_headers() -> dict[str, str]:
+    token = os.getenv('SUPERVISOR_TOKEN', '').strip()
+    if not token:
+        return {}
+    return {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
+
+def _load_homeassistant_zones() -> list[dict[str, str]]:
+    headers = _ha_supervisor_headers()
+    if not headers:
+        return []
+    urls = [
+        os.getenv('SUPERVISOR_CORE_STATES_URL', '').strip(),
+        'http://supervisor/core/api/states',
+        'http://supervisor/core/states',
+    ]
+    seen = set()
+    zones: list[dict[str, str]] = []
+    for url in [u for u in urls if u]:
+        if url in seen:
+            continue
+        seen.add(url)
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            if not resp.ok:
+                continue
+            data = resp.json()
+            items = data.get('result', data) if isinstance(data, dict) else data
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                entity_id = str(item.get('entity_id', '')).strip()
+                if not entity_id.startswith('zone.'):
+                    continue
+                attrs = item.get('attributes') or {}
+                name = str(attrs.get('friendly_name') or entity_id)
+                zones.append({'entity_id': entity_id, 'name': name})
+            if zones:
+                break
+        except Exception:
+            continue
+    zones.sort(key=lambda z: (z['name'].lower(), z['entity_id'].lower()))
+    return zones
+
+
+def _read_existing_homezone(config: AppConfig | None = None) -> dict[str, Any]:
     default_home_lat = "{{ state_attr('zone.home', 'latitude') | float(0) }}"
     default_home_lon = "{{ state_attr('zone.home', 'longitude') | float(0) }}"
+
+    settings_entity = ''
+    if config is not None:
+        settings_entity = str(getattr(getattr(config, 'ui_settings', None), 'helper_home_zone_entity_id', '') or '').strip()
+    if settings_entity:
+        payload = _homezone_payload_from_entity(settings_entity)
+        if payload:
+            payload['selected_via_settings'] = True
+            return payload
 
     checked_paths: list[str] = []
 
@@ -190,6 +264,7 @@ def _read_existing_homezone() -> dict[str, Any]:
                 'home_lon': active_lon,
                 'source': str(path),
                 'checked_paths': checked_paths,
+                'selected_via_settings': False,
             }
 
     return {
@@ -198,6 +273,7 @@ def _read_existing_homezone() -> dict[str, Any]:
         'home_lon': default_home_lon,
         'source': '',
         'checked_paths': checked_paths,
+        'selected_via_settings': False,
     }
 
 def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, base_topic: str) -> dict:
@@ -283,21 +359,45 @@ def create_app() -> FastAPI:
     async def index(request: Request):
         cards, mqtt_settings = build_cards()
         providers = [provider.model_dump(mode="json") for provider in registry.all()]
+        cfg = store.load()
+        helper_homezone = _read_existing_homezone(cfg)
         return templates.TemplateResponse(
             request,
             "index.html",
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.37",
+                "version": "1.1.38",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
+                "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
+                "ui_settings_json": json.dumps(cfg.ui_settings.model_dump(mode="json"), ensure_ascii=False),
             },
         )
 
     @app.get("/api/helper/homezone")
     async def get_helper_homezone():
-        return _read_existing_homezone()
+        return _read_existing_homezone(store.load())
+
+    @app.get("/api/settings")
+    async def get_settings():
+        cfg = store.load()
+        return {
+            "ui_settings": cfg.ui_settings.model_dump(mode="json"),
+            "zones": _load_homeassistant_zones(),
+            "effective_homezone": _read_existing_homezone(cfg),
+        }
+
+    @app.post("/api/settings/homezone")
+    async def save_homezone_settings(payload: HomeZoneSettingsPayload):
+        cfg = store.load()
+        cfg.ui_settings.helper_home_zone_entity_id = str(payload.helper_home_zone_entity_id or '').strip()
+        store.save(cfg)
+        return {
+            "status": "ok",
+            "ui_settings": cfg.ui_settings.model_dump(mode="json"),
+            "effective_homezone": _read_existing_homezone(cfg),
+        }
 
     @app.get("/api/providers")
     async def get_providers():

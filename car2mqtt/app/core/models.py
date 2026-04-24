@@ -39,8 +39,13 @@ class VehicleConfig(BaseModel):
     provider_state: ProviderState = Field(default_factory=ProviderState)
 
 
+class UiSettings(BaseModel):
+    helper_home_zone_entity_id: str = ""
+
+
 class AppConfig(BaseModel):
     vehicles: List[VehicleConfig] = Field(default_factory=list)
+    ui_settings: UiSettings = Field(default_factory=UiSettings)
 
 
 class ProviderDescriptor(BaseModel):
