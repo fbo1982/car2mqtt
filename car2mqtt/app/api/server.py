@@ -85,10 +85,10 @@ def _extract_zone_entity_id(value: str | None) -> str:
     text = str(value or '').strip()
     if not text:
         return ''
-    m = re.search(r"state_attr\(\s*['"](zone\.[A-Za-z0-9_]+)['"]\s*,", text)
+    m = re.search(r"state_attr\(\s*['\"](zone\.[A-Za-z0-9_]+)['\"]\s*,", text)
     if m:
         return m.group(1)
-    m = re.search(r"(zone\.[A-Za-z0-9_]+)", text)
+    m = re.search(r"\b(zone\.[A-Za-z0-9_]+)\b", text)
     return m.group(1) if m else ''
 def _homezone_payload_from_entity(entity_id: str) -> dict[str, Any]:
     entity_id = str(entity_id or '').strip()
