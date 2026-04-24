@@ -440,7 +440,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.54",
+                "version": "1.1.55",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -479,6 +479,49 @@ def create_app() -> FastAPI:
             "ui_settings": cfg.ui_settings.model_dump(mode="json"),
             "effective_homezone": _read_existing_homezone(cfg),
         }
+
+
+
+    @app.get("/api/mqtt-clients")
+    async def get_mqtt_clients():
+        return {"clients": build_mqtt_clients()}
+
+    @app.post("/api/mqtt-clients")
+    async def save_mqtt_client(payload: MqttClientPayload):
+        cfg = store.load()
+        client_id = str(payload.id or '').strip() or _normalize_vehicle_id(payload.name or payload.host or 'mqttclient').lower()
+        if not client_id:
+            client_id = 'mqttclient'
+        client = MqttForwardClientConfig(
+            id=client_id,
+            name=str(payload.name or '').strip() or client_id,
+            host=str(payload.host or '').strip(),
+            port=int(payload.port or 1883),
+            username=str(payload.username or '').strip(),
+            password=str(payload.password or ''),
+            base_topic=str(payload.base_topic or '').strip(),
+            enabled=bool(payload.enabled),
+            send_raw=bool(payload.send_raw),
+        )
+        replaced=False
+        for idx, existing in enumerate(cfg.mqtt_clients):
+            if existing.id == client.id:
+                cfg.mqtt_clients[idx] = client
+                replaced=True
+                break
+        if not replaced:
+            cfg.mqtt_clients.append(client)
+        store.save(cfg)
+        return {"status": "ok", "client": dict(client.model_dump(mode="json"), status=mqtt_client_status(client)), "clients": build_mqtt_clients()}
+
+    @app.delete("/api/mqtt-clients/{client_id}")
+    async def delete_mqtt_client(client_id: str):
+        cfg = store.load()
+        cfg.mqtt_clients = [c for c in cfg.mqtt_clients if c.id != client_id]
+        for vehicle in cfg.vehicles:
+            vehicle.mqtt_client_ids = [cid for cid in (vehicle.mqtt_client_ids or []) if cid != client_id]
+        store.save(cfg)
+        return {"status": "ok", "clients": build_mqtt_clients()}
 
     @app.get("/api/providers")
     async def get_providers():
