@@ -456,8 +456,8 @@ select, option {
     <div id="mqttClientsError" class="notice"></div>
     <div class="modal-body">
       <div id="mqttClientsGrid" class="cards-grid" style="margin-bottom:18px"></div>
-      <div class="info-box">
-        <div class="eyebrow">Client bearbeiten</div>
+      <div id="mqttClientEditor" class="info-box" style="display:none">
+        <div id="mqttClientEditorTitle" class="eyebrow">Client bearbeiten</div>
         <div class="grid two" style="margin-top:14px">
           <div class="field"><label>Name</label><input id="mqttClientName" /></div>
           <div class="field"><label>Server</label><input id="mqttClientHost" /></div>
@@ -530,7 +530,7 @@ function mqttStatusLabel(status){
 function renderMqttClientsGrid(){
   const grid = field('mqttClientsGrid'); if(!grid) return;
   const addTile = `
-    <article class="vehicle-card add-card" role="button" tabindex="0" onclick="resetMqttClientForm()" style="min-height:220px">
+    <article class="vehicle-card add-card" role="button" tabindex="0" onclick="openCreateMqttClient()" style="min-height:220px">
       <div class="add-card-plus">+</div><div class="add-card-label">Client hinzufügen</div>
     </article>`;
   const cardsHtml = (mqttClients || []).map(client => `
@@ -560,12 +560,15 @@ function renderEditMqttClientAssignments(vehicle){
     <label class="comm-toggle comm-card"><input type="checkbox" class="edit-mqtt-client-check" value="${client.id}" ${assigned.has(client.id) ? 'checked' : ''}><span><span class="comm-title">${client.name || client.id}</span><div class="comm-help">${client.host}:${client.port} · ${mqttStatusLabel(client.status)}</div></span></label>
   `).join('') || '<div class="muted">Keine MQTT Clients vorhanden. Lege sie über den Button "MQTT Clients" an.</div>';
 }
-function resetMqttClientForm(){ mqttClientState.editingId = null; field('mqttClientName').value=''; field('mqttClientHost').value=''; field('mqttClientPort').value='1883'; field('mqttClientBaseTopic').value=''; field('mqttClientUsername').value=''; field('mqttClientPassword').value=''; field('mqttClientEnabled').checked=true; field('mqttClientSendRaw').checked=false; }
-function editMqttClient(id){ const client=(mqttClients||[]).find(c=>c.id===id); if(!client) return; mqttClientState.editingId=id; field('mqttClientName').value=client.name||''; field('mqttClientHost').value=client.host||''; field('mqttClientPort').value=client.port||1883; field('mqttClientBaseTopic').value=client.base_topic||''; field('mqttClientUsername').value=client.username||''; field('mqttClientPassword').value=client.password||''; field('mqttClientEnabled').checked=!!client.enabled; field('mqttClientSendRaw').checked=!!client.send_raw; }
+function setMqttClientEditorVisible(visible){ const box = field('mqttClientEditor'); if(box) box.style.display = visible ? '' : 'none'; }
+function resetMqttClientForm(hideEditor=false){ mqttClientState.editingId = null; field('mqttClientName').value=''; field('mqttClientHost').value=''; field('mqttClientPort').value='1883'; field('mqttClientBaseTopic').value=''; field('mqttClientUsername').value=''; field('mqttClientPassword').value=''; field('mqttClientEnabled').checked=true; field('mqttClientSendRaw').checked=false; if(field('mqttClientEditorTitle')) field('mqttClientEditorTitle').textContent='Client hinzufügen'; if(hideEditor) setMqttClientEditorVisible(false); }
+function openCreateMqttClient(){ resetMqttClientForm(false); setMqttClientEditorVisible(true); showNotice('mqttClientsError',''); }
+window.openCreateMqttClient = openCreateMqttClient;
+function editMqttClient(id){ const client=(mqttClients||[]).find(c=>c.id===id); if(!client) return; mqttClientState.editingId=id; field('mqttClientName').value=client.name||''; field('mqttClientHost').value=client.host||''; field('mqttClientPort').value=client.port||1883; field('mqttClientBaseTopic').value=client.base_topic||''; field('mqttClientUsername').value=client.username||''; field('mqttClientPassword').value=client.password||''; field('mqttClientEnabled').checked=!!client.enabled; field('mqttClientSendRaw').checked=!!client.send_raw; if(field('mqttClientEditorTitle')) field('mqttClientEditorTitle').textContent='Client bearbeiten'; setMqttClientEditorVisible(true); showNotice('mqttClientsError',''); }
 window.editMqttClient = editMqttClient;
-async function deleteMqttClient(id){ if(!confirm('MQTT Client wirklich löschen?')) return; await fetch(`./api/mqtt-clients/${id}`, {method:'DELETE'}); const res = await fetch('./api/mqtt-clients'); mqttClients = (await res.json()).clients || []; renderMqttClientsGrid(); const card = getCurrentEditCard(); if(card) renderEditMqttClientAssignments(card); }
+async function deleteMqttClient(id){ if(!confirm('MQTT Client wirklich löschen?')) return; await fetch(`./api/mqtt-clients/${id}`, {method:'DELETE'}); const res = await fetch('./api/mqtt-clients'); mqttClients = (await res.json()).clients || []; renderMqttClientsGrid(); const card = getCurrentEditCard(); if(card) renderEditMqttClientAssignments(card); if(mqttClientState.editingId===id){ resetMqttClientForm(true); } }
 window.deleteMqttClient = deleteMqttClient;
-async function openMqttClientsDialog(){ renderMqttClientsGrid(); field('mqttClientsDialog').showModal(); }
+async function openMqttClientsDialog(){ renderMqttClientsGrid(); resetMqttClientForm(true); field('mqttClientsDialog').showModal(); }
 function buildHelperConfigurationYamlTemplate(){
   const helperCards = getHelperCards();
   const blocks = [];
@@ -1486,9 +1489,9 @@ window.deleteVehicle = deleteVehicle;
 
 if (field('editOraSendVerificationBtn')) field('editOraSendVerificationBtn').onclick = sendOraVerificationCode;
 
-field('closeMqttClientsBtn').onclick = ()=> field('mqttClientsDialog').close();
-field('cancelMqttClientEditBtn').onclick = resetMqttClientForm;
-if (field('addMqttClientBtn')) field('addMqttClientBtn').onclick = resetMqttClientForm;
+field('closeMqttClientsBtn').onclick = ()=> { resetMqttClientForm(true); field('mqttClientsDialog').close(); };
+field('cancelMqttClientEditBtn').onclick = ()=> resetMqttClientForm(true);
+if (field('addMqttClientBtn')) field('addMqttClientBtn').onclick = openCreateMqttClient;
 field('saveMqttClientBtn').onclick = async()=>{
   try{
     const payload = { id: mqttClientState.editingId, name: field('mqttClientName').value.trim(), host: field('mqttClientHost').value.trim(), port: parseInt(field('mqttClientPort').value || '1883', 10), username: field('mqttClientUsername').value.trim(), password: field('mqttClientPassword').value, base_topic: field('mqttClientBaseTopic').value.trim(), enabled: field('mqttClientEnabled').checked, send_raw: field('mqttClientSendRaw').checked };
@@ -1498,7 +1501,7 @@ field('saveMqttClientBtn').onclick = async()=>{
     mqttClients = (await res.json()).clients || [];
     renderMqttClientsGrid();
     const card = getCurrentEditCard(); if(card) renderEditMqttClientAssignments(card);
-    resetMqttClientForm();
+    resetMqttClientForm(true);
   }catch(err){ showNotice('mqttClientsError', err.message); }
 };
 field('editBmwAutoReconnect').onchange = toggleBmwReconnectMode;
