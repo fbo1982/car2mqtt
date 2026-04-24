@@ -283,7 +283,8 @@ class WorkerManager:
         is_meta_status = is_meta_source and [part.lower() for part in metric_parts] == []
 
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
-        metrics = dict(runtime.metrics or {})
+        previous_metrics = dict(runtime.metrics or {})
+        metrics = dict(previous_metrics)
         obsolete_present = {key for key in GWM_OBSOLETE_MAPPED_KEYS if key in metrics}
         for key in obsolete_present:
             metrics.pop(key, None)
@@ -305,6 +306,7 @@ class WorkerManager:
         elif not runtime.raw_topic:
             runtime.raw_topic = raw_topic_base
         runtime.mapped_topic = mapped
+        changed_keys = {key for key, value in metrics.items() if previous_metrics.get(key) != value}
         runtime.metrics = metrics
         runtime.provider_meta = {
             "vehicle_id": vehicle.provider_config.get("vehicle_id", vehicle.id),
@@ -322,8 +324,8 @@ class WorkerManager:
             client.connect()
             for key in sorted(obsolete_present):
                 client.publish(f"{mapped}/{key}", "", retain=True)
-            for key, value in metrics.items():
-                client.publish(f"{mapped}/{key}", value)
+            for key in sorted(changed_keys):
+                client.publish(f"{mapped}/{key}", metrics.get(key))
         finally:
             client.disconnect()
 
