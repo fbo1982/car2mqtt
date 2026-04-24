@@ -591,6 +591,12 @@ async function loadSettingsData(){
     return initial;
   }
 }
+function prettyZoneLabel(entityId){
+  const raw = String(entityId || '').trim();
+  if(!raw) return '';
+  const base = raw.startsWith('zone.') ? raw.slice(5) : raw;
+  return base.split('_').filter(Boolean).map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+}
 function renderSettingsDialog(data){
   const select = field('settingsHomeZoneSelect');
   const info = field('settingsHomeZoneInfo');
@@ -599,10 +605,10 @@ function renderSettingsDialog(data){
   const selected = String(data?.ui_settings?.helper_home_zone_entity_id || '');
   const effectiveEntity = String(data?.effective_homezone?.entity_id || '');
   if(selected && !zones.some(z => z && z.entity_id === selected)) {
-    zones.push({ entity_id: selected, name: selected });
+    zones.push({ entity_id: selected, name: prettyZoneLabel(selected) || selected });
   }
   if(!selected && effectiveEntity && !zones.some(z => z && z.entity_id === effectiveEntity)) {
-    zones.push({ entity_id: effectiveEntity, name: effectiveEntity });
+    zones.push({ entity_id: effectiveEntity, name: prettyZoneLabel(effectiveEntity) || effectiveEntity });
   }
   availableZones = zones;
   select.innerHTML = '';

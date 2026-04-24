@@ -79,6 +79,17 @@ def _extract_assignment_value(line: str, key: str) -> str | None:
     return m.group(1).strip().strip('"').strip("'")
 
 
+
+
+def _extract_zone_entity_id(value: str | None) -> str:
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    m = re.search(r"state_attr\(\s*['"](zone\.[A-Za-z0-9_]+)['"]\s*,", text)
+    if m:
+        return m.group(1)
+    m = re.search(r"(zone\.[A-Za-z0-9_]+)", text)
+    return m.group(1) if m else ''
 def _homezone_payload_from_entity(entity_id: str) -> dict[str, Any]:
     entity_id = str(entity_id or '').strip()
     if not entity_id:
@@ -273,6 +284,7 @@ def _read_existing_homezone(config: AppConfig | None = None) -> dict[str, Any]:
             continue
         active_lat, active_lon = _extract_from_lines(lines)
         if active_lat and active_lon:
+            entity_id = _extract_zone_entity_id(active_lat) or _extract_zone_entity_id(active_lon)
             return {
                 'found': True,
                 'home_lat': active_lat,
@@ -280,6 +292,7 @@ def _read_existing_homezone(config: AppConfig | None = None) -> dict[str, Any]:
                 'source': str(path),
                 'checked_paths': checked_paths,
                 'selected_via_settings': False,
+                'entity_id': entity_id,
             }
 
     return {
@@ -289,6 +302,7 @@ def _read_existing_homezone(config: AppConfig | None = None) -> dict[str, Any]:
         'source': '',
         'checked_paths': checked_paths,
         'selected_via_settings': False,
+        'entity_id': '',
     }
 
 def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, base_topic: str) -> dict:
