@@ -580,7 +580,7 @@ async function loadSettingsData(){
     return initial;
   }
   try{
-    const resp = await fetch('/api/settings');
+    const resp = await fetch('api/settings');
     if(!resp.ok) throw new Error('Einstellungen konnten nicht geladen werden.');
     const data = await resp.json();
     uiSettings = data.ui_settings || {};
@@ -1153,7 +1153,7 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
   ev.preventDefault();
   try{
     const select = field('settingsHomeZoneSelect');
-    const resp = await postJson('/api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '' });
+    const resp = await postJson('api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '' });
     uiSettings = resp.ui_settings || {};
     helperHomezoneJson = resp.effective_homezone || helperHomezoneJson;
     const info = field('settingsHomeZoneInfo');
@@ -1219,7 +1219,7 @@ async function openHelperConfigDialog(){
   cfgTa.value = buildHelperConfigurationYamlTemplate();
   let helperHomezone = helperHomezoneJson || null;
   try {
-    const resp = await fetch('/api/helper/homezone');
+    const resp = await fetch('api/helper/homezone');
     if(resp.ok) helperHomezone = await resp.json();
   } catch(e) {}
   if(helperHomezone) helperHomezoneJson = helperHomezone;
