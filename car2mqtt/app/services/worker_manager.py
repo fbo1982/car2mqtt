@@ -110,15 +110,37 @@ class WorkerManager:
         return f"{target_base}/{suffix}" if target_base else source_topic
 
     def _publish_to_forward_client(self, client_cfg, topic: str, payload: Any) -> None:
+        if not getattr(client_cfg, 'host', ''):
+            raise RuntimeError('MQTT Client ohne Host konfiguriert')
         local = load_runtime_mqtt_settings()
-        settings = RuntimeMqttSettings(host=client_cfg.host, port=client_cfg.port, username=client_cfg.username, password=client_cfg.password, password_set=bool(client_cfg.password), base_topic=client_cfg.base_topic or local.base_topic, qos=local.qos, retain=local.retain, tls=local.tls)
+        settings = RuntimeMqttSettings(
+            host=client_cfg.host,
+            port=client_cfg.port,
+            username=client_cfg.username,
+            password=client_cfg.password,
+            password_set=bool(client_cfg.password),
+            base_topic=client_cfg.base_topic or local.base_topic,
+            qos=local.qos,
+            retain=local.retain,
+            tls=local.tls,
+        )
         client = LocalMqttClient(settings)
         try:
             client.connect()
             client.publish(topic, payload)
-            self._forward_publish(vehicle, settings, topic, payload, is_raw=False)
         finally:
             client.disconnect()
+
+    def _forward_flatten_publish(self, vehicle, mqtt_settings, raw_topic_base: str, data: Dict[str, Any]) -> None:
+        data_points = (data or {}).get('data', {}) or {}
+        if not isinstance(data_points, dict):
+            return
+        for metric_name, metric_data in data_points.items():
+            metric_topic = f"{raw_topic_base}/{metric_name.replace('.', '/')}"
+            self._forward_publish(vehicle, mqtt_settings, metric_topic, metric_data, is_raw=True)
+            if isinstance(metric_data, dict):
+                for key, value in metric_data.items():
+                    self._forward_publish(vehicle, mqtt_settings, f"{metric_topic}/{key}", value, is_raw=True)
 
     def _forward_publish(self, vehicle, mqtt_settings, source_topic: str, payload: Any, *, is_raw: bool) -> None:
         local_base = str(getattr(mqtt_settings, 'base_topic', 'car') or 'car')
