@@ -450,6 +450,7 @@ const providers = {{ providers | tojson }};
 let cards = {{ cards_json | safe }};
 let helperHomezoneJson = {{ helper_homezone_json | safe }};
 let uiSettings = {{ ui_settings_json | safe }};
+let availableZones = {{ zones_json | safe }};
 const createState = { manufacturer: null, authSessionId: null, authReady: false };
 const editState = { vehicleId: null, reauthSessionId: null, authReady: true, liveLogTimer: null, liveLogsEnabled: false, lastLogText: '', needsVerification: false };
 const field = (id) => document.getElementById(id);
@@ -570,18 +571,32 @@ function describeHomezone(homezone){
   return 'Keine gespeicherte Home Zone - Standard zone.home wird verwendet.';
 }
 async function loadSettingsData(){
-  const resp = await fetch('/api/settings');
-  if(!resp.ok) throw new Error('Einstellungen konnten nicht geladen werden.');
-  const data = await resp.json();
-  uiSettings = data.ui_settings || {};
-  if(data.effective_homezone) helperHomezoneJson = data.effective_homezone;
-  return data;
+  const initial = {
+    ui_settings: uiSettings || {},
+    zones: Array.isArray(availableZones) ? availableZones : [],
+    effective_homezone: helperHomezoneJson || null,
+  };
+  if(initial.zones.length || initial.effective_homezone){
+    return initial;
+  }
+  try{
+    const resp = await fetch('/api/settings');
+    if(!resp.ok) throw new Error('Einstellungen konnten nicht geladen werden.');
+    const data = await resp.json();
+    uiSettings = data.ui_settings || {};
+    availableZones = Array.isArray(data.zones) ? data.zones : [];
+    if(data.effective_homezone) helperHomezoneJson = data.effective_homezone;
+    return data;
+  }catch(err){
+    return initial;
+  }
 }
 function renderSettingsDialog(data){
   const select = field('settingsHomeZoneSelect');
   const info = field('settingsHomeZoneInfo');
   if(!select) return;
   const zones = Array.isArray(data?.zones) ? data.zones : [];
+  availableZones = zones;
   const selected = String(data?.ui_settings?.helper_home_zone_entity_id || '');
   select.innerHTML = '';
   const autoOpt = document.createElement('option');
