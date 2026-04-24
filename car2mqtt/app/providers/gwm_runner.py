@@ -48,6 +48,7 @@ class GwmIntegratedWorker:
             "refresh token has expired",
             "login token has expired",
             "access token expired",
+            "token refresh timed out",
         ]
         return any(m in lowered for m in markers)
 
