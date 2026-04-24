@@ -27,6 +27,18 @@ class ProviderState(BaseModel):
     user_code: str = ""
 
 
+class MqttForwardClient(BaseModel):
+    id: str
+    name: str = ""
+    host: str
+    port: int = 1883
+    username: str = ""
+    password: str = ""
+    topic_base: str = "car"
+    enabled: bool = True
+    include_raw: bool = False
+
+
 class VehicleConfig(BaseModel):
     id: str
     label: str
@@ -37,27 +49,17 @@ class VehicleConfig(BaseModel):
     provider_config: Dict[str, Any] = Field(default_factory=dict)
     mapping: MappingConfig = Field(default_factory=MappingConfig)
     provider_state: ProviderState = Field(default_factory=ProviderState)
+    mqtt_client_ids: List[str] = Field(default_factory=list)
 
 
 class UiSettings(BaseModel):
     helper_home_zone_entity_id: str = ""
 
 
-class ExternalMqttClientConfig(BaseModel):
-    id: str
-    name: str = ""
-    enabled: bool = True
-    host: str = ""
-    port: int = 1883
-    username: str = ""
-    password: str = ""
-    topic_prefix: str = ""
-    include_raw: bool = False
-
 class AppConfig(BaseModel):
     vehicles: List[VehicleConfig] = Field(default_factory=list)
     ui_settings: UiSettings = Field(default_factory=UiSettings)
-    mqtt_clients: List[ExternalMqttClientConfig] = Field(default_factory=list)
+    mqtt_forward_clients: List[MqttForwardClient] = Field(default_factory=list)
 
 
 class ProviderDescriptor(BaseModel):

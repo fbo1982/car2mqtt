@@ -80,7 +80,7 @@ select, option {
 
   <section class="section-header">
     <div><div class="eyebrow">Live Übersicht</div><h2>Fahrzeuge</h2></div>
-    <div class="toolbar"><button id="settingsBtn" class="ghost-btn">Einstellungen</button><button id="mqttClientsBtn" class="ghost-btn">MQTT Clients</button><button id="copyHelperBtn" class="ghost-btn">Copy Helper</button><button id="mqttTestBtn" class="ghost-btn">MQTT testen</button></div>
+    <div class="toolbar"><button id="settingsBtn" class="ghost-btn">Einstellungen</button><button id="copyHelperBtn" class="ghost-btn">Copy Helper</button><button id="mqttTestBtn" class="ghost-btn">MQTT testen</button></div>
   </section>
 
   <section id="cardsGrid" class="cards-grid"></section>
@@ -385,35 +385,6 @@ select, option {
   </div>
 </dialog>
 
-
-<dialog id="mqttClientsDialog" class="modal">
-  <div class="panel wide">
-    <div class="modal-head">
-      <div><div class="eyebrow">Verteilung</div><h3>MQTT Clients</h3></div>
-      <button id="closeMqttClientsBtn" type="button" class="icon-btn">✕</button>
-    </div>
-    <div class="modal-body">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button id="addMqttClientBtn" type="button" class="primary-btn">Hinzufügen</button></div>
-      <div id="mqttClientsGrid" class="cards-grid"></div>
-      <div id="mqttClientFormWrap" class="howto-card hidden" style="margin-top:14px">
-        <input id="mqttClientId" type="hidden" />
-        <div class="grid">
-          <div class="field"><label>Name</label><input id="mqttClientName" /></div>
-          <div class="field"><label>Server</label><input id="mqttClientHost" placeholder="mqtt.example.com" /></div>
-          <div class="field"><label>Port</label><input id="mqttClientPort" type="number" value="1883" /></div>
-          <div class="field"><label>Benutzername</label><input id="mqttClientUsername" /></div>
-          <div class="field"><label>Passwort</label><input id="mqttClientPassword" type="password" placeholder="unverändert lassen" /></div>
-          <div class="field"><label>Zielordner / Topic-Basis</label><input id="mqttClientTopicPrefix" placeholder="remote/car" /></div>
-          <div class="field"><label><input id="mqttClientEnabled" type="checkbox" checked /> Aktiv</label></div>
-          <div class="field"><label><input id="mqttClientIncludeRaw" type="checkbox" /> Raw Daten übertragen</label></div>
-        </div>
-        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px"><button id="cancelMqttClientBtn" type="button" class="ghost-btn">Abbrechen</button><button id="saveMqttClientBtn" type="button" class="primary-btn">Speichern</button></div>
-      </div>
-    </div>
-    <div class="modal-foot"><div class="spacer"></div><button id="closeMqttClientsBottomBtn" type="button" class="ghost-btn">Schließen</button></div>
-  </div>
-</dialog>
-
 <dialog id="helperConfigDialog" class="modal">
   <div class="panel wide">
     <div class="modal-head">
@@ -474,13 +445,40 @@ select, option {
 </dialog>
 
 
+
+<dialog class="modal" id="mqttClientsDialog">
+  <div class="panel wide">
+    <div class="modal-head"><div><div class="eyebrow">Weiterleitung</div><h3>MQTT Clients</h3></div><button class="icon-btn" onclick="closeMqttClientsDialog()">×</button></div>
+    <div class="modal-body">
+      <div class="toolbar" style="margin-bottom:14px"><button class="primary-btn" onclick="openMqttClientForm()">Client hinzufügen</button></div>
+      <div id="mqttClientsGrid" class="cards-grid"></div>
+    </div>
+    <div class="modal-foot"><button class="ghost-btn" onclick="closeMqttClientsDialog()">Schließen</button></div>
+  </div>
+</dialog>
+<dialog class="modal" id="mqttClientFormDialog">
+  <div class="panel">
+    <div class="modal-head"><div><div class="eyebrow">MQTT Client</div><h3 id="mqttClientFormTitle">MQTT Client</h3></div><button class="icon-btn" onclick="closeMqttClientForm()">×</button></div>
+    <div class="modal-body grid two">
+      <div class="field"><label>Name</label><input id="mqttClientName"></div>
+      <div class="field"><label>Server</label><input id="mqttClientHost"></div>
+      <div class="field"><label>Port</label><input id="mqttClientPort" type="number" value="1883"></div>
+      <div class="field"><label>Zielordner / Topic-Basis</label><input id="mqttClientTopicBase" value="car"></div>
+      <div class="field"><label>Benutzername</label><input id="mqttClientUsername"></div>
+      <div class="field"><label>Passwort</label><input id="mqttClientPassword" type="password"></div>
+      <div class="toggle-field"><input id="mqttClientEnabled" type="checkbox" checked><div class="toggle-copy"><label for="mqttClientEnabled">Aktiv</label><small>Client global aktivieren oder deaktivieren.</small></div></div>
+      <div class="toggle-field"><input id="mqttClientIncludeRaw" type="checkbox"><div class="toggle-copy"><label for="mqttClientIncludeRaw">Raw Daten übertragen</label><small>Wenn deaktiviert, werden nur mapped und _meta übertragen.</small></div></div>
+    </div>
+    <div class="modal-foot"><button class="ghost-btn" onclick="closeMqttClientForm()">Abbrechen</button><button class="primary-btn" onclick="saveMqttClient()">Speichern</button></div>
+  </div>
+</dialog>
+
 <script>
 const providers = {{ providers | tojson }};
 let cards = {{ cards_json | safe }};
 let helperHomezoneJson = {{ helper_homezone_json | safe }};
 let uiSettings = {{ ui_settings_json | safe }};
 let availableZones = {{ zones_json | safe }};
-let mqttClients = {{ mqtt_clients_json | safe }};
 const createState = { manufacturer: null, authSessionId: null, authReady: false };
 const editState = { vehicleId: null, reauthSessionId: null, authReady: true, liveLogTimer: null, liveLogsEnabled: false, lastLogText: '', needsVerification: false };
 const field = (id) => document.getElementById(id);
@@ -660,6 +658,19 @@ function renderSettingsDialog(data){
   });
   if(info) info.textContent = describeHomezone(data?.effective_homezone || helperHomezoneJson);
 }
+
+function mqttClientStatusLabel(status){ return status === 'online' ? 'Online' : (status === 'disabled' ? 'Deaktiviert' : 'Offline'); }
+function renderMqttClientsGrid(){ const el = field('mqttClientsGrid'); if(!el) return; el.innerHTML = (mqttClients||[]).map(c => `<article class="vehicle-card"><div class="vehicle-head"><div><div class="vehicle-title">${c.name || c.host}</div><div class="vehicle-subtitle">${c.host}:${c.port}</div></div><span class="status-badge ${c.status==='online'?'connected':(c.status==='disabled'?'inactive':'disconnected')}">${mqttClientStatusLabel(c.status)}</span></div><div class="card-footer"><div>Ziel: ${c.topic_base || 'car'}</div><div class="muted">Aktiv: ${c.enabled ? 'Ja' : 'Nein'} · Raw: ${c.include_raw ? 'Ja' : 'Nein'}</div><div class="card-actions"><button class="tiny-btn" onclick="openMqttClientForm('${c.id}')">Bearbeiten</button><button class="danger-btn" onclick="deleteMqttClient('${c.id}')">Löschen</button></div></div></article>`).join('') || '<div class="muted">Noch keine MQTT Clients angelegt.</div>'; }
+async function refreshMqttClients(){ try{ const resp = await fetch('api/mqtt-clients'); mqttClients = resp.ok ? await resp.json() : []; }catch(e){ mqttClients = mqttClients || []; } renderMqttClientsGrid(); }
+async function openMqttClientsDialog(){ await refreshMqttClients(); const d = field('mqttClientsDialog'); try{ d.showModal(); }catch(e){ d.setAttribute('open','open'); } }
+function closeMqttClientsDialog(){ const d = field('mqttClientsDialog'); if(d){ try{ d.close(); }catch(e){ d.removeAttribute('open'); } } }
+function openMqttClientForm(id){ editingMqttClientId = id || null; const c = (mqttClients||[]).find(x=>x.id===id) || {}; field('mqttClientFormTitle').textContent = id ? 'MQTT Client bearbeiten' : 'MQTT Client hinzufügen'; field('mqttClientName').value = c.name || ''; field('mqttClientHost').value = c.host || ''; field('mqttClientPort').value = c.port || 1883; field('mqttClientTopicBase').value = c.topic_base || 'car'; field('mqttClientUsername').value = c.username || ''; field('mqttClientPassword').value = ''; field('mqttClientEnabled').checked = c.enabled !== false; field('mqttClientIncludeRaw').checked = !!c.include_raw; const d = field('mqttClientFormDialog'); try{ d.showModal(); }catch(e){ d.setAttribute('open','open'); } }
+function closeMqttClientForm(){ const d = field('mqttClientFormDialog'); if(d){ try{ d.close(); }catch(e){ d.removeAttribute('open'); } } }
+async function saveMqttClient(){ const payload = { name: field('mqttClientName').value.trim(), host: field('mqttClientHost').value.trim(), port: parseInt(field('mqttClientPort').value||'1883',10), topic_base: field('mqttClientTopicBase').value.trim() || 'car', username: field('mqttClientUsername').value.trim(), password: field('mqttClientPassword').value, enabled: field('mqttClientEnabled').checked, include_raw: field('mqttClientIncludeRaw').checked }; if(!payload.host) return alert('Bitte Server eintragen.'); const url = editingMqttClientId ? `api/mqtt-clients/${editingMqttClientId}` : 'api/mqtt-clients'; const method = editingMqttClientId ? 'PUT' : 'POST'; const resp = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); if(!resp.ok) return alert(await resp.text() || 'Speichern fehlgeschlagen'); closeMqttClientForm(); await refreshMqttClients(); }
+async function deleteMqttClient(id){ if(!confirm('MQTT Client wirklich löschen?')) return; const resp = await fetch(`api/mqtt-clients/${id}`,{method:'DELETE'}); if(!resp.ok) return alert(await resp.text() || 'Löschen fehlgeschlagen'); await refreshMqttClients(); }
+function renderVehicleMqttClientAssignments(prefix, selectedIds){ const box = field(prefix + 'MqttClientsBox'); if(!box) return; const selected = new Set(selectedIds || []); const items = (mqttClients || []).map(c => `<label class="toggle-field"><input type="checkbox" class="${prefix}mqttClientCheckbox" value="${c.id}" ${selected.has(c.id)?'checked':''}><div class="toggle-copy"><label>${c.name || c.host}</label><small>${c.host}:${c.port} · ${c.enabled ? 'Aktiv' : 'Deaktiviert'} · Ziel: ${c.topic_base || 'car'}</small></div></label>`).join(''); box.innerHTML = items || '<div class="muted">Keine MQTT Clients vorhanden.</div>'; }
+function getSelectedVehicleMqttClientIds(prefix){ return Array.from(document.querySelectorAll(`.${prefix}mqttClientCheckbox:checked`)).map(el => el.value); }
+
 async function openSettingsDialog(){
   const dlg = field('settingsDialog');
   if(!dlg) return;
@@ -676,51 +687,6 @@ function closeSettingsDialog(){
   const d = field('settingsDialog');
   if(d){ try{ d.close(); }catch(e){ d.removeAttribute('open'); d.style.display='none'; } }
 }
-
-
-function mqttClientStatusLabel(status, enabled){
-  if(!enabled) return 'Deaktiviert';
-  return status === 'online' ? 'Online' : 'Offline';
-}
-function renderMqttClients(){
-  const grid = field('mqttClientsGrid');
-  if(!grid) return;
-  grid.innerHTML = '';
-  (mqttClients || []).forEach(client => {
-    const card = document.createElement('article');
-    card.className = 'card';
-    card.innerHTML = `<div class="card-head"><div><div class="eyebrow">MQTT Ziel</div><h3>${escapeHtml(client.name || client.host || client.id)}</h3></div><span class="status ${client.enabled ? (client.status==='online'?'connected':'disconnected') : 'inactive'}">${mqttClientStatusLabel(client.status, client.enabled)}</span></div>
-      <div class="kv"><span>Server</span><strong>${escapeHtml(client.host || '-')}</strong></div>
-      <div class="kv"><span>Topic-Basis</span><strong>${escapeHtml(client.topic_prefix || '-')}</strong></div>
-      <div class="kv"><span>Raw</span><strong>${client.include_raw ? 'an' : 'aus'}</strong></div>
-      <div class="row-actions"><button class="ghost-btn" data-edit-client="${escapeHtml(client.id)}">Bearbeiten</button><button class="ghost-btn danger" data-delete-client="${escapeHtml(client.id)}">Löschen</button></div>`;
-    grid.appendChild(card);
-  });
-  grid.querySelectorAll('[data-edit-client]').forEach(btn => btn.onclick = ()=> openMqttClientForm(btn.getAttribute('data-edit-client')));
-  grid.querySelectorAll('[data-delete-client]').forEach(btn => btn.onclick = async()=>{ if(!confirm('MQTT Client löschen?')) return; const resp = await fetch(`api/mqtt-clients/${btn.getAttribute('data-delete-client')}`, {method:'DELETE'}); const data = await resp.json(); mqttClients = data.clients || []; renderMqttClients(); });
-}
-function openMqttClientForm(id=''){
-  const wrap = field('mqttClientFormWrap');
-  const client = (mqttClients || []).find(c => c.id === id) || {};
-  field('mqttClientId').value = client.id || '';
-  field('mqttClientName').value = client.name || '';
-  field('mqttClientHost').value = client.host || '';
-  field('mqttClientPort').value = client.port || 1883;
-  field('mqttClientUsername').value = client.username || '';
-  field('mqttClientPassword').value = '';
-  field('mqttClientTopicPrefix').value = client.topic_prefix || '';
-  field('mqttClientEnabled').checked = client.enabled !== false;
-  field('mqttClientIncludeRaw').checked = !!client.include_raw;
-  wrap?.classList.remove('hidden');
-}
-function closeMqttClientForm(){ field('mqttClientFormWrap')?.classList.add('hidden'); }
-async function openMqttClientsDialog(){
-  try{ const res = await fetch('api/mqtt-clients'); const data = await res.json(); mqttClients = data.clients || []; }catch(e){}
-  renderMqttClients();
-  const dlg = field('mqttClientsDialog');
-  try{ dlg.showModal(); }catch(e){ dlg.setAttribute('open','open'); dlg.style.display='flex'; }
-}
-function closeMqttClientsDialog(){ const d = field('mqttClientsDialog'); if(d){ try{ d.close(); }catch(e){ d.removeAttribute('open'); d.style.display='none'; } } closeMqttClientForm(); }
 
 function buildHelperAutomationsYamlTemplate(homezone){
   const helperCards = getHelperCards();
@@ -1249,20 +1215,6 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
     alert(err.message || 'Einstellungen konnten nicht gespeichert werden.');
   }
 };
-
-const mqttClientsBtn = field('mqttClientsBtn');
-if(mqttClientsBtn) mqttClientsBtn.onclick = (ev)=>{ ev.preventDefault(); openMqttClientsDialog(); };
-const closeMqttClientsBtn = field('closeMqttClientsBtn');
-if(closeMqttClientsBtn) closeMqttClientsBtn.onclick = (ev)=>{ ev.preventDefault(); closeMqttClientsDialog(); };
-const closeMqttClientsBottomBtn = field('closeMqttClientsBottomBtn');
-if(closeMqttClientsBottomBtn) closeMqttClientsBottomBtn.onclick = (ev)=>{ ev.preventDefault(); closeMqttClientsDialog(); };
-const addMqttClientBtn = field('addMqttClientBtn');
-if(addMqttClientBtn) addMqttClientBtn.onclick = (ev)=>{ ev.preventDefault(); openMqttClientForm(); };
-const cancelMqttClientBtn = field('cancelMqttClientBtn');
-if(cancelMqttClientBtn) cancelMqttClientBtn.onclick = (ev)=>{ ev.preventDefault(); closeMqttClientForm(); };
-const saveMqttClientBtn = field('saveMqttClientBtn');
-if(saveMqttClientBtn) saveMqttClientBtn.onclick = async(ev)=>{ ev.preventDefault(); try{ const data = await postJson('api/mqtt-clients', { id: field('mqttClientId').value || null, name: field('mqttClientName').value, host: field('mqttClientHost').value, port: parseInt(field('mqttClientPort').value || '1883', 10), username: field('mqttClientUsername').value, password: field('mqttClientPassword').value, topic_prefix: field('mqttClientTopicPrefix').value, enabled: !!field('mqttClientEnabled').checked, include_raw: !!field('mqttClientIncludeRaw').checked }); mqttClients = data.clients || []; renderMqttClients(); closeMqttClientForm(); }catch(err){ alert(err.message || 'MQTT Client konnte nicht gespeichert werden.'); } };
-
 const helperConfigBtn = field('copyHelperBtn');
 if(helperConfigBtn) helperConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openHelperConfigDialog(); };
 const closeHelperConfigBtn = field('closeHelperConfigBtn');
@@ -1363,7 +1315,7 @@ field('saveCreateBtn').onclick = async()=>{
     if(!field('vehicleLabel').value.trim() || !field('vehiclePlate').value.trim()) throw new Error('Bitte Anzeigename und Kennzeichen ausfüllen.');
     const derivedId = normalizeVehicleIdFromPlate(field('vehiclePlate').value.trim());
     if(!derivedId) throw new Error('Aus dem Kennzeichen konnte keine interne ID erzeugt werden.');
-    const payload = { id: derivedId, label: field('vehicleLabel').value.trim(), manufacturer: createState.manufacturer, license_plate: field('vehiclePlate').value.trim(), enabled: true, provider_config: {}, auth_session_id: createState.authSessionId };
+    const payload = { id: derivedId, label: field('vehicleLabel').value.trim(), manufacturer: createState.manufacturer, license_plate: field('vehiclePlate').value.trim(), enabled: true, provider_config: {}, auth_session_id: createState.authSessionId, mqtt_client_ids: getSelectedVehicleMqttClientIds('create') };
     if(createState.manufacturer === 'bmw'){
       if(!field('bmwClientId').value.trim() || !field('bmwVin').value.trim()) throw new Error('Bitte BMW Client ID und VIN eintragen.');
       if(!createState.authReady) throw new Error('Bitte BMW Authentifizierung abschließen.');
@@ -1388,7 +1340,7 @@ async function editVehicle(vehicleId){
   field('editEnabled').checked = vehicle.enabled !== false;
   field('editBmwClientId').value = vehicle.provider_config.client_id || ''; field('editBmwMqttUsername').value = vehicle.provider_config.client_id || vehicle.provider_config.mqtt_username || ''; field('editBmwVin').value = vehicle.provider_config.vin || ''; field('editBmwRegion').value = vehicle.provider_config.region || 'EU'; field('editBmwAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editBmwManualReconnectMinutes').value = vehicle.provider_config.manual_reconnect_minutes || 15; toggleBmwReconnectMode();
   field('editGwmAccount').value = vehicle.provider_config.account || ''; field('editGwmPassword').value = vehicle.provider_config.password || ''; field('editGwmCountry').value = vehicle.provider_config.country || 'DE'; field('editGwmLanguage').value = vehicle.provider_config.language || 'de'; field('editGwmPollInterval').value = vehicle.provider_config.poll_interval || 60; field('editGwmVehicleId').value = vehicle.provider_config.vehicle_id || vehicle.id; field('editGwmCapacity').value = vehicle.provider_config.capacity_kwh || ''; const gwmSourceBase = vehicle.provider_config.source_topic_base || 'GWM';
-  field('editGwmSourceTopicBase').value = (String(gwmSourceBase).startsWith('GWM/')) ? 'GWM' : gwmSourceBase; field('editGwmVerificationCode').value = ''; field('editGwmPollingEnabled').checked = vehicle.provider_config.polling_enabled !== false; field('editGwmAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editGwmDelayedRetryEnabled').checked = vehicle.provider_config.delayed_retry_enabled !== false; field('editGwmRetryDelayMinutes').value = String(vehicle.provider_config.retry_delay_minutes || 55); field('editGwmFallbackOnSilence').checked = vehicle.provider_config.fallback_on_silence !== false; toggleEditGwmOptions();
+  field('editGwmSourceTopicBase').value = (String(gwmSourceBase).startsWith('GWM/')) ? 'GWM' : gwmSourceBase; field('editGwmVerificationCode').value = ''; renderVehicleMqttClientAssignments('edit', vehicle.mqtt_client_ids || []); field('editGwmPollingEnabled').checked = vehicle.provider_config.polling_enabled !== false; field('editGwmAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editGwmDelayedRetryEnabled').checked = vehicle.provider_config.delayed_retry_enabled !== false; field('editGwmRetryDelayMinutes').value = String(vehicle.provider_config.retry_delay_minutes || 55); field('editGwmFallbackOnSilence').checked = vehicle.provider_config.fallback_on_silence !== false; toggleEditGwmOptions();
   const gwmNeedsReauth = vehicle.manufacturer === 'gwm' && (/refresh token abgelaufen|reauth erforderlich/i.test(vehicle.status || '') || /refresh token abgelaufen|reauth erforderlich/i.test(vehicle.status_detail || '') || /refresh token/i.test(vehicle.provider_state?.last_error || '') || /reauth erforderlich/i.test(vehicle.provider_state?.auth_message || ''));
   field('editReauthTitle').textContent = vehicle.manufacturer === 'gwm' ? 'ORA ReAuth' : 'BMW Re-Auth';
   field('editAuthState').textContent = vehicle.enabled === false ? 'Fahrzeug ist inaktiv.' : (vehicle.manufacturer === 'gwm' ? (gwmNeedsReauth ? 'ReAuth erforderlich - gespeicherte Anmeldung ist abgelaufen.' : (vehicle.status === 'waiting_for_code' ? 'Verifikationscode erforderlich.' : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'Anmeldung prüfen.'))) : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'Anmeldung prüfen.'));
@@ -1482,7 +1434,7 @@ field('closeEditBtn').onclick = field('cancelEditBtn').onclick = () => { stopLiv
 field('editReauthStartBtn').onclick = async()=>{ if(!editState.vehicleId) return; showNotice('editError'); try{ const vehicle = await (await fetch(`./api/vehicles/${editState.vehicleId}`)).json(); if(vehicle.manufacturer === 'gwm'){ const d = await postJson(`./api/vehicles/${editState.vehicleId}/gwm/reauth/start`,{}); editState.authReady = false; field('editAuthState').textContent = d.message || 'ORA ReAuth gestartet.'; field('editAuthInfo').classList.add('hidden'); setGwmVerifyVisibility(true, false); await loadDashboard(); await refreshVehicleLogs(); return; } const d = await postJson(`./api/vehicles/${editState.vehicleId}/reauth/start`,{}); editState.reauthSessionId = d.session_id; editState.authReady = false; field('editAuthState').textContent = d.message || 'Re-Auth gestartet.'; field('editUserCode').textContent = d.user_code; field('editVerificationUrl').href = d.verification_uri_complete; field('editVerificationUrl').textContent = d.verification_uri_complete; field('editAuthInfo').classList.remove('hidden'); window.open(d.verification_uri_complete,'_blank'); await refreshVehicleLogs(); }catch(err){ showNotice('editError', err.message); } };
 field('editReauthQuickBtn').onclick = ()=> field('editReauthStartBtn').click();
 field('editPollAuthBtn').onclick = async()=>{ if(!editState.reauthSessionId) return showNotice('editError','Bitte zuerst Re-Auth starten.'); try{ const d = await postJson('./api/providers/bmw/auth/poll',{ session_id: editState.reauthSessionId }); if(d.state === 'authorized'){ editState.authReady = true; field('editAuthState').textContent = 'BMW Re-Auth erfolgreich abgeschlossen.'; await refreshVehicleLogs(); } else { field('editAuthState').textContent = d.message || d.state; } }catch(err){ showNotice('editError', err.message); } };
-async function saveEdit(closeAfter){ try{ const manufacturer = field('editManufacturer').value; const derivedId = normalizeVehicleIdFromPlate(field('editPlate').value.trim()); const payload = { id: derivedId, label: field('editLabel').value.trim(), manufacturer, license_plate: field('editPlate').value.trim(), enabled: field('editEnabled').checked, provider_config: {}, auth_session_id: editState.reauthSessionId || null };
+async function saveEdit(closeAfter){ try{ const manufacturer = field('editManufacturer').value; const derivedId = normalizeVehicleIdFromPlate(field('editPlate').value.trim()); const payload = { id: derivedId, label: field('editLabel').value.trim(), manufacturer, license_plate: field('editPlate').value.trim(), enabled: field('editEnabled').checked, provider_config: {}, auth_session_id: editState.reauthSessionId || null, mqtt_client_ids: getSelectedVehicleMqttClientIds('edit') };
   if(!payload.label || !payload.license_plate || !derivedId) throw new Error('Bitte Titel und Kennzeichen ausfüllen.');
   if(manufacturer === 'bmw'){ payload.provider_config = { client_id: field('editBmwClientId').value.trim(), mqtt_username: field('editBmwClientId').value.trim(), vin: field('editBmwVin').value.trim(), region: field('editBmwRegion').value.trim(), auto_reconnect: field('editBmwAutoReconnect').checked, manual_reconnect_minutes: Math.max(15, Math.min(60, parseInt(field('editBmwManualReconnectMinutes').value || '15', 10))) }; if(!payload.provider_config.client_id || !payload.provider_config.vin) throw new Error('Bitte BMW Client ID und VIN eintragen.'); }
   if(manufacturer === 'gwm'){ payload.provider_config = { account: field('editGwmAccount').value.trim(), password: field('editGwmPassword').value.trim(), country: field('editGwmCountry').value.trim(), language: field('editGwmLanguage').value.trim(), polling_enabled: field('editGwmPollingEnabled').checked, poll_interval: field('editGwmPollInterval').value.trim(), vehicle_id: field('editGwmVehicleId').value.trim() || derivedId, capacity_kwh: field('editGwmCapacity').value.trim(), source_topic_base: field('editGwmSourceTopicBase').value.trim(), auto_reconnect: field('editGwmAutoReconnect').checked, delayed_retry_enabled: field('editGwmDelayedRetryEnabled').checked, retry_delay_minutes: field('editGwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('editGwmFallbackOnSilence').checked }; if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.'); }
@@ -1496,7 +1448,7 @@ window.deleteVehicle = deleteVehicle;
 if (field('editOraSendVerificationBtn')) field('editOraSendVerificationBtn').onclick = sendOraVerificationCode;
 field('editBmwAutoReconnect').onchange = toggleBmwReconnectMode;
 toggleBmwReconnectMode();
-field('createManufacturer').onchange = toggleCreateSections; setLiveLogUi(); renderCards(); renderProviderList(); fillManufacturerSelect(); setInterval(loadDashboard, 15000);
+field('createManufacturer').onchange = toggleCreateSections; setLiveLogUi(); renderCards(); renderProviderList(); fillManufacturerSelect(); renderMqttClientsGrid(); setInterval(loadDashboard, 15000);
 </script>
 </body>
 </html>
