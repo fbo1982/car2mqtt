@@ -125,12 +125,32 @@ public class RunCommand:BaseCommand
             AccessToken = options.Account.AccessToken,
             RefreshToken = options.Account.RefreshToken,
         };
+
+        _logger.LogInformation("Refreshing ORA access token...");
         client.SetAccessToken("");
-        var response = await client.RefreshTokenAsync(refresh, cancellationToken);
-        options.Account.AccessToken = response.AccessToken;
-        options.Account.RefreshToken = response.RefreshToken;
-        await SaveConfigAsync(options, cancellationToken);
-        client.SetAccessToken(options.Account.AccessToken);
+
+        using var refreshTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var linkedRefreshCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, refreshTimeout.Token);
+
+        try
+        {
+            var response = await client.RefreshTokenAsync(refresh, linkedRefreshCts.Token);
+            options.Account.AccessToken = response.AccessToken;
+            options.Account.RefreshToken = response.RefreshToken;
+            await SaveConfigAsync(options, cancellationToken);
+            client.SetAccessToken(options.Account.AccessToken);
+            _logger.LogInformation("ORA token refresh successful.");
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && refreshTimeout.IsCancellationRequested)
+        {
+            _logger.LogError("ORA token refresh timed out after 30 seconds.");
+            throw new TimeoutException("ORA token refresh timed out after 30 seconds.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ORA token refresh failed.");
+            throw;
+        }
     }
 
     private async Task PublishStatusAsync(IMqttClient mqtt, GwmApiClient gwm, Ora2MqttMqttOptions options, bool publishHaDiscovery, CancellationToken cancellationToken)
