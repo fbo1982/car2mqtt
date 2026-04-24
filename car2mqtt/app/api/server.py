@@ -97,43 +97,58 @@ def _ha_supervisor_headers() -> dict[str, str]:
     token = os.getenv('SUPERVISOR_TOKEN', '').strip()
     if not token:
         return {}
-    return {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+    return {'Authorization': f'Bearer {token}', 'X-Supervisor-Token': token, 'Content-Type': 'application/json'}
 
 
 def _load_homeassistant_zones() -> list[dict[str, str]]:
     headers = _ha_supervisor_headers()
     if not headers:
         return []
+
     urls = [
         os.getenv('SUPERVISOR_CORE_STATES_URL', '').strip(),
         'http://supervisor/core/api/states',
         'http://supervisor/core/states',
+        'http://supervisor/homeassistant/api/states',
     ]
-    seen = set()
-    zones: list[dict[str, str]] = []
+
+    def _extract_items(payload: Any) -> list[dict[str, Any]]:
+        if isinstance(payload, list):
+            return [i for i in payload if isinstance(i, dict)]
+        if isinstance(payload, dict):
+            for key in ('result', 'data', 'states'):
+                value = payload.get(key)
+                if isinstance(value, list):
+                    return [i for i in value if isinstance(i, dict)]
+        return []
+
+    seen_urls: set[str] = set()
+    zone_map: dict[str, dict[str, str]] = {}
+
     for url in [u for u in urls if u]:
-        if url in seen:
+        if url in seen_urls:
             continue
-        seen.add(url)
+        seen_urls.add(url)
         try:
             resp = requests.get(url, headers=headers, timeout=10)
             if not resp.ok:
                 continue
-            data = resp.json()
-            items = data.get('result', data) if isinstance(data, dict) else data
-            if not isinstance(items, list):
+            items = _extract_items(resp.json())
+            if not items:
                 continue
             for item in items:
                 entity_id = str(item.get('entity_id', '')).strip()
                 if not entity_id.startswith('zone.'):
                     continue
                 attrs = item.get('attributes') or {}
-                name = str(attrs.get('friendly_name') or entity_id)
-                zones.append({'entity_id': entity_id, 'name': name})
-            if zones:
+                name = str(attrs.get('friendly_name') or attrs.get('name') or entity_id).strip()
+                zone_map[entity_id] = {'entity_id': entity_id, 'name': name or entity_id}
+            if zone_map:
                 break
         except Exception:
             continue
+
+    zones = list(zone_map.values())
     zones.sort(key=lambda z: (z['name'].lower(), z['entity_id'].lower()))
     return zones
 
@@ -367,7 +382,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.39",
+                "version": "1.1.40",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),

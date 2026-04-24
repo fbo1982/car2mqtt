@@ -595,9 +595,16 @@ function renderSettingsDialog(data){
   const select = field('settingsHomeZoneSelect');
   const info = field('settingsHomeZoneInfo');
   if(!select) return;
-  const zones = Array.isArray(data?.zones) ? data.zones : [];
-  availableZones = zones;
+  const zones = Array.isArray(data?.zones) ? [...data.zones] : [];
   const selected = String(data?.ui_settings?.helper_home_zone_entity_id || '');
+  const effectiveEntity = String(data?.effective_homezone?.entity_id || '');
+  if(selected && !zones.some(z => z && z.entity_id === selected)) {
+    zones.push({ entity_id: selected, name: selected });
+  }
+  if(!selected && effectiveEntity && !zones.some(z => z && z.entity_id === effectiveEntity)) {
+    zones.push({ entity_id: effectiveEntity, name: effectiveEntity });
+  }
+  availableZones = zones;
   select.innerHTML = '';
   const autoOpt = document.createElement('option');
   autoOpt.value = '';

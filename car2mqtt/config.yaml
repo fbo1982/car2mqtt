@@ -1,5 +1,5 @@
 name: "Car2MQTT"
-version: "1.1.39"
+version: "1.1.40"
 slug: "car2mqtt"
 description: "Multi-vehicle MQTT bridge with BMW wizard/auth flow for Home Assistant"
 url: "https://github.com/tbo1982/car2mqtt"
@@ -19,6 +19,8 @@ ports_description:
   8099/tcp: Web UI
 map:
   - addon_config:rw
+homeassistant_api: true
+hassio_api: true
 options:
   log_level: info
   mqtt_host: ""
