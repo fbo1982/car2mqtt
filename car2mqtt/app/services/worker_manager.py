@@ -135,6 +135,7 @@ class WorkerManager:
         settings = load_runtime_mqtt_settings()
         raw_topic, mapped = self._runtime_topics(vehicle, settings)
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
+        self._forward_external_topic(source_topic, payload, is_raw=not is_meta_source)
         previous_state = runtime.connection_state or ""
         previous_detail = runtime.connection_detail or ""
 
@@ -161,6 +162,39 @@ class WorkerManager:
             self.log_store.append(vehicle_id, f"Status -> {state}: {detail}")
         self._publish_meta(vehicle, runtime, settings)
 
+
+
+    def _forward_external_topic(self, topic: str, payload: Any, *, is_raw: bool = False) -> None:
+        cfg = self.config_store.load()
+        clients = getattr(cfg, 'mqtt_clients', []) or []
+        for ext in clients:
+            if not getattr(ext, 'enabled', False):
+                continue
+            if is_raw and not getattr(ext, 'include_raw', False):
+                continue
+            host = str(getattr(ext, 'host', '') or '').strip()
+            if not host:
+                continue
+            settings = load_runtime_mqtt_settings().model_copy(update={
+                'host': host,
+                'port': int(getattr(ext, 'port', 1883) or 1883),
+                'username': str(getattr(ext, 'username', '') or '').strip(),
+                'password': str(getattr(ext, 'password', '') or ''),
+            })
+            prefix = str(getattr(ext, 'topic_prefix', '') or '').strip().strip('/')
+            target_topic = f"{prefix}/{topic}" if prefix else topic
+            client = LocalMqttClient(settings)
+            try:
+                client.connect()
+                client.publish(target_topic, payload)
+            except Exception:
+                pass
+            finally:
+                try:
+                    client.disconnect()
+                except Exception:
+                    pass
+
     def _publish_meta(self, vehicle, runtime: VehicleRuntimeState, settings) -> None:
         if not settings.host:
             return
@@ -169,12 +203,18 @@ class WorkerManager:
         try:
             client.connect()
             client.publish(f"{topic}/status", runtime.connection_state)
+            self._forward_external_topic(f"{topic}/status", runtime.connection_state, is_raw=False)
             client.publish(f"{topic}/detail", runtime.connection_detail)
+            self._forward_external_topic(f"{topic}/detail", runtime.connection_detail, is_raw=False)
             client.publish(f"{topic}/auth_state", runtime.auth_state)
+            self._forward_external_topic(f"{topic}/auth_state", runtime.auth_state, is_raw=False)
             client.publish(f"{topic}/raw_topic", runtime.raw_topic)
+            self._forward_external_topic(f"{topic}/raw_topic", runtime.raw_topic, is_raw=False)
             client.publish(f"{topic}/mapped_topic", runtime.mapped_topic)
+            self._forward_external_topic(f"{topic}/mapped_topic", runtime.mapped_topic, is_raw=False)
             if runtime.last_update:
                 client.publish(f"{topic}/last_update", runtime.last_update)
+                self._forward_external_topic(f"{topic}/last_update", runtime.last_update, is_raw=False)
         finally:
             client.disconnect()
 
@@ -184,9 +224,11 @@ class WorkerManager:
         for metric_name, metric_data in data_points.items():
             metric_topic = f"{base_topic_prefix}/{metric_name.replace('.', '/')}"
             client.publish(metric_topic, metric_data)
+            self._forward_external_topic(metric_topic, metric_data, is_raw=True)
             if isinstance(metric_data, dict):
                 for key, value in metric_data.items():
                     client.publish(f"{metric_topic}/{key}", value)
+                    self._forward_external_topic(f"{metric_topic}/{key}", value, is_raw=True)
             parts = metric_name.split('.')
             ref = nested
             for part in parts[:-1]:
@@ -217,6 +259,7 @@ class WorkerManager:
             mapped_payload = map_bmw_payload(merged)
             for key, value in mapped_payload.items():
                 client.publish(f"{mapped}/{key}", value)
+                self._forward_external_topic(f"{mapped}/{key}", value, is_raw=False)
             self.log_store.append(
                 vehicle_id,
                 f"BMW Mapping aktualisiert: soc={mapped_payload.get('soc')} range={mapped_payload.get('range')} odometer={mapped_payload.get('odometer')} capacityKwh={mapped_payload.get('capacityKwh')}"
@@ -225,6 +268,7 @@ class WorkerManager:
             client.disconnect()
 
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
+        self._forward_external_topic(source_topic, payload, is_raw=not is_meta_source)
         runtime.connection_state = "connected"
         runtime.connection_detail = "Streaming aktiv"
         runtime.auth_state = vehicle.provider_state.auth_state
@@ -283,6 +327,7 @@ class WorkerManager:
         is_meta_status = is_meta_source and [part.lower() for part in metric_parts] == []
 
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
+        self._forward_external_topic(source_topic, payload, is_raw=not is_meta_source)
         previous_metrics = dict(runtime.metrics or {})
         metrics = dict(previous_metrics)
         obsolete_present = {key for key in GWM_OBSOLETE_MAPPED_KEYS if key in metrics}
@@ -326,6 +371,7 @@ class WorkerManager:
                 client.publish(f"{mapped}/{key}", "", retain=True)
             for key in sorted(changed_keys):
                 client.publish(f"{mapped}/{key}", metrics.get(key))
+                self._forward_external_topic(f"{mapped}/{key}", metrics.get(key), is_raw=False)
         finally:
             client.disconnect()
 

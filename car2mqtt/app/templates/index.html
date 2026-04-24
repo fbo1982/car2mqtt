@@ -80,7 +80,7 @@ select, option {
 
   <section class="section-header">
     <div><div class="eyebrow">Live Übersicht</div><h2>Fahrzeuge</h2></div>
-    <div class="toolbar"><button id="settingsBtn" class="ghost-btn">Einstellungen</button><button id="copyHelperBtn" class="ghost-btn">Copy Helper</button><button id="mqttTestBtn" class="ghost-btn">MQTT testen</button></div>
+    <div class="toolbar"><button id="settingsBtn" class="ghost-btn">Einstellungen</button><button id="mqttClientsBtn" class="ghost-btn">MQTT Clients</button><button id="copyHelperBtn" class="ghost-btn">Copy Helper</button><button id="mqttTestBtn" class="ghost-btn">MQTT testen</button></div>
   </section>
 
   <section id="cardsGrid" class="cards-grid"></section>
@@ -385,6 +385,35 @@ select, option {
   </div>
 </dialog>
 
+
+<dialog id="mqttClientsDialog" class="modal">
+  <div class="panel wide">
+    <div class="modal-head">
+      <div><div class="eyebrow">Verteilung</div><h3>MQTT Clients</h3></div>
+      <button id="closeMqttClientsBtn" type="button" class="icon-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button id="addMqttClientBtn" type="button" class="primary-btn">Hinzufügen</button></div>
+      <div id="mqttClientsGrid" class="cards-grid"></div>
+      <div id="mqttClientFormWrap" class="howto-card hidden" style="margin-top:14px">
+        <input id="mqttClientId" type="hidden" />
+        <div class="grid">
+          <div class="field"><label>Name</label><input id="mqttClientName" /></div>
+          <div class="field"><label>Server</label><input id="mqttClientHost" placeholder="mqtt.example.com" /></div>
+          <div class="field"><label>Port</label><input id="mqttClientPort" type="number" value="1883" /></div>
+          <div class="field"><label>Benutzername</label><input id="mqttClientUsername" /></div>
+          <div class="field"><label>Passwort</label><input id="mqttClientPassword" type="password" placeholder="unverändert lassen" /></div>
+          <div class="field"><label>Zielordner / Topic-Basis</label><input id="mqttClientTopicPrefix" placeholder="remote/car" /></div>
+          <div class="field"><label><input id="mqttClientEnabled" type="checkbox" checked /> Aktiv</label></div>
+          <div class="field"><label><input id="mqttClientIncludeRaw" type="checkbox" /> Raw Daten übertragen</label></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px"><button id="cancelMqttClientBtn" type="button" class="ghost-btn">Abbrechen</button><button id="saveMqttClientBtn" type="button" class="primary-btn">Speichern</button></div>
+      </div>
+    </div>
+    <div class="modal-foot"><div class="spacer"></div><button id="closeMqttClientsBottomBtn" type="button" class="ghost-btn">Schließen</button></div>
+  </div>
+</dialog>
+
 <dialog id="helperConfigDialog" class="modal">
   <div class="panel wide">
     <div class="modal-head">
@@ -451,6 +480,7 @@ let cards = {{ cards_json | safe }};
 let helperHomezoneJson = {{ helper_homezone_json | safe }};
 let uiSettings = {{ ui_settings_json | safe }};
 let availableZones = {{ zones_json | safe }};
+let mqttClients = {{ mqtt_clients_json | safe }};
 const createState = { manufacturer: null, authSessionId: null, authReady: false };
 const editState = { vehicleId: null, reauthSessionId: null, authReady: true, liveLogTimer: null, liveLogsEnabled: false, lastLogText: '', needsVerification: false };
 const field = (id) => document.getElementById(id);
@@ -646,6 +676,51 @@ function closeSettingsDialog(){
   const d = field('settingsDialog');
   if(d){ try{ d.close(); }catch(e){ d.removeAttribute('open'); d.style.display='none'; } }
 }
+
+
+function mqttClientStatusLabel(status, enabled){
+  if(!enabled) return 'Deaktiviert';
+  return status === 'online' ? 'Online' : 'Offline';
+}
+function renderMqttClients(){
+  const grid = field('mqttClientsGrid');
+  if(!grid) return;
+  grid.innerHTML = '';
+  (mqttClients || []).forEach(client => {
+    const card = document.createElement('article');
+    card.className = 'card';
+    card.innerHTML = `<div class="card-head"><div><div class="eyebrow">MQTT Ziel</div><h3>${escapeHtml(client.name || client.host || client.id)}</h3></div><span class="status ${client.enabled ? (client.status==='online'?'connected':'disconnected') : 'inactive'}">${mqttClientStatusLabel(client.status, client.enabled)}</span></div>
+      <div class="kv"><span>Server</span><strong>${escapeHtml(client.host || '-')}</strong></div>
+      <div class="kv"><span>Topic-Basis</span><strong>${escapeHtml(client.topic_prefix || '-')}</strong></div>
+      <div class="kv"><span>Raw</span><strong>${client.include_raw ? 'an' : 'aus'}</strong></div>
+      <div class="row-actions"><button class="ghost-btn" data-edit-client="${escapeHtml(client.id)}">Bearbeiten</button><button class="ghost-btn danger" data-delete-client="${escapeHtml(client.id)}">Löschen</button></div>`;
+    grid.appendChild(card);
+  });
+  grid.querySelectorAll('[data-edit-client]').forEach(btn => btn.onclick = ()=> openMqttClientForm(btn.getAttribute('data-edit-client')));
+  grid.querySelectorAll('[data-delete-client]').forEach(btn => btn.onclick = async()=>{ if(!confirm('MQTT Client löschen?')) return; const resp = await fetch(`api/mqtt-clients/${btn.getAttribute('data-delete-client')}`, {method:'DELETE'}); const data = await resp.json(); mqttClients = data.clients || []; renderMqttClients(); });
+}
+function openMqttClientForm(id=''){
+  const wrap = field('mqttClientFormWrap');
+  const client = (mqttClients || []).find(c => c.id === id) || {};
+  field('mqttClientId').value = client.id || '';
+  field('mqttClientName').value = client.name || '';
+  field('mqttClientHost').value = client.host || '';
+  field('mqttClientPort').value = client.port || 1883;
+  field('mqttClientUsername').value = client.username || '';
+  field('mqttClientPassword').value = '';
+  field('mqttClientTopicPrefix').value = client.topic_prefix || '';
+  field('mqttClientEnabled').checked = client.enabled !== false;
+  field('mqttClientIncludeRaw').checked = !!client.include_raw;
+  wrap?.classList.remove('hidden');
+}
+function closeMqttClientForm(){ field('mqttClientFormWrap')?.classList.add('hidden'); }
+async function openMqttClientsDialog(){
+  try{ const res = await fetch('api/mqtt-clients'); const data = await res.json(); mqttClients = data.clients || []; }catch(e){}
+  renderMqttClients();
+  const dlg = field('mqttClientsDialog');
+  try{ dlg.showModal(); }catch(e){ dlg.setAttribute('open','open'); dlg.style.display='flex'; }
+}
+function closeMqttClientsDialog(){ const d = field('mqttClientsDialog'); if(d){ try{ d.close(); }catch(e){ d.removeAttribute('open'); d.style.display='none'; } } closeMqttClientForm(); }
 
 function buildHelperAutomationsYamlTemplate(homezone){
   const helperCards = getHelperCards();
@@ -1174,6 +1249,20 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
     alert(err.message || 'Einstellungen konnten nicht gespeichert werden.');
   }
 };
+
+const mqttClientsBtn = field('mqttClientsBtn');
+if(mqttClientsBtn) mqttClientsBtn.onclick = (ev)=>{ ev.preventDefault(); openMqttClientsDialog(); };
+const closeMqttClientsBtn = field('closeMqttClientsBtn');
+if(closeMqttClientsBtn) closeMqttClientsBtn.onclick = (ev)=>{ ev.preventDefault(); closeMqttClientsDialog(); };
+const closeMqttClientsBottomBtn = field('closeMqttClientsBottomBtn');
+if(closeMqttClientsBottomBtn) closeMqttClientsBottomBtn.onclick = (ev)=>{ ev.preventDefault(); closeMqttClientsDialog(); };
+const addMqttClientBtn = field('addMqttClientBtn');
+if(addMqttClientBtn) addMqttClientBtn.onclick = (ev)=>{ ev.preventDefault(); openMqttClientForm(); };
+const cancelMqttClientBtn = field('cancelMqttClientBtn');
+if(cancelMqttClientBtn) cancelMqttClientBtn.onclick = (ev)=>{ ev.preventDefault(); closeMqttClientForm(); };
+const saveMqttClientBtn = field('saveMqttClientBtn');
+if(saveMqttClientBtn) saveMqttClientBtn.onclick = async(ev)=>{ ev.preventDefault(); try{ const data = await postJson('api/mqtt-clients', { id: field('mqttClientId').value || null, name: field('mqttClientName').value, host: field('mqttClientHost').value, port: parseInt(field('mqttClientPort').value || '1883', 10), username: field('mqttClientUsername').value, password: field('mqttClientPassword').value, topic_prefix: field('mqttClientTopicPrefix').value, enabled: !!field('mqttClientEnabled').checked, include_raw: !!field('mqttClientIncludeRaw').checked }); mqttClients = data.clients || []; renderMqttClients(); closeMqttClientForm(); }catch(err){ alert(err.message || 'MQTT Client konnte nicht gespeichert werden.'); } };
+
 const helperConfigBtn = field('copyHelperBtn');
 if(helperConfigBtn) helperConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openHelperConfigDialog(); };
 const closeHelperConfigBtn = field('closeHelperConfigBtn');

@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from app.core.auth_store import AuthStore
 from app.core.config_store import ConfigStore
-from app.core.models import AuthSession, VehicleConfig
+from app.core.models import AuthSession, VehicleConfig, ExternalMqttClientConfig
 from app.core.runtime_settings import load_runtime_mqtt_settings
 from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
@@ -62,6 +62,18 @@ class GwmVerificationPayload(BaseModel):
 
 class HomeZoneSettingsPayload(BaseModel):
     helper_home_zone_entity_id: str = ""
+
+
+class MqttClientPayload(BaseModel):
+    id: str | None = None
+    name: str = ""
+    enabled: bool = True
+    host: str = ""
+    port: int = 1883
+    username: str = ""
+    password: str = ""
+    topic_prefix: str = ""
+    include_raw: bool = False
 
 
 def _normalize_vehicle_id(license_plate: str) -> str:
@@ -375,6 +387,30 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
     }
 
 
+
+
+def _mask_client(client: ExternalMqttClientConfig) -> dict[str, Any]:
+    data = client.model_dump(mode="json")
+    data["password_set"] = bool(client.password)
+    return data
+
+
+def _external_client_status(client: ExternalMqttClientConfig) -> str:
+    if not client.enabled:
+        return "disabled"
+    try:
+        settings = load_runtime_mqtt_settings()
+        temp = settings.model_copy(update={
+            "host": client.host,
+            "port": client.port,
+            "username": client.username,
+            "password": client.password,
+        })
+        test_connection(temp)
+        return "online"
+    except Exception:
+        return "offline"
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Car2MQTT")
     root = Path(__file__).resolve().parent.parent
@@ -411,12 +447,13 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.50",
+                "version": "1.1.51",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
                 "ui_settings_json": json.dumps(cfg.ui_settings.model_dump(mode="json"), ensure_ascii=False),
                 "zones_json": json.dumps(_load_homeassistant_zones(), ensure_ascii=False),
+                "mqtt_clients_json": json.dumps([_mask_client(c) | {"status": _external_client_status(c)} for c in cfg.mqtt_clients], ensure_ascii=False),
             },
         )
 
@@ -449,6 +486,48 @@ def create_app() -> FastAPI:
             "ui_settings": cfg.ui_settings.model_dump(mode="json"),
             "effective_homezone": _read_existing_homezone(cfg),
         }
+
+    @app.get("/api/mqtt-clients")
+    async def get_mqtt_clients():
+        cfg = store.load()
+        return {"clients": [_mask_client(c) | {"status": _external_client_status(c)} for c in cfg.mqtt_clients]}
+
+    @app.post("/api/mqtt-clients")
+    async def save_mqtt_client(payload: MqttClientPayload):
+        cfg = store.load()
+        client_id = str(payload.id or '').strip() or _normalize_vehicle_id(payload.name or payload.host or 'client')
+        if not client_id:
+            client_id = 'client'
+        new_client = ExternalMqttClientConfig(
+            id=client_id,
+            name=str(payload.name or '').strip() or str(payload.host or '').strip(),
+            enabled=bool(payload.enabled),
+            host=str(payload.host or '').strip(),
+            port=int(payload.port or 1883),
+            username=str(payload.username or '').strip(),
+            password=str(payload.password or '').strip(),
+            topic_prefix=str(payload.topic_prefix or '').strip().strip('/'),
+            include_raw=bool(payload.include_raw),
+        )
+        replaced = False
+        for idx, existing in enumerate(cfg.mqtt_clients):
+            if existing.id == client_id:
+                if not new_client.password and existing.password:
+                    new_client.password = existing.password
+                cfg.mqtt_clients[idx] = new_client
+                replaced = True
+                break
+        if not replaced:
+            cfg.mqtt_clients.append(new_client)
+        store.save(cfg)
+        return {"status": "ok", "client": _mask_client(new_client) | {"status": _external_client_status(new_client)}, "clients": [_mask_client(c) | {"status": _external_client_status(c)} for c in cfg.mqtt_clients]}
+
+    @app.delete("/api/mqtt-clients/{client_id}")
+    async def delete_mqtt_client(client_id: str):
+        cfg = store.load()
+        cfg.mqtt_clients = [c for c in cfg.mqtt_clients if c.id != client_id]
+        store.save(cfg)
+        return {"status": "ok", "clients": [_mask_client(c) | {"status": _external_client_status(c)} for c in cfg.mqtt_clients]}
 
     @app.get("/api/providers")
     async def get_providers():

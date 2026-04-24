@@ -43,9 +43,21 @@ class UiSettings(BaseModel):
     helper_home_zone_entity_id: str = ""
 
 
+class ExternalMqttClientConfig(BaseModel):
+    id: str
+    name: str = ""
+    enabled: bool = True
+    host: str = ""
+    port: int = 1883
+    username: str = ""
+    password: str = ""
+    topic_prefix: str = ""
+    include_raw: bool = False
+
 class AppConfig(BaseModel):
     vehicles: List[VehicleConfig] = Field(default_factory=list)
     ui_settings: UiSettings = Field(default_factory=UiSettings)
+    mqtt_clients: List[ExternalMqttClientConfig] = Field(default_factory=list)
 
 
 class ProviderDescriptor(BaseModel):
