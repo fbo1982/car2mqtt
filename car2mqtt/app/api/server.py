@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from app.core.auth_store import AuthStore
 from app.core.config_store import ConfigStore
-from app.core.models import AuthSession, VehicleConfig, MqttForwardClient
+from app.core.models import AuthSession, VehicleConfig, MqttForwardClientConfig
 from app.core.runtime_settings import load_runtime_mqtt_settings
 from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
@@ -47,6 +47,18 @@ class VehiclePayload(BaseModel):
     mqtt_client_ids: list[str] = []
 
 
+class MqttClientPayload(BaseModel):
+    id: str | None = None
+    name: str = ""
+    host: str
+    port: int = 1883
+    username: str = ""
+    password: str = ""
+    base_topic: str = ""
+    enabled: bool = True
+    send_raw: bool = False
+
+
 class BmwAuthStartPayload(BaseModel):
     client_id: str
     vin: str
@@ -63,18 +75,6 @@ class GwmVerificationPayload(BaseModel):
 
 class HomeZoneSettingsPayload(BaseModel):
     helper_home_zone_entity_id: str = ""
-
-
-class MqttForwardClientPayload(BaseModel):
-    id: str | None = None
-    name: str = ""
-    host: str
-    port: int = 1883
-    username: str = ""
-    password: str = ""
-    topic_base: str = "car"
-    enabled: bool = True
-    include_raw: bool = False
 
 
 def _normalize_vehicle_id(license_plate: str) -> str:
@@ -412,6 +412,22 @@ def create_app() -> FastAPI:
         cards = [_vehicle_card(vehicle, runtime_states.get(vehicle.id), mqtt_settings.base_topic) for vehicle in config.vehicles]
         return cards, mqtt_settings.model_dump(mode="json")
 
+    def mqtt_client_status(client: MqttForwardClientConfig) -> str:
+        if not client.enabled:
+            return "disabled"
+        try:
+            settings = load_runtime_mqtt_settings()
+            from app.core.models import RuntimeMqttSettings
+            test_settings = RuntimeMqttSettings(host=client.host, port=client.port, username=client.username, password=client.password, password_set=bool(client.password), base_topic=client.base_topic or settings.base_topic, qos=settings.qos, retain=settings.retain, tls=settings.tls)
+            test_connection(test_settings)
+            return "online"
+        except Exception:
+            return "offline"
+
+    def build_mqtt_clients() -> list[dict[str, Any]]:
+        cfg = store.load()
+        return [dict(client.model_dump(mode="json"), status=mqtt_client_status(client)) for client in cfg.mqtt_clients]
+
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request):
         cards, mqtt_settings = build_cards()
@@ -424,13 +440,13 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.53",
+                "version": "1.1.54",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
                 "ui_settings_json": json.dumps(cfg.ui_settings.model_dump(mode="json"), ensure_ascii=False),
                 "zones_json": json.dumps(_load_homeassistant_zones(), ensure_ascii=False),
-                "mqtt_clients_json": json.dumps([c.model_dump(mode="json") for c in cfg.mqtt_forward_clients], ensure_ascii=False),
+                "mqtt_clients_json": json.dumps(build_mqtt_clients(), ensure_ascii=False),
             },
         )
 
@@ -463,68 +479,6 @@ def create_app() -> FastAPI:
             "ui_settings": cfg.ui_settings.model_dump(mode="json"),
             "effective_homezone": _read_existing_homezone(cfg),
         }
-
-
-
-    @app.get("/api/mqtt-clients")
-    async def get_mqtt_clients():
-        cfg = store.load()
-        clients = []
-        for c in cfg.mqtt_forward_clients:
-            status = 'disabled' if not c.enabled else 'offline'
-            if c.enabled:
-                try:
-                    test_connection(load_runtime_mqtt_settings().model_copy(update={
-                        'host': c.host, 'port': c.port, 'username': c.username, 'password': c.password, 'base_topic': c.topic_base
-                    }))
-                    status = 'online'
-                except Exception:
-                    status = 'offline'
-            item = c.model_dump(mode='json')
-            item['status'] = status
-            clients.append(item)
-        return clients
-
-    @app.post("/api/mqtt-clients")
-    async def create_mqtt_client(payload: MqttForwardClientPayload):
-        cfg = store.load()
-        client_id = (payload.id or re.sub(r"[^A-Za-z0-9]+", "", (payload.name or payload.host))[:24] or os.urandom(4).hex()).strip()
-        base = client_id
-        n = 2
-        existing_ids = {c.id for c in cfg.mqtt_forward_clients}
-        while client_id in existing_ids:
-            client_id = f"{base}{n}"
-            n += 1
-        cfg.mqtt_forward_clients.append(MqttForwardClient(
-            id=client_id, name=payload.name.strip(), host=payload.host.strip(), port=int(payload.port),
-            username=payload.username.strip(), password=payload.password, topic_base=(payload.topic_base or 'car').strip().strip('/'),
-            enabled=payload.enabled, include_raw=payload.include_raw
-        ))
-        store.save(cfg)
-        return {'status':'ok','id':client_id}
-
-    @app.put("/api/mqtt-clients/{client_id}")
-    async def update_mqtt_client(client_id: str, payload: MqttForwardClientPayload):
-        cfg = store.load()
-        for idx, existing in enumerate(cfg.mqtt_forward_clients):
-            if existing.id == client_id:
-                cfg.mqtt_forward_clients[idx] = MqttForwardClient(
-                    id=client_id, name=payload.name.strip(), host=payload.host.strip(), port=int(payload.port),
-                    username=payload.username.strip(), password=payload.password or existing.password,
-                    topic_base=(payload.topic_base or 'car').strip().strip('/'), enabled=payload.enabled, include_raw=payload.include_raw
-                )
-                store.save(cfg)
-                return {'status':'ok'}
-        raise HTTPException(status_code=404, detail='MQTT Client nicht gefunden')
-
-    @app.delete("/api/mqtt-clients/{client_id}")
-    async def delete_mqtt_client(client_id: str):
-        cfg = store.load()
-        cfg.mqtt_forward_clients = [c for c in cfg.mqtt_forward_clients if c.id != client_id]
-        for v in cfg.vehicles:
-            v.mqtt_client_ids = [cid for cid in (v.mqtt_client_ids or []) if cid != client_id]
-        store.save(cfg)
-        return {'status':'ok'}
 
     @app.get("/api/providers")
     async def get_providers():

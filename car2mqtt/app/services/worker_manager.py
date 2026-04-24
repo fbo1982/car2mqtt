@@ -8,7 +8,7 @@ from typing import Any, Dict
 import paho.mqtt.client as paho_mqtt
 
 from app.core.config_store import ConfigStore
-from app.core.models import VehicleRuntimeState
+from app.core.models import VehicleRuntimeState, RuntimeMqttSettings
 from app.core.runtime_settings import load_runtime_mqtt_settings
 from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
@@ -23,7 +23,6 @@ GWM_OBSOLETE_MAPPED_KEYS = {
 }
 
 from app.mqtt.client import LocalMqttClient
-from app.core.models import RuntimeMqttSettings
 from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic, vehicle_root_topic
 from app.providers.bmw.streaming import BMWStreamWorker
 from app.providers.gwm_runner import GwmIntegratedWorker
@@ -95,6 +94,42 @@ class WorkerManager:
         self.log_store.append(vehicle_id, "Workerstart angefordert")
         self._set_runtime_state(vehicle_id, "starting", "Worker startet")
         self.workers[vehicle_id].start()
+
+    def _target_clients_for_vehicle(self, vehicle):
+        cfg = self.config_store.load()
+        assigned = set(getattr(vehicle, "mqtt_client_ids", []) or [])
+        return [c for c in cfg.mqtt_clients if c.enabled and c.id in assigned]
+
+    def _forward_topic(self, source_topic: str, target_base: str, local_base: str) -> str:
+        source_topic = str(source_topic or '').strip('/')
+        target_base = str(target_base or '').strip('/')
+        local_base = str(local_base or '').strip('/')
+        suffix = source_topic
+        if local_base and source_topic.lower().startswith((local_base + '/').lower()):
+            suffix = source_topic[len(local_base)+1:]
+        return f"{target_base}/{suffix}" if target_base else source_topic
+
+    def _publish_to_forward_client(self, client_cfg, topic: str, payload: Any) -> None:
+        local = load_runtime_mqtt_settings()
+        settings = RuntimeMqttSettings(host=client_cfg.host, port=client_cfg.port, username=client_cfg.username, password=client_cfg.password, password_set=bool(client_cfg.password), base_topic=client_cfg.base_topic or local.base_topic, qos=local.qos, retain=local.retain, tls=local.tls)
+        client = LocalMqttClient(settings)
+        try:
+            client.connect()
+            client.publish(topic, payload)
+            self._forward_publish(vehicle, settings, topic, payload, is_raw=False)
+        finally:
+            client.disconnect()
+
+    def _forward_publish(self, vehicle, mqtt_settings, source_topic: str, payload: Any, *, is_raw: bool) -> None:
+        local_base = str(getattr(mqtt_settings, 'base_topic', 'car') or 'car')
+        for client_cfg in self._target_clients_for_vehicle(vehicle):
+            if is_raw and not client_cfg.send_raw:
+                continue
+            target_topic = self._forward_topic(source_topic, client_cfg.base_topic, local_base)
+            try:
+                self._publish_to_forward_client(client_cfg, target_topic, payload)
+            except Exception as exc:
+                self.log_store.append(vehicle.id, f"MQTT Client {client_cfg.name or client_cfg.id}: Publish fehlgeschlagen ({exc})")
 
     def _handle_gwm_error(self, vehicle_id: str, message: str) -> None:
         state = "reauth_required" if "reauth erforderlich" in (message or "").lower() else "error"
@@ -169,26 +204,25 @@ class WorkerManager:
         client = LocalMqttClient(settings)
         try:
             client.connect()
-            for subtopic, value in [(f"{topic}/status", runtime.connection_state), (f"{topic}/detail", runtime.connection_detail), (f"{topic}/auth_state", runtime.auth_state), (f"{topic}/raw_topic", runtime.raw_topic), (f"{topic}/mapped_topic", runtime.mapped_topic)]:
-                client.publish(subtopic, value)
-                self._forward_publish(vehicle, subtopic, value, settings, is_raw=False)
+            client.publish(f"{topic}/status", runtime.connection_state)
+            client.publish(f"{topic}/detail", runtime.connection_detail)
+            client.publish(f"{topic}/auth_state", runtime.auth_state)
+            client.publish(f"{topic}/raw_topic", runtime.raw_topic)
+            client.publish(f"{topic}/mapped_topic", runtime.mapped_topic)
             if runtime.last_update:
                 client.publish(f"{topic}/last_update", runtime.last_update)
-                self._forward_publish(vehicle, f"{topic}/last_update", runtime.last_update, settings, is_raw=False)
         finally:
             client.disconnect()
 
-    def _flatten_publish(self, client: LocalMqttClient, base_topic_prefix: str, data: Dict[str, Any], vehicle=None, mqtt_settings=None) -> Dict[str, Any]:
+    def _flatten_publish(self, client: LocalMqttClient, base_topic_prefix: str, data: Dict[str, Any]) -> Dict[str, Any]:
         data_points = data.get("data", {})
         nested: Dict[str, Any] = {}
         for metric_name, metric_data in data_points.items():
             metric_topic = f"{base_topic_prefix}/{metric_name.replace('.', '/')}"
             client.publish(metric_topic, metric_data)
-            if vehicle and mqtt_settings: self._forward_publish(vehicle, metric_topic, metric_data, mqtt_settings, is_raw=True)
             if isinstance(metric_data, dict):
                 for key, value in metric_data.items():
                     client.publish(f"{metric_topic}/{key}", value)
-                    if vehicle and mqtt_settings: self._forward_publish(vehicle, f"{metric_topic}/{key}", value, mqtt_settings, is_raw=True)
             parts = metric_name.split('.')
             ref = nested
             for part in parts[:-1]:
@@ -212,7 +246,8 @@ class WorkerManager:
         raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings, callback_topic)
         try:
             client.connect()
-            nested = self._flatten_publish(client, raw_topic_base, data, vehicle=vehicle, mqtt_settings=mqtt_settings)
+            nested = self._flatten_publish(client, raw_topic_base, data)
+            self._forward_flatten_publish(vehicle, mqtt_settings, raw_topic_base, data)
             cached = self._bmw_raw_cache.get(vehicle_id, {})
             merged = self._deep_merge_dict(cached, nested)
             self._bmw_raw_cache[vehicle_id] = merged
@@ -220,7 +255,7 @@ class WorkerManager:
             for key, value in mapped_payload.items():
                 topic = f"{mapped}/{key}"
                 client.publish(topic, value)
-                self._forward_publish(vehicle, topic, value, mqtt_settings, is_raw=False)
+                self._forward_publish(vehicle, mqtt_settings, topic, value, is_raw=False)
             self.log_store.append(
                 vehicle_id,
                 f"BMW Mapping aktualisiert: soc={mapped_payload.get('soc')} range={mapped_payload.get('range')} odometer={mapped_payload.get('odometer')} capacityKwh={mapped_payload.get('capacityKwh')}"
@@ -323,20 +358,19 @@ class WorkerManager:
         runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         self.state_store.upsert(runtime)
 
-        if not is_meta_source:
-            self._forward_publish(vehicle, source_topic, payload, mqtt_settings, is_raw=True)
-
         client = LocalMqttClient(mqtt_settings)
         try:
             client.connect()
+            if not is_meta_source:
+                self._forward_publish(vehicle, mqtt_settings, source_topic, payload, is_raw=True)
             for key in sorted(obsolete_present):
                 topic = f"{mapped}/{key}"
                 client.publish(topic, "", retain=True)
-                self._forward_publish(vehicle, topic, "", mqtt_settings, is_raw=False)
+                self._forward_publish(vehicle, mqtt_settings, topic, "", is_raw=False)
             for key in sorted(changed_keys):
                 topic = f"{mapped}/{key}"
                 client.publish(topic, metrics.get(key))
-                self._forward_publish(vehicle, topic, metrics.get(key), mqtt_settings, is_raw=False)
+                self._forward_publish(vehicle, mqtt_settings, topic, metrics.get(key), is_raw=False)
         finally:
             client.disconnect()
 
