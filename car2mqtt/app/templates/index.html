@@ -563,7 +563,8 @@ function getSelectedHomeZoneEntityId(){
 function describeHomezone(homezone){
   if(!homezone) return 'Keine Home Zone gewählt.';
   if(homezone.selected_via_settings && homezone.entity_id){
-    return `Aktive Auswahl: ${homezone.entity_id}`;
+    const detected = String(homezone.detected_entity_id || '').trim();
+    return detected && detected !== homezone.entity_id ? `Aktive Auswahl: ${homezone.entity_id} (erkannt: ${detected})` : `Aktive Auswahl: ${homezone.entity_id}`;
   }
   if(homezone.found && homezone.source){
     return `Automatisch erkannt aus ${homezone.source}`;
@@ -604,11 +605,15 @@ function renderSettingsDialog(data){
   const zones = Array.isArray(data?.zones) ? [...data.zones] : [];
   const selected = String(data?.ui_settings?.helper_home_zone_entity_id || '');
   const effectiveEntity = String(data?.effective_homezone?.entity_id || '');
+  const detectedEntity = String(data?.effective_homezone?.detected_entity_id || '');
   if(selected && !zones.some(z => z && z.entity_id === selected)) {
     zones.push({ entity_id: selected, name: prettyZoneLabel(selected) || selected });
   }
-  if(!selected && effectiveEntity && !zones.some(z => z && z.entity_id === effectiveEntity)) {
+  if(effectiveEntity && !zones.some(z => z && z.entity_id === effectiveEntity)) {
     zones.push({ entity_id: effectiveEntity, name: prettyZoneLabel(effectiveEntity) || effectiveEntity });
+  }
+  if(detectedEntity && !zones.some(z => z && z.entity_id === detectedEntity)) {
+    zones.push({ entity_id: detectedEntity, name: prettyZoneLabel(detectedEntity) || detectedEntity });
   }
   availableZones = zones;
   select.innerHTML = '';

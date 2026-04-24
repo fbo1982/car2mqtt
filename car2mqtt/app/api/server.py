@@ -111,6 +111,15 @@ def _ha_supervisor_headers() -> dict[str, str]:
     return {'Authorization': f'Bearer {token}', 'X-Supervisor-Token': token, 'Content-Type': 'application/json'}
 
 
+def pretty_zone_name(entity_id: str) -> str:
+    raw = str(entity_id or '').strip()
+    if not raw:
+        return ''
+    base = raw[5:] if raw.startswith('zone.') else raw
+    parts = [p for p in base.split('_') if p]
+    return ' '.join(p[:1].upper() + p[1:] for p in parts) or raw
+
+
 def _load_homeassistant_zones() -> list[dict[str, str]]:
     headers = _ha_supervisor_headers()
     if not headers:
@@ -164,19 +173,9 @@ def _load_homeassistant_zones() -> list[dict[str, str]]:
     return zones
 
 
-def _read_existing_homezone(config: AppConfig | None = None) -> dict[str, Any]:
+def _read_detected_homezone() -> dict[str, Any]:
     default_home_lat = "{{ state_attr('zone.home', 'latitude') | float(0) }}"
     default_home_lon = "{{ state_attr('zone.home', 'longitude') | float(0) }}"
-
-    settings_entity = ''
-    if config is not None:
-        settings_entity = str(getattr(getattr(config, 'ui_settings', None), 'helper_home_zone_entity_id', '') or '').strip()
-    if settings_entity:
-        payload = _homezone_payload_from_entity(settings_entity)
-        if payload:
-            payload['selected_via_settings'] = True
-            return payload
-
     checked_paths: list[str] = []
 
     def _extract_from_lines(lines: list[str]) -> tuple[str | None, str | None]:
@@ -305,6 +304,22 @@ def _read_existing_homezone(config: AppConfig | None = None) -> dict[str, Any]:
         'entity_id': '',
     }
 
+
+def _read_existing_homezone(config: AppConfig | None = None) -> dict[str, Any]:
+    detected = _read_detected_homezone()
+    settings_entity = ''
+    if config is not None:
+        settings_entity = str(getattr(getattr(config, 'ui_settings', None), 'helper_home_zone_entity_id', '') or '').strip()
+    if settings_entity:
+        payload = _homezone_payload_from_entity(settings_entity)
+        if payload:
+            payload['selected_via_settings'] = True
+            payload['detected_entity_id'] = detected.get('entity_id', '')
+            payload['detected_source'] = detected.get('source', '')
+            payload['checked_paths'] = detected.get('checked_paths', [])
+            return payload
+    return detected
+
 def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, base_topic: str) -> dict:
     metrics = (runtime_state or {}).get("metrics", {})
     provider_meta = (runtime_state or {}).get("provider_meta", {})
@@ -396,7 +411,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.41",
+                "version": "1.1.44",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -412,10 +427,16 @@ def create_app() -> FastAPI:
     @app.get("/api/settings")
     async def get_settings():
         cfg = store.load()
+        effective = _read_existing_homezone(cfg)
+        zones = _load_homeassistant_zones()
+        detected_entity = str(effective.get('detected_entity_id') or effective.get('entity_id') or '').strip()
+        if detected_entity and not any(z.get('entity_id') == detected_entity for z in zones):
+            zones.append({'entity_id': detected_entity, 'name': pretty_zone_name(detected_entity)})
+        zones.sort(key=lambda z: (str(z.get('name','')).lower(), str(z.get('entity_id','')).lower()))
         return {
             "ui_settings": cfg.ui_settings.model_dump(mode="json"),
-            "zones": _load_homeassistant_zones(),
-            "effective_homezone": _read_existing_homezone(cfg),
+            "zones": zones,
+            "effective_homezone": effective,
         }
 
     @app.post("/api/settings/homezone")
