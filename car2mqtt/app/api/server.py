@@ -474,7 +474,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
             continue
         if local_server_name and server_name.lower() == local_server_name:
             continue
-        label = str(meta.get('label') or meta.get('title') or plate).strip() or plate
+        label = str(meta.get('label') or meta.get('title') or meta.get('display_name') or meta.get('name') or plate).strip() or plate
         metrics = payload.get('metrics', {}) or {}
         key = (manufacturer, plate)
         # allow remote duplicate even if same plate exists locally but from other server
@@ -501,13 +501,13 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
                 'longitude': metrics.get('longitude'),
             },
             'live': {
-                'vin': str(meta.get('vin') or ''),
+                'vin': str(meta.get('vin') or meta.get('vehicle_vin') or ''),
                 'mqtt_username': '',
                 'vehicle_id': '',
                 'gcid': '',
                 'append_vin': False,
             },
-            'vin': str(meta.get('vin') or ''),
+            'vin': str(meta.get('vin') or meta.get('vehicle_vin') or ''),
             'last_update': str(meta.get('last_update') or ''),
             'enabled': True,
             'manufacturer_note': f'Remote Server: {server_name}',
@@ -698,7 +698,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.70",
+                "version": "1.1.71",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
