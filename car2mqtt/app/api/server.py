@@ -401,6 +401,17 @@ def create_app() -> FastAPI:
     registry = ProviderRegistry()
     worker_manager = WorkerManager(data_dir, store, state_store)
 
+mqtt_client_status_file = Path(data_dir) / "mqtt_client_status.json"
+
+def _load_mqtt_client_runtime_status() -> dict[str, dict[str, Any]]:
+    try:
+        if not mqtt_client_status_file.exists():
+            return {}
+        return json.loads(mqtt_client_status_file.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
     @app.on_event("startup")
     async def startup_event():
         worker_manager.start_all()
@@ -440,7 +451,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.60",
+                "version": "1.1.61",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),

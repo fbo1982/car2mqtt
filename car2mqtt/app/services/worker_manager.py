@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import time
 from pathlib import Path
+import json
 from typing import Any, Dict
 
 import paho.mqtt.client as paho_mqtt
@@ -36,6 +37,7 @@ class WorkerManager:
         self.log_store = VehicleLogStore(data_dir)
         self.workers: dict[str, object] = {}
         self._bmw_raw_cache: dict[str, dict] = {}
+        self.mqtt_client_status_file = self.data_dir / "mqtt_client_status.json"
 
     def start_all(self) -> None:
         settings = load_runtime_mqtt_settings()
@@ -135,6 +137,33 @@ class WorkerManager:
         cfg = self.config_store.load()
         assigned = set(getattr(vehicle, "mqtt_client_ids", []) or [])
         return [c for c in cfg.mqtt_clients if c.enabled and c.id in assigned]
+
+def _load_forward_status(self) -> dict[str, dict[str, Any]]:
+    try:
+        if not self.mqtt_client_status_file.exists():
+            return {}
+        return json.loads(self.mqtt_client_status_file.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def _save_forward_status(self, status_map: dict[str, dict[str, Any]]) -> None:
+    try:
+        self.mqtt_client_status_file.write_text(json.dumps(status_map, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+def _mark_forward_client_status(self, client_id: str, *, ok: bool, error: str = "") -> None:
+    status_map = self._load_forward_status()
+    entry = dict(status_map.get(client_id, {}) or {})
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    entry["checked_at"] = now
+    if ok:
+        entry["last_ok"] = now
+        entry["last_error"] = ""
+    else:
+        entry["last_error"] = error or "publish_failed"
+    status_map[client_id] = entry
+    self._save_forward_status(status_map)
 
     def _forward_topic(self, source_topic: str, target_base: str, local_base: str) -> str:
         source_topic = str(source_topic or '').strip('/')

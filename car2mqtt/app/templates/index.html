@@ -542,11 +542,10 @@ function renderMqttClientsGrid(){
       <div class="vehicle-metrics">
         <div class="metric"><span>Aktiv</span><strong>${client.enabled ? 'ja' : 'nein'}</strong></div>
         <div class="metric"><span>Raw</span><strong>${client.send_raw ? 'ja' : 'nein'}</strong></div>
-        <div class="metric"><span>Zielordner</span><strong>${client.base_topic || '-'}</strong></div>
         <div class="metric"><span>Benutzer</span><strong>${client.username || '-'}</strong></div>
       </div>
       <div class="card-footer">
-        <div class="muted" style="font-size:13px">${client.enabled ? 'Weiterleitung aktiv' : 'Client deaktiviert'}</div>
+        <div class="muted" style="font-size:13px">${client.enabled ? ((client.runtime_status && client.runtime_status.last_ok) ? ('Letzte Übertragung: ' + client.runtime_status.last_ok) : 'Weiterleitung aktiv') : 'Client deaktiviert'}</div>
         <div class="card-actions"><button class="tiny-btn" type="button" onclick="editMqttClient('${client.id}')">Bearbeiten</button><button class="danger-btn" type="button" onclick="deleteMqttClient('${client.id}')">Löschen</button></div>
       </div>
     </article>`).join('');
