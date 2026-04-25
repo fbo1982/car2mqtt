@@ -113,6 +113,7 @@ class WorkerManager:
             return
         # Forward current meta state
         meta_base = meta_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
+        vin_value = str(vehicle.provider_config.get("vin") or runtime.provider_meta.get("vin") or runtime.provider_meta.get("vehicle_id") or "")
         meta_values = {
             f"{meta_base}/status": runtime.connection_state,
             f"{meta_base}/detail": runtime.connection_detail,
@@ -120,6 +121,10 @@ class WorkerManager:
             f"{meta_base}/raw_topic": runtime.raw_topic,
             f"{meta_base}/mapped_topic": runtime.mapped_topic,
             f"{meta_base}/server_name": self._resolve_server_name(),
+            f"{meta_base}/label": vehicle.label,
+            f"{meta_base}/license_plate": vehicle.license_plate,
+            f"{meta_base}/manufacturer": vehicle.manufacturer,
+            f"{meta_base}/vin": vin_value,
         }
         if runtime.last_update:
             meta_values[f"{meta_base}/last_update"] = runtime.last_update

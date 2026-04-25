@@ -484,7 +484,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
             'license_plate': str(meta.get('license_plate') or plate).strip() or plate,
             'topic': str(meta.get('raw_topic') or raw_vehicle_topic(base, manufacturer, plate)),
             'mapped_topic': str(meta.get('mapped_topic') or mapped_topic(base, manufacturer, plate)),
-            'status': str(meta.get('status') or 'connected'),
+            'status': 'remote',
             'status_detail': str(meta.get('detail') or f'Remote von {server_name}'),
             'auth_state': str(meta.get('auth_state') or 'authorized'),
             'metrics': {
@@ -595,7 +595,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.65",
+                "version": "1.1.66",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
