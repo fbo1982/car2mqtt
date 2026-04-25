@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import re
+import asyncio
 from pathlib import Path
 from typing import Any, Dict
 import time
@@ -78,6 +79,7 @@ class GwmVerificationPayload(BaseModel):
 
 class HomeZoneSettingsPayload(BaseModel):
     helper_home_zone_entity_id: str = ""
+    device_tracker_enabled: bool = False
 
 
 def _normalize_vehicle_id(license_plate: str) -> str:
@@ -541,6 +543,80 @@ def _remote_vehicle_payload_from_card(card: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+
+
+def _slugify_identifier(text: str) -> str:
+    raw = re.sub(r"[^a-zA-Z0-9_]+", "_", str(text or '').strip().lower())
+    return raw.strip('_') or 'item'
+
+
+def _device_tracker_slug(card: dict[str, Any]) -> str:
+    manufacturer = _slugify_identifier(card.get('manufacturer') or 'vehicle')
+    plate = _slugify_identifier(card.get('license_plate') or card.get('label') or 'vehicle')
+    server = _slugify_identifier(card.get('remote_server_name') or card.get('server_name') or 'local')
+    return f"car2mqtt_{manufacturer}_{plate}_{server}"
+
+
+def _publish_device_trackers(cards: list[dict[str, Any]], mqtt_settings, enabled: bool) -> None:
+    if not getattr(mqtt_settings, 'host', ''):
+        return
+    client = LocalMqttClient(mqtt_settings)
+    try:
+        client.connect()
+        for card in cards:
+            slug = _device_tracker_slug(card)
+            config_topic = f"homeassistant/device_tracker/{slug}/config"
+            state_topic = f"{getattr(mqtt_settings, 'base_topic', 'car')}/_device_tracker/{slug}/state"
+            attrs_topic = f"{getattr(mqtt_settings, 'base_topic', 'car')}/_device_tracker/{slug}/attributes"
+            if not enabled:
+                client.publish(config_topic, '', retain=True)
+                continue
+            metrics = dict(card.get('metrics') or {})
+            lat = metrics.get('latitude')
+            lon = metrics.get('longitude')
+            label = str(card.get('label') or card.get('license_plate') or slug).strip() or slug
+            manufacturer = str(card.get('manufacturer') or '').strip() or 'Vehicle'
+            vin = str(card.get('vin') or ((card.get('live') or {}).get('vin') or '')).strip()
+            license_plate = str(card.get('license_plate') or '').strip()
+            attrs = {}
+            if lat not in (None, '') and lon not in (None, ''):
+                attrs['latitude'] = lat
+                attrs['longitude'] = lon
+                attrs['gps_accuracy'] = 0
+            if vin:
+                attrs['vin'] = vin
+            if license_plate:
+                attrs['license_plate'] = license_plate
+            if card.get('remote_server_name'):
+                attrs['server_name'] = card.get('remote_server_name')
+            state = 'not_home' if 'latitude' in attrs and 'longitude' in attrs else 'unknown'
+            device_payload = {
+                'name': label,
+                'unique_id': slug,
+                'state_topic': state_topic,
+                'json_attributes_topic': attrs_topic,
+                'source_type': 'gps',
+                'payload_home': 'home',
+                'payload_not_home': 'not_home',
+                'icon': 'mdi:car',
+                'device': {
+                    'identifiers': [slug],
+                    'name': label,
+                    'manufacturer': manufacturer,
+                    'model': license_plate or label,
+                },
+            }
+            client.publish(config_topic, device_payload, retain=True)
+            client.publish(attrs_topic, attrs, retain=True)
+            client.publish(state_topic, state, retain=True)
+    except Exception:
+        return
+    finally:
+        try:
+            client.disconnect()
+        except Exception:
+            pass
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Car2MQTT")
     root = Path(__file__).resolve().parent.parent
@@ -554,9 +630,35 @@ def create_app() -> FastAPI:
     registry = ProviderRegistry()
     worker_manager = WorkerManager(data_dir, store, state_store)
 
+    app.state.device_tracker_task = None
+
+    async def _device_tracker_sync_loop():
+        while True:
+            try:
+                cfg = store.load()
+                cards, mqtt_settings = build_cards()
+                _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(getattr(getattr(cfg, "ui_settings", None), "device_tracker_enabled", False)))
+            except Exception:
+                pass
+            await asyncio.sleep(600)
+
     @app.on_event("startup")
     async def startup_event():
         worker_manager.start_all()
+        cfg = store.load()
+        if bool(getattr(getattr(cfg, "ui_settings", None), "device_tracker_enabled", False)):
+            try:
+                cards, mqtt_settings = build_cards()
+                _publish_device_trackers(cards, load_runtime_mqtt_settings(), True)
+            except Exception:
+                pass
+        app.state.device_tracker_task = asyncio.create_task(_device_tracker_sync_loop())
+
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        task = getattr(app.state, "device_tracker_task", None)
+        if task:
+            task.cancel()
 
     def build_cards() -> tuple[list[dict], dict]:
         config = store.load()
@@ -596,7 +698,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.68",
+                "version": "1.1.70",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -629,7 +731,13 @@ def create_app() -> FastAPI:
     async def save_homezone_settings(payload: HomeZoneSettingsPayload):
         cfg = store.load()
         cfg.ui_settings.helper_home_zone_entity_id = str(payload.helper_home_zone_entity_id or '').strip()
+        cfg.ui_settings.device_tracker_enabled = bool(payload.device_tracker_enabled)
         store.save(cfg)
+        try:
+            cards, _ = build_cards()
+            _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(cfg.ui_settings.device_tracker_enabled))
+        except Exception:
+            pass
         return {
             "status": "ok",
             "ui_settings": cfg.ui_settings.model_dump(mode="json"),
@@ -671,6 +779,11 @@ def create_app() -> FastAPI:
         for vehicle in cfg.vehicles:
             if client.id in (vehicle.mqtt_client_ids or []):
                 worker_manager.sync_vehicle_to_forward_clients(vehicle.id)
+        try:
+            cards, _ = build_cards()
+            _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(getattr(getattr(cfg, "ui_settings", None), "device_tracker_enabled", False)))
+        except Exception:
+            pass
         return {"status": "ok", "client": dict(client.model_dump(mode="json"), status=mqtt_client_status(client)), "clients": build_mqtt_clients()}
 
     @app.delete("/api/mqtt-clients/{client_id}")
@@ -890,6 +1003,11 @@ def create_app() -> FastAPI:
         store.upsert_vehicle(vehicle)
         worker_manager.publish_vehicle_saved_meta(vehicle.id)
         worker_manager.sync_vehicle_to_forward_clients(vehicle.id)
+        try:
+            cards, _ = build_cards()
+            _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(getattr(getattr(store.load(), "ui_settings", None), "device_tracker_enabled", False)))
+        except Exception:
+            pass
         if not vehicle.enabled:
             vehicle.provider_state.auth_message = "Fahrzeug ist inaktiv"
             worker_manager.stop_vehicle(vehicle.id)

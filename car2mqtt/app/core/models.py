@@ -42,6 +42,7 @@ class VehicleConfig(BaseModel):
 
 class UiSettings(BaseModel):
     helper_home_zone_entity_id: str = ""
+    device_tracker_enabled: bool = False
 
 
 class MqttForwardClientConfig(BaseModel):

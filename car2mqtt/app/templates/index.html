@@ -182,13 +182,15 @@ select, option {
     <div class="modal-body grid">
       <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
-      <div class="grid three">
+      <div id="editLocalMainFields" class="grid three">
         <div class="field"><label>Titel</label><input id="editLabel" /></div>
         <div class="field"><label>Kennzeichen</label><input id="editPlate" /></div>
       </div>
       <div id="editRemoteSection" class="info-box dialog-narrow hidden" style="margin-top:18px">
         <div class="eyebrow">Remote Fahrzeug</div>
         <div class="grid two" style="margin-top:14px">
+          <div class="field"><label>Titel</label><input id="editRemoteLabel" readonly /></div>
+          <div class="field"><label>Kennzeichen</label><input id="editRemotePlate" readonly /></div>
           <div class="field"><label>VIN</label><input id="editRemoteVin" readonly /></div>
           <div class="field"><label>Server</label><input id="editRemoteServerName" readonly /></div>
         </div>
@@ -386,6 +388,13 @@ select, option {
             <label>Home Zone</label>
             <select id="settingsHomeZoneSelect"></select>
             <div id="settingsHomeZoneInfo" class="muted" style="margin-top:10px"></div>
+          </div>
+          <div class="field" style="margin-top:18px">
+            <label style="display:flex;align-items:center;gap:10px">
+              <input id="settingsDeviceTrackerEnabled" type="checkbox">
+              <span>Device Tracker automatisch erstellen</span>
+            </label>
+            <div class="muted" style="margin-top:10px">Erstellt für lokale und remote Fahrzeuge automatisch MQTT Device Tracker Entitäten.</div>
           </div>
         </div>
       </div>
@@ -717,6 +726,7 @@ function prettyZoneLabel(entityId){
 function renderSettingsDialog(data){
   const select = field('settingsHomeZoneSelect');
   const info = field('settingsHomeZoneInfo');
+  const trackerToggle = field('settingsDeviceTrackerEnabled');
   if(!select) return;
   const zones = Array.isArray(data?.zones) ? [...data.zones] : [];
   const selected = String(data?.ui_settings?.helper_home_zone_entity_id || '');
@@ -745,6 +755,7 @@ function renderSettingsDialog(data){
     select.appendChild(opt);
   });
   if(info) info.textContent = describeHomezone(data?.effective_homezone || helperHomezoneJson);
+  if(trackerToggle) trackerToggle.checked = !!(data?.ui_settings?.device_tracker_enabled);
 }
 async function openSettingsDialog(){
   const dlg = field('settingsDialog');
@@ -1282,7 +1293,8 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
   ev.preventDefault();
   try{
     const select = field('settingsHomeZoneSelect');
-    const resp = await postJson('api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '' });
+    const trackerToggle = field('settingsDeviceTrackerEnabled');
+    const resp = await postJson('api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '', device_tracker_enabled: !!(trackerToggle && trackerToggle.checked) });
     uiSettings = resp.ui_settings || {};
     helperHomezoneJson = resp.effective_homezone || helperHomezoneJson;
     const info = field('settingsHomeZoneInfo');
