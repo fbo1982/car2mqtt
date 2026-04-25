@@ -525,6 +525,7 @@ function setEditRemoteMode(enabled, card=null){
   field('editBmwSection')?.classList.toggle('hidden', true);
   field('editGwmSection')?.classList.toggle('hidden', true);
   field('gwmVerifyPanel')?.classList.toggle('hidden', true);
+  field('editLocalMainFields')?.classList.toggle('hidden', !!enabled);
   const mqttAssign = field('editMqttClientsAssign')?.closest('.info-box');
   if(mqttAssign) mqttAssign.style.display = enabled ? 'none' : '';
   const logBox = field('vehicleLogViewer')?.closest('.log-box');
@@ -542,12 +543,17 @@ function setEditRemoteMode(enabled, card=null){
   field('editLabel').readOnly = !!enabled;
   field('editPlate').readOnly = !!enabled;
   if(enabled && card){
-    field('editLabel').value = String(card.label || card.license_plate || '');
-    field('editPlate').value = String(card.license_plate || '');
+    field('editRemoteLabel').value = String(card.label || card.license_plate || '');
+    field('editRemotePlate').value = String(card.license_plate || '');
     field('editRemoteVin').value = String(card.vin || ((card.live || {}).vin || ''));
     field('editRemoteServerName').value = String(card.remote_server_name || '');
     field('editRemoteDeviceTrackerEnabled').checked = !!card.device_tracker_enabled;
     field('editAuthState').textContent = card.status_detail || card.manufacturer_note || 'Remote Fahrzeug';
+  } else {
+    field('editRemoteLabel').value = '';
+    field('editRemotePlate').value = '';
+    field('editRemoteVin').value = '';
+    field('editRemoteServerName').value = '';
   }
 }
 
