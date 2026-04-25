@@ -6,8 +6,11 @@ import shutil
 import re
 from pathlib import Path
 from typing import Any, Dict
+import time
+import ssl
 
 import requests
+import paho.mqtt.client as mqtt
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
@@ -388,6 +391,155 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
     }
 
 
+
+def _parse_mqtt_scalar(value: str) -> Any:
+    text = str(value or '').strip()
+    if text.lower() == 'true':
+        return True
+    if text.lower() == 'false':
+        return False
+    try:
+        if re.fullmatch(r'-?\d+', text):
+            return int(text)
+        if re.fullmatch(r'-?\d+\.\d+', text):
+            return float(text)
+    except Exception:
+        pass
+    return text
+
+
+def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, local_vehicles: list[VehicleConfig]) -> list[dict[str, Any]]:
+    if not getattr(mqtt_settings, 'host', ''):
+        return []
+    base = str(getattr(mqtt_settings, 'base_topic', 'car') or 'car').strip('/') or 'car'
+    local_server_name = str(local_server_name or '').strip().lower()
+    local_keys = {(v.manufacturer.lower(), ''.join(ch for ch in v.license_plate.upper().strip() if ch.isalnum())) for v in local_vehicles}
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    connected = False
+
+    def on_connect(client, userdata, flags, rc, properties=None):
+        nonlocal connected
+        if rc == 0:
+            connected = True
+            client.subscribe(f"{base}/+/+/_meta/#", qos=0)
+            client.subscribe(f"{base}/+/+/mapped/#", qos=0)
+
+    def on_message(client, userdata, msg):
+        topic = str(msg.topic or '').strip('/')
+        parts = topic.split('/')
+        if len(parts) < 5 or parts[0].lower() != base.lower():
+            return
+        manufacturer = parts[1].lower()
+        plate = ''.join(ch for ch in parts[2].upper().strip() if ch.isalnum())
+        section = parts[3]
+        key = '/'.join(parts[4:])
+        if manufacturer not in {'bmw', 'gwm'} or not plate:
+            return
+        entry = grouped.setdefault((manufacturer, plate), {'manufacturer': manufacturer, 'license_plate': plate, 'meta': {}, 'metrics': {}})
+        payload = msg.payload.decode('utf-8', errors='ignore')
+        if section == '_meta':
+            entry['meta'][key] = payload
+        elif section == 'mapped' and key and '/' not in key:
+            entry['metrics'][key] = _parse_mqtt_scalar(payload)
+
+    client = mqtt.Client(client_id=f"car2mqtt-remote-{int(time.time()*1000)%100000}")
+    if getattr(mqtt_settings, 'username', ''):
+        client.username_pw_set(mqtt_settings.username, mqtt_settings.password)
+    if getattr(mqtt_settings, 'tls', False):
+        client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
+    client.on_connect = on_connect
+    client.on_message = on_message
+    try:
+        client.connect(mqtt_settings.host, int(mqtt_settings.port or 1883), 20)
+        client.loop_start()
+        deadline = time.time() + 1.5
+        while time.time() < deadline:
+            time.sleep(0.05)
+        client.disconnect()
+        client.loop_stop()
+    except Exception:
+        try:
+            client.loop_stop()
+        except Exception:
+            pass
+        return []
+
+    cards: list[dict[str, Any]] = []
+    for (manufacturer, plate), payload in grouped.items():
+        meta = payload.get('meta', {}) or {}
+        server_name = str(meta.get('server_name') or '').strip()
+        if not server_name:
+            continue
+        if local_server_name and server_name.lower() == local_server_name:
+            continue
+        label = str(meta.get('label') or plate).strip() or plate
+        metrics = payload.get('metrics', {}) or {}
+        key = (manufacturer, plate)
+        # allow remote duplicate even if same plate exists locally but from other server
+        card_id = f"remote::{manufacturer}::{plate}::{server_name}"
+        cards.append({
+            'id': card_id,
+            'label': label,
+            'manufacturer': manufacturer.upper(),
+            'license_plate': str(meta.get('license_plate') or plate).strip() or plate,
+            'topic': str(meta.get('raw_topic') or raw_vehicle_topic(base, manufacturer, plate)),
+            'mapped_topic': str(meta.get('mapped_topic') or mapped_topic(base, manufacturer, plate)),
+            'status': str(meta.get('status') or 'connected'),
+            'status_detail': str(meta.get('detail') or f'Remote von {server_name}'),
+            'auth_state': str(meta.get('auth_state') or 'authorized'),
+            'metrics': {
+                'soc': metrics.get('soc'),
+                'range': metrics.get('range'),
+                'charging': metrics.get('charging'),
+                'plugged': metrics.get('plugged'),
+                'odometer': metrics.get('odometer'),
+                'limitSoc': metrics.get('limitSoc'),
+                'capacityKwh': metrics.get('capacityKwh'),
+                'latitude': metrics.get('latitude'),
+                'longitude': metrics.get('longitude'),
+            },
+            'live': {
+                'vin': str(meta.get('vin') or ''),
+                'mqtt_username': '',
+                'vehicle_id': '',
+                'gcid': '',
+                'append_vin': False,
+            },
+            'last_update': str(meta.get('last_update') or ''),
+            'enabled': True,
+            'manufacturer_note': f'Remote Server: {server_name}',
+            'source_topic_base': '',
+            'remote': True,
+            'remote_server_name': server_name,
+        })
+    cards.sort(key=lambda c: (str(c.get('label','')).lower(), str(c.get('license_plate','')).lower(), str(c.get('remote_server_name','')).lower()))
+    return cards
+
+
+def _remote_vehicle_payload_from_card(card: dict[str, Any]) -> dict[str, Any]:
+    manufacturer = str(card.get('manufacturer','')).lower()
+    return {
+        'id': card.get('id',''),
+        'label': card.get('label',''),
+        'manufacturer': manufacturer,
+        'license_plate': card.get('license_plate',''),
+        'enabled': True,
+        'remote': True,
+        'provider_config': {
+            'vin': ((card.get('live') or {}).get('vin') or ''),
+        },
+        'provider_state': {
+            'auth_state': card.get('auth_state','authorized'),
+            'auth_message': card.get('status_detail',''),
+            'last_error': '',
+        },
+        'status': card.get('status','connected'),
+        'status_detail': card.get('status_detail',''),
+        'mqtt_client_ids': [],
+        'remote_server_name': card.get('remote_server_name',''),
+    }
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Car2MQTT")
     root = Path(__file__).resolve().parent.parent
@@ -410,6 +562,9 @@ def create_app() -> FastAPI:
         mqtt_settings = load_runtime_mqtt_settings()
         runtime_states = {k: v.model_dump(mode="json") for k, v in state_store.get_all().items()}
         cards = [_vehicle_card(vehicle, runtime_states.get(vehicle.id), mqtt_settings.base_topic) for vehicle in config.vehicles]
+        remote_cards = _discover_remote_vehicle_snapshots(mqtt_settings, worker_manager._resolve_server_name(), config.vehicles)
+        cards.extend(remote_cards)
+        cards.sort(key=lambda c: (str(c.get('label','')).lower(), str(c.get('license_plate','')).lower(), 1 if c.get('remote') else 0))
         return cards, mqtt_settings.model_dump(mode="json")
 
     def mqtt_client_status(client: MqttForwardClientConfig) -> str:
@@ -440,7 +595,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.64",
+                "version": "1.1.65",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -537,6 +692,12 @@ def create_app() -> FastAPI:
 
     @app.get("/api/vehicles/{vehicle_id}")
     async def get_vehicle(vehicle_id: str):
+        if str(vehicle_id).startswith('remote::'):
+            cards, _ = build_cards()
+            for card in cards:
+                if str(card.get('id')) == vehicle_id and card.get('remote'):
+                    return _remote_vehicle_payload_from_card(card)
+            raise HTTPException(status_code=404, detail="Remote-Fahrzeug nicht gefunden")
         vehicle = store.get_vehicle(vehicle_id)
         if not vehicle:
             raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")

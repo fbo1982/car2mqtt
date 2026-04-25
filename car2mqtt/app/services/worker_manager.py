@@ -367,6 +367,12 @@ class WorkerManager:
             client.publish(f"{topic}/raw_topic", runtime.raw_topic)
             client.publish(f"{topic}/mapped_topic", runtime.mapped_topic)
             client.publish(f"{topic}/server_name", self._resolve_server_name())
+            client.publish(f"{topic}/label", vehicle.label)
+            client.publish(f"{topic}/license_plate", vehicle.license_plate)
+            client.publish(f"{topic}/manufacturer", vehicle.manufacturer)
+            vin_value = str((vehicle.provider_config or {}).get('vin') or (runtime.provider_meta or {}).get('vin') or '')
+            if vin_value:
+                client.publish(f"{topic}/vin", vin_value)
             if runtime.last_update:
                 client.publish(f"{topic}/last_update", runtime.last_update)
         finally:
