@@ -4,6 +4,9 @@ from datetime import datetime, timezone
 import time
 from pathlib import Path
 import json
+import os
+
+import requests
 from typing import Any, Dict
 
 import paho.mqtt.client as paho_mqtt
@@ -116,6 +119,7 @@ class WorkerManager:
             f"{meta_base}/auth_state": runtime.auth_state,
             f"{meta_base}/raw_topic": runtime.raw_topic,
             f"{meta_base}/mapped_topic": runtime.mapped_topic,
+            f"{meta_base}/server_name": self._resolve_server_name(),
         }
         if runtime.last_update:
             meta_values[f"{meta_base}/last_update"] = runtime.last_update
@@ -151,6 +155,72 @@ class WorkerManager:
             self.mqtt_client_status_file.write_text(json.dumps(status_map, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception:
             pass
+
+    def _ha_supervisor_headers(self) -> dict[str, str]:
+        token = os.getenv("SUPERVISOR_TOKEN", "").strip()
+        if not token:
+            return {}
+        return {"Authorization": f"Bearer {token}", "X-Supervisor-Token": token, "Content-Type": "application/json"}
+
+    def _extract_server_name_from_payload(self, payload: Any) -> str:
+        candidates: list[Any] = []
+        if isinstance(payload, dict):
+            candidates.extend([
+                payload.get("hostname"),
+                payload.get("host"),
+                payload.get("server_name"),
+                payload.get("name"),
+            ])
+            for key in ("data", "result"):
+                value = payload.get(key)
+                if isinstance(value, dict):
+                    candidates.extend([
+                        value.get("hostname"),
+                        value.get("host"),
+                        value.get("server_name"),
+                        value.get("name"),
+                    ])
+                    host = value.get("host")
+                    if isinstance(host, dict):
+                        candidates.extend([host.get("hostname"), host.get("name")])
+        for value in candidates:
+            text = str(value or "").strip()
+            if text:
+                return text
+        return ""
+
+    def _resolve_server_name(self) -> str:
+        headers = self._ha_supervisor_headers()
+        urls = [
+            os.getenv("SUPERVISOR_HOST_INFO_URL", "").strip(),
+            os.getenv("SUPERVISOR_INFO_URL", "").strip(),
+            "http://supervisor/host/info",
+            "http://supervisor/info",
+        ]
+        seen: set[str] = set()
+        for url in [u for u in urls if u]:
+            if url in seen:
+                continue
+            seen.add(url)
+            try:
+                resp = requests.get(url, headers=headers, timeout=5)
+                if not resp.ok:
+                    continue
+                name = self._extract_server_name_from_payload(resp.json())
+                if name:
+                    return name
+            except Exception:
+                continue
+        for value in (os.getenv("HOSTNAME", "").strip(),):
+            if value:
+                return value
+        try:
+            text = Path("/etc/hostname").read_text(encoding="utf-8").strip()
+            if text:
+                return text
+        except Exception:
+            pass
+        return "unknown"
 
     def _mark_forward_client_status(self, client_id: str, *, ok: bool, error: str = "") -> None:
         status_map = self._load_forward_status()
@@ -296,6 +366,7 @@ class WorkerManager:
             client.publish(f"{topic}/auth_state", runtime.auth_state)
             client.publish(f"{topic}/raw_topic", runtime.raw_topic)
             client.publish(f"{topic}/mapped_topic", runtime.mapped_topic)
+            client.publish(f"{topic}/server_name", self._resolve_server_name())
             if runtime.last_update:
                 client.publish(f"{topic}/last_update", runtime.last_update)
         finally:
