@@ -440,7 +440,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.59",
+                "version": "1.1.60",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -512,6 +512,9 @@ def create_app() -> FastAPI:
         if not replaced:
             cfg.mqtt_clients.append(client)
         store.save(cfg)
+        for vehicle in cfg.vehicles:
+            if client.id in (vehicle.mqtt_client_ids or []):
+                worker_manager.sync_vehicle_to_forward_clients(vehicle.id)
         return {"status": "ok", "client": dict(client.model_dump(mode="json"), status=mqtt_client_status(client)), "clients": build_mqtt_clients()}
 
     @app.delete("/api/mqtt-clients/{client_id}")
@@ -641,6 +644,7 @@ def create_app() -> FastAPI:
             license_plate=payload.license_plate,
             enabled=payload.enabled,
             provider_config=validated_provider,
+            mqtt_client_ids=list(payload.mqtt_client_ids or []),
         )
         vehicle.mqtt.base_topic = mqtt_settings.base_topic
         vehicle.mqtt.qos = mqtt_settings.qos
@@ -723,6 +727,7 @@ def create_app() -> FastAPI:
             log_store.append(vehicle.id, f"Fahrzeug-ID geändert von {vehicle_id_to_replace} auf {vehicle.id}")
         store.upsert_vehicle(vehicle)
         worker_manager.publish_vehicle_saved_meta(vehicle.id)
+        worker_manager.sync_vehicle_to_forward_clients(vehicle.id)
         if not vehicle.enabled:
             vehicle.provider_state.auth_message = "Fahrzeug ist inaktiv"
             worker_manager.stop_vehicle(vehicle.id)

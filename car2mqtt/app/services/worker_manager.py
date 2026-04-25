@@ -95,6 +95,42 @@ class WorkerManager:
         self._set_runtime_state(vehicle_id, "starting", "Worker startet")
         self.workers[vehicle_id].start()
 
+
+    def sync_vehicle_to_forward_clients(self, vehicle_id: str) -> None:
+        vehicle = self.config_store.get_vehicle(vehicle_id)
+        if not vehicle:
+            return
+        mqtt_settings = load_runtime_mqtt_settings()
+        if not mqtt_settings.host:
+            return
+        runtime = self.state_store.get_all().get(vehicle_id)
+        if not runtime:
+            return
+        # Forward current meta state
+        meta_base = meta_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
+        meta_values = {
+            f"{meta_base}/status": runtime.connection_state,
+            f"{meta_base}/detail": runtime.connection_detail,
+            f"{meta_base}/auth_state": runtime.auth_state,
+            f"{meta_base}/raw_topic": runtime.raw_topic,
+            f"{meta_base}/mapped_topic": runtime.mapped_topic,
+        }
+        if runtime.last_update:
+            meta_values[f"{meta_base}/last_update"] = runtime.last_update
+        for topic, value in meta_values.items():
+            self._forward_publish(vehicle, mqtt_settings, topic, value, is_raw=False)
+
+        # Forward current mapped values
+        mapped_base = mapped_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
+        for key, value in (runtime.metrics or {}).items():
+            topic = f"{mapped_base}/{key}"
+            self._forward_publish(vehicle, mqtt_settings, topic, value, is_raw=False)
+
+        # Forward BMW raw cache immediately when available and requested
+        raw_cache = self._bmw_raw_cache.get(vehicle_id)
+        if raw_cache:
+            raw_base, _ = self._runtime_topics(vehicle, mqtt_settings)
+            self._forward_flatten_publish(vehicle, mqtt_settings, raw_base, raw_cache)
     def _target_clients_for_vehicle(self, vehicle):
         cfg = self.config_store.load()
         assigned = set(getattr(vehicle, "mqtt_client_ids", []) or [])
