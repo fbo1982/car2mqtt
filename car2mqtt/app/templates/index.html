@@ -520,6 +520,8 @@ function setEditRemoteMode(enabled, card=null){
   field('saveEditBtn').style.display = enabled ? 'none' : '';
   field('saveEditKeepOpenBtn').style.display = enabled ? 'none' : '';
   field('editReauthQuickBtn').style.display = enabled ? 'none' : '';
+  const cancelBtn = field('cancelEditBtn');
+  if(cancelBtn) cancelBtn.style.display = enabled ? 'none' : '';
   const enabledWrap = field('editEnabled')?.closest('.field');
   if(enabledWrap) enabledWrap.style.display = enabled ? 'none' : '';
   const manWrap = field('editManufacturer')?.closest('.field');
@@ -528,8 +530,10 @@ function setEditRemoteMode(enabled, card=null){
   field('editLabel').readOnly = !!enabled;
   field('editPlate').readOnly = !!enabled;
   if(enabled && card){
-    field('editRemoteVin').value = (card.vin || ((card.live || {}).vin || ''));
-    field('editRemoteServerName').value = card.remote_server_name || '';
+    field('editLabel').value = String(card.label || card.license_plate || '');
+    field('editPlate').value = String(card.license_plate || '');
+    field('editRemoteVin').value = String(card.vin || ((card.live || {}).vin || ''));
+    field('editRemoteServerName').value = String(card.remote_server_name || '');
     field('editAuthState').textContent = card.status_detail || card.manufacturer_note || 'Remote Fahrzeug';
   }
 }
