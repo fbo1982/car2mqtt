@@ -528,9 +528,9 @@ function setEditRemoteMode(enabled, card=null){
   field('editLabel').readOnly = !!enabled;
   field('editPlate').readOnly = !!enabled;
   if(enabled && card){
-    field('editRemoteVin').value = ((card.live || {}).vin || '');
+    field('editRemoteVin').value = (card.vin || ((card.live || {}).vin || ''));
     field('editRemoteServerName').value = card.remote_server_name || '';
-    field('editAuthState').textContent = card.status_detail || 'Remote Fahrzeug';
+    field('editAuthState').textContent = card.status_detail || card.manufacturer_note || 'Remote Fahrzeug';
   }
 }
 

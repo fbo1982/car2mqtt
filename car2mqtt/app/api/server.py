@@ -472,7 +472,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
             continue
         if local_server_name and server_name.lower() == local_server_name:
             continue
-        label = str(meta.get('label') or plate).strip() or plate
+        label = str(meta.get('label') or meta.get('title') or plate).strip() or plate
         metrics = payload.get('metrics', {}) or {}
         key = (manufacturer, plate)
         # allow remote duplicate even if same plate exists locally but from other server
@@ -485,7 +485,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
             'topic': str(meta.get('raw_topic') or raw_vehicle_topic(base, manufacturer, plate)),
             'mapped_topic': str(meta.get('mapped_topic') or mapped_topic(base, manufacturer, plate)),
             'status': 'remote',
-            'status_detail': str(meta.get('detail') or f'Remote von {server_name}'),
+            'status_detail': f'Remote von {server_name}',
             'auth_state': str(meta.get('auth_state') or 'authorized'),
             'metrics': {
                 'soc': metrics.get('soc'),
@@ -505,6 +505,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
                 'gcid': '',
                 'append_vin': False,
             },
+            'vin': str(meta.get('vin') or ''),
             'last_update': str(meta.get('last_update') or ''),
             'enabled': True,
             'manufacturer_note': f'Remote Server: {server_name}',
@@ -526,7 +527,7 @@ def _remote_vehicle_payload_from_card(card: dict[str, Any]) -> dict[str, Any]:
         'enabled': True,
         'remote': True,
         'provider_config': {
-            'vin': ((card.get('live') or {}).get('vin') or ''),
+            'vin': (card.get('vin') or ((card.get('live') or {}).get('vin') or '')),
         },
         'provider_state': {
             'auth_state': card.get('auth_state','authorized'),
@@ -595,7 +596,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.66",
+                "version": "1.1.67",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
