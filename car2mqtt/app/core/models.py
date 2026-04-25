@@ -38,11 +38,13 @@ class VehicleConfig(BaseModel):
     mapping: MappingConfig = Field(default_factory=MappingConfig)
     provider_state: ProviderState = Field(default_factory=ProviderState)
     mqtt_client_ids: List[str] = Field(default_factory=list)
+    device_tracker_enabled: bool = False
 
 
 class UiSettings(BaseModel):
     helper_home_zone_entity_id: str = ""
     device_tracker_enabled: bool = False
+    remote_device_tracker_ids: List[str] = Field(default_factory=list)
 
 
 class MqttForwardClientConfig(BaseModel):

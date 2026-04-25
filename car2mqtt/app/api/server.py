@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from app.core.auth_store import AuthStore
 from app.core.config_store import ConfigStore
-from app.core.models import AuthSession, VehicleConfig, MqttForwardClientConfig
+from app.core.models import AuthSession, VehicleConfig, MqttForwardClientConfig, AppConfig
 from app.core.runtime_settings import load_runtime_mqtt_settings
 from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
@@ -49,6 +49,7 @@ class VehiclePayload(BaseModel):
     provider_config: dict = {}
     auth_session_id: str | None = None
     mqtt_client_ids: list[str] = []
+    device_tracker_enabled: bool = False
 
 
 class MqttClientPayload(BaseModel):
@@ -390,6 +391,7 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         "enabled": vehicle.enabled,
         "manufacturer_note": "ORA Runner vorbereitet" if vehicle.manufacturer == "gwm" else "",
         "source_topic_base": vehicle.provider_config.get("source_topic_base", "") if vehicle.manufacturer == "gwm" else "",
+        "device_tracker_enabled": bool(getattr(vehicle, 'device_tracker_enabled', False)),
     }
 
 
@@ -499,6 +501,8 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
                 'capacityKwh': metrics.get('capacityKwh'),
                 'latitude': metrics.get('latitude'),
                 'longitude': metrics.get('longitude'),
+                'latitude_ts': metrics.get('latitude_ts'),
+                'longitude_ts': metrics.get('longitude_ts'),
             },
             'live': {
                 'vin': str(meta.get('vin') or meta.get('vehicle_vin') or ''),
@@ -539,6 +543,7 @@ def _remote_vehicle_payload_from_card(card: dict[str, Any]) -> dict[str, Any]:
         'status': card.get('status','connected'),
         'status_detail': card.get('status_detail',''),
         'mqtt_client_ids': [],
+        'device_tracker_enabled': bool(card.get('device_tracker_enabled', False)),
         'remote_server_name': card.get('remote_server_name',''),
     }
 
@@ -557,6 +562,28 @@ def _device_tracker_slug(card: dict[str, Any]) -> str:
     return f"car2mqtt_{manufacturer}_{plate}_{server}"
 
 
+def _card_device_tracker_enabled(card: dict[str, Any], cfg: AppConfig) -> bool:
+    if card.get('remote'):
+        ids = set(getattr(getattr(cfg, 'ui_settings', None), 'remote_device_tracker_ids', []) or [])
+        return str(card.get('id') or '') in ids
+    vehicle = next((v for v in (cfg.vehicles or []) if v.id == card.get('id')), None)
+    return bool(getattr(vehicle, 'device_tracker_enabled', False)) if vehicle else False
+
+
+def _device_tracker_token(card: dict[str, Any]) -> str:
+    metrics = dict(card.get('metrics') or {})
+    return json.dumps({
+        'enabled': bool(card.get('device_tracker_enabled')),
+        'lat_ts': metrics.get('latitude_ts') or '',
+        'lon_ts': metrics.get('longitude_ts') or '',
+        'lat': metrics.get('latitude'),
+        'lon': metrics.get('longitude'),
+        'server': card.get('remote_server_name') or '',
+        'label': card.get('label') or '',
+        'plate': card.get('license_plate') or '',
+    }, sort_keys=True, ensure_ascii=False)
+
+
 def _publish_device_trackers(cards: list[dict[str, Any]], mqtt_settings, enabled: bool) -> None:
     if not getattr(mqtt_settings, 'host', ''):
         return
@@ -568,7 +595,7 @@ def _publish_device_trackers(cards: list[dict[str, Any]], mqtt_settings, enabled
             config_topic = f"homeassistant/device_tracker/{slug}/config"
             state_topic = f"{getattr(mqtt_settings, 'base_topic', 'car')}/_device_tracker/{slug}/state"
             attrs_topic = f"{getattr(mqtt_settings, 'base_topic', 'car')}/_device_tracker/{slug}/attributes"
-            if not enabled:
+            if not enabled or not bool(card.get('device_tracker_enabled')):
                 client.publish(config_topic, '', retain=True)
                 continue
             metrics = dict(card.get('metrics') or {})
@@ -631,16 +658,27 @@ def create_app() -> FastAPI:
     worker_manager = WorkerManager(data_dir, store, state_store)
 
     app.state.device_tracker_task = None
+    app.state.device_tracker_tokens = {}
 
     async def _device_tracker_sync_loop():
         while True:
             try:
                 cfg = store.load()
                 cards, mqtt_settings = build_cards()
-                _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(getattr(getattr(cfg, "ui_settings", None), "device_tracker_enabled", False)))
+                global_enabled = bool(getattr(getattr(cfg, "ui_settings", None), "device_tracker_enabled", False))
+                tokens = {}
+                changed = False
+                for card in cards:
+                    token = _device_tracker_token(card)
+                    tokens[str(card.get('id') or '')] = token
+                    if app.state.device_tracker_tokens.get(str(card.get('id') or '')) != token:
+                        changed = True
+                if changed or set(app.state.device_tracker_tokens.keys()) != set(tokens.keys()):
+                    _publish_device_trackers(cards, load_runtime_mqtt_settings(), global_enabled)
+                    app.state.device_tracker_tokens = tokens
             except Exception:
                 pass
-            await asyncio.sleep(600)
+            await asyncio.sleep(15)
 
     @app.on_event("startup")
     async def startup_event():
@@ -650,6 +688,7 @@ def create_app() -> FastAPI:
             try:
                 cards, mqtt_settings = build_cards()
                 _publish_device_trackers(cards, load_runtime_mqtt_settings(), True)
+                app.state.device_tracker_tokens = {str(card.get('id') or ''): _device_tracker_token(card) for card in cards}
             except Exception:
                 pass
         app.state.device_tracker_task = asyncio.create_task(_device_tracker_sync_loop())
@@ -667,6 +706,8 @@ def create_app() -> FastAPI:
         cards = [_vehicle_card(vehicle, runtime_states.get(vehicle.id), mqtt_settings.base_topic) for vehicle in config.vehicles]
         remote_cards = _discover_remote_vehicle_snapshots(mqtt_settings, worker_manager._resolve_server_name(), config.vehicles)
         cards.extend(remote_cards)
+        for card in cards:
+            card['device_tracker_enabled'] = _card_device_tracker_enabled(card, config)
         cards.sort(key=lambda c: (str(c.get('label','')).lower(), str(c.get('license_plate','')).lower(), 1 if c.get('remote') else 0))
         return cards, mqtt_settings.model_dump(mode="json")
 
@@ -698,7 +739,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.71",
+                "version": "1.1.72",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -736,6 +777,7 @@ def create_app() -> FastAPI:
         try:
             cards, _ = build_cards()
             _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(cfg.ui_settings.device_tracker_enabled))
+            app.state.device_tracker_tokens = {str(card.get('id') or ''): _device_tracker_token(card) for card in cards}
         except Exception:
             pass
         return {
@@ -794,6 +836,29 @@ def create_app() -> FastAPI:
             vehicle.mqtt_client_ids = [cid for cid in (vehicle.mqtt_client_ids or []) if cid != client_id]
         store.save(cfg)
         return {"status": "ok", "clients": build_mqtt_clients()}
+
+    @app.post("/api/remote-vehicles/{vehicle_id}/device-tracker")
+    async def set_remote_vehicle_device_tracker(vehicle_id: str, payload: dict):
+        cfg = store.load()
+        cards, _ = build_cards()
+        card = next((c for c in cards if str(c.get('id')) == vehicle_id and c.get('remote')), None)
+        if not card:
+            raise HTTPException(status_code=404, detail="Remote-Fahrzeug nicht gefunden")
+        enabled = bool((payload or {}).get('device_tracker_enabled'))
+        ids = set(getattr(cfg.ui_settings, 'remote_device_tracker_ids', []) or [])
+        if enabled:
+            ids.add(vehicle_id)
+        else:
+            ids.discard(vehicle_id)
+        cfg.ui_settings.remote_device_tracker_ids = sorted(ids)
+        store.save(cfg)
+        cards, _ = build_cards()
+        try:
+            _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(getattr(getattr(cfg, 'ui_settings', None), 'device_tracker_enabled', False)))
+            app.state.device_tracker_tokens = {str(card.get('id') or ''): _device_tracker_token(card) for card in cards}
+        except Exception:
+            pass
+        return {'status':'ok','vehicle_id':vehicle_id,'device_tracker_enabled': enabled}
 
     @app.get("/api/providers")
     async def get_providers():
@@ -920,6 +985,7 @@ def create_app() -> FastAPI:
             enabled=payload.enabled,
             provider_config=validated_provider,
             mqtt_client_ids=list(payload.mqtt_client_ids or []),
+            device_tracker_enabled=bool(payload.device_tracker_enabled),
         )
         vehicle.mqtt.base_topic = mqtt_settings.base_topic
         vehicle.mqtt.qos = mqtt_settings.qos
