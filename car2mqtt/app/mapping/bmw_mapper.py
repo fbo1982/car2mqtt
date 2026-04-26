@@ -89,26 +89,46 @@ def map_bmw_payload(raw: Dict[str, Any]) -> Dict[str, Any]:
         "odometer_ts": _ts_or_now(odometer_ts),
         "range": ev_range,
         "range_ts": _ts_or_now(range_ts),
-        "limitSoc": limit_soc,
-        "limitSoc_ts": _ts_or_now(limit_soc_ts),
         "charging": _to_bool_from_status(charging_raw, {"NOCHARGING", "FALSE", "0", "NO", "OFF"}),
         "charging_ts": _ts_or_now(charging_ts),
-        "longitude": _to_float_or_none(longitude),
-        "longitude_ts": _ts_or_now(longitude_ts),
-        "latitude": _to_float_or_none(latitude),
-        "latitude_ts": _ts_or_now(latitude_ts),
-        "altitude": _to_float_or_none(altitude),
-        "altitude_ts": _ts_or_now(altitude_ts),
         "preconditioning": preconditioning,
         "preconditioning_ts": _ts_or_now(preconditioning_ts),
         "capacityKwh": _to_float_or_none(capacity),
         "capacityKwh_ts": _ts_or_now(capacity_ts),
-        "fuelLevel": _to_float_or_none(fuel_level),
-        "fuelLevel_ts": _ts_or_now(fuel_level_ts),
-        "fuelRange": _to_float_or_none(fuel_range),
-        "fuelRange_ts": _ts_or_now(fuel_range_ts),
         "vehicleType": vehicle_type,
         "vehicleType_ts": _ts_or_now(last_update_ts),
         "lastUpdate": _ts_or_now(last_update_ts),
     }
+
+    limit_soc_value = _to_float_or_none(limit_soc)
+    if limit_soc_value is not None:
+        mapped["limitSoc"] = limit_soc_value
+        mapped["limitSoc_ts"] = _ts_or_now(limit_soc_ts)
+
+    longitude_value = _to_float_or_none(longitude)
+    if longitude_value is not None:
+        mapped["longitude"] = longitude_value
+        mapped["longitude_ts"] = _ts_or_now(longitude_ts)
+
+    latitude_value = _to_float_or_none(latitude)
+    if latitude_value is not None:
+        mapped["latitude"] = latitude_value
+        mapped["latitude_ts"] = _ts_or_now(latitude_ts)
+
+    altitude_value = _to_float_or_none(altitude)
+    if altitude_value is not None:
+        mapped["altitude"] = altitude_value
+        mapped["altitude_ts"] = _ts_or_now(altitude_ts)
+
+    if vehicle_type != "ev":
+        fuel_level_value = _to_float_or_none(fuel_level)
+        if fuel_level_value is not None:
+            mapped["fuelLevel"] = fuel_level_value
+            mapped["fuelLevel_ts"] = _ts_or_now(fuel_level_ts)
+
+        fuel_range_value = _to_float_or_none(fuel_range)
+        if fuel_range_value is not None:
+            mapped["fuelRange"] = fuel_range_value
+            mapped["fuelRange_ts"] = _ts_or_now(fuel_range_ts)
+
     return mapped
