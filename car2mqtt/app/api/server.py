@@ -382,7 +382,7 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
             "capacityKwh": metrics.get("capacityKwh"),
             "fuelLevel": metrics.get("fuelLevel"),
             "fuelRange": metrics.get("fuelRange"),
-            "vehicleType": metrics.get("vehicleType") or ('ev' if vehicle.manufacturer == 'gwm' else None),
+            "vehicleType": metrics.get("vehicleType") or ('ev' if vehicle.manufacturer in {'gwm','acconia'} else None),
             "latitude": metrics.get("latitude"),
             "longitude": metrics.get("longitude"),
         },
@@ -395,8 +395,8 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         },
         "last_update": (runtime_state or {}).get("last_update", ""),
         "enabled": vehicle.enabled,
-        "manufacturer_note": "ORA Runner vorbereitet" if vehicle.manufacturer == "gwm" else "",
-        "source_topic_base": vehicle.provider_config.get("source_topic_base", "") if vehicle.manufacturer == "gwm" else "",
+        "manufacturer_note": "ORA Runner vorbereitet" if vehicle.manufacturer == "gwm" else ("Acconia/Silence MQTT vorbereitet" if vehicle.manufacturer == "acconia" else ""),
+        "source_topic_base": vehicle.provider_config.get("source_topic_base", "") if vehicle.manufacturer in {"gwm","acconia"} else "",
         "device_tracker_enabled": bool(getattr(vehicle, 'device_tracker_enabled', False)),
     }
 
@@ -443,7 +443,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
         plate = ''.join(ch for ch in parts[2].upper().strip() if ch.isalnum())
         section = parts[3]
         key = '/'.join(parts[4:])
-        if manufacturer not in {'bmw', 'gwm'} or not plate:
+        if manufacturer not in {'bmw', 'gwm', 'acconia'} or not plate:
             return
         entry = grouped.setdefault((manufacturer, plate), {'manufacturer': manufacturer, 'license_plate': plate, 'meta': {}, 'metrics': {}})
         payload = msg.payload.decode('utf-8', errors='ignore')
@@ -507,7 +507,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
                 'capacityKwh': metrics.get('capacityKwh'),
                 'fuelLevel': metrics.get('fuelLevel'),
                 'fuelRange': metrics.get('fuelRange'),
-                'vehicleType': metrics.get('vehicleType') or ('ev' if manufacturer == 'gwm' else None),
+                'vehicleType': metrics.get('vehicleType') or ('ev' if manufacturer in {'gwm','acconia'} else None),
                 'latitude': metrics.get('latitude'),
                 'longitude': metrics.get('longitude'),
                 'latitude_ts': metrics.get('latitude_ts'),
@@ -1071,6 +1071,17 @@ def create_app() -> FastAPI:
                 vehicle.provider_config["source_topic_base"] = "GWM"
             log_store.append(vehicle.id, "ORA Konfiguration erzeugt: providers/%s/ora2mqtt.yml" % vehicle.id)
 
+        if payload.manufacturer == "acconia":
+            vehicle.provider_config["license_plate"] = vehicle.license_plate
+            if not vehicle.provider_config.get("vehicle_id"):
+                vehicle.provider_config["vehicle_id"] = vehicle.id
+            if not vehicle.provider_config.get("source_topic_base"):
+                normalized_plate = _normalize_vehicle_id(vehicle.license_plate)
+                vehicle.provider_config["source_topic_base"] = f"acconia/{normalized_plate}"
+            vehicle.provider_state.auth_state = "authorized"
+            vehicle.provider_state.auth_message = "Acconia/Silence MQTT vorbereitet"
+            log_store.append(vehicle.id, "Acconia/Silence Konfiguration gespeichert")
+
         if vehicle_id_to_replace and vehicle_id_to_replace != vehicle.id:
             if payload.manufacturer == "gwm":
                 src_cfg = Path(data_dir) / "providers" / vehicle_id_to_replace / "ora2mqtt.yml"
@@ -1100,6 +1111,13 @@ def create_app() -> FastAPI:
 
         if payload.manufacturer == "bmw" and mqtt_settings.host and vehicle.provider_state.auth_state == "authorized":
             worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
+        if payload.manufacturer == "acconia":
+            if vehicle.enabled and mqtt_settings.host:
+                log_store.append(vehicle.id, "Acconia/Silence Fahrzeug gespeichert - MQTT Source Listener gestartet")
+                worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
+            else:
+                log_store.append(vehicle.id, "Acconia/Silence Fahrzeug gespeichert - kein automatischer Start")
+                worker_manager.publish_vehicle_saved_meta(vehicle.id)
         if payload.manufacturer == "gwm":
             if vehicle.enabled and mqtt_settings.host:
                 log_store.append(vehicle.id, "ORA Fahrzeug gespeichert - automatischer Start aktiviert")

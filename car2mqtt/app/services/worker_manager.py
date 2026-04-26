@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 import json
 import os
+import ssl
 
 import requests
 from typing import Any, Dict
@@ -18,6 +19,7 @@ from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
 from app.mapping.bmw_mapper import map_bmw_payload
 from app.mapping.gwm_mapper import apply_gwm_metric
+from app.mapping.acconia_mapper import apply_acconia_metric
 
 GWM_OBSOLETE_MAPPED_KEYS = {
     "chargeLimitMode",
@@ -30,6 +32,73 @@ from app.mqtt.client import LocalMqttClient
 from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic, vehicle_root_topic
 from app.providers.bmw.streaming import BMWStreamWorker
 from app.providers.gwm_runner import GwmIntegratedWorker
+
+
+
+class AcconiaMqttWorker:
+    def __init__(self, vehicle, mqtt_settings, on_connect, on_disconnect, on_error, on_message, log_callback):
+        self.vehicle = vehicle
+        self.mqtt_settings = mqtt_settings
+        self.on_connect_cb = on_connect
+        self.on_disconnect_cb = on_disconnect
+        self.on_error_cb = on_error
+        self.on_message_cb = on_message
+        self.log_callback = log_callback
+        self.client = None
+
+    def _source_base(self) -> str:
+        base = str((self.vehicle.provider_config or {}).get("source_topic_base") or "").strip().strip("/")
+        if not base:
+            plate = "".join(ch for ch in self.vehicle.license_plate.upper().strip() if ch.isalnum())
+            base = f"acconia/{plate}"
+        return base
+
+    def start(self) -> None:
+        source_base = self._source_base()
+        topic = f"{source_base}/#"
+        client = paho_mqtt.Client(client_id=f"car2mqtt-acconia-{self.vehicle.id[:8]}")
+        self.client = client
+        if self.mqtt_settings.username:
+            client.username_pw_set(self.mqtt_settings.username, self.mqtt_settings.password)
+        if getattr(self.mqtt_settings, "tls", False):
+            client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
+
+        def on_connect(c, _u, _f, rc, _p=None):
+            if rc == 0:
+                c.subscribe(topic, qos=self.mqtt_settings.qos)
+                self.log_callback(f"Acconia/Silence MQTT subscribed: {topic}")
+                self.on_connect_cb()
+            else:
+                self.on_error_cb(f"Acconia MQTT Verbindung fehlgeschlagen (rc={rc})")
+
+        def on_disconnect(_c, _u, rc, _p=None):
+            self.on_disconnect_cb(rc)
+
+        def on_message(_c, _u, msg):
+            try:
+                payload = msg.payload.decode("utf-8", errors="ignore")
+                self.on_message_cb(msg.topic, payload)
+            except Exception as exc:
+                self.on_error_cb(f"Acconia Mapping Fehler: {exc}")
+
+        client.on_connect = on_connect
+        client.on_disconnect = on_disconnect
+        client.on_message = on_message
+        try:
+            client.connect(self.mqtt_settings.host, int(self.mqtt_settings.port or 1883), 30)
+            client.loop_start()
+        except Exception as exc:
+            self.on_error_cb(f"Acconia MQTT Start fehlgeschlagen: {exc}")
+
+    def stop(self) -> None:
+        try:
+            if self.client:
+                self.client.loop_stop()
+                self.client.disconnect()
+        except Exception:
+            pass
+
+
 
 
 class WorkerManager:
@@ -45,7 +114,7 @@ class WorkerManager:
     def start_all(self) -> None:
         settings = load_runtime_mqtt_settings()
         for vehicle in self.config_store.load().vehicles:
-            if vehicle.manufacturer in {"bmw", "gwm"} and vehicle.enabled and vehicle.provider_state.auth_state == "authorized":
+            if vehicle.manufacturer in {"bmw", "gwm", "acconia"} and vehicle.enabled and vehicle.provider_state.auth_state == "authorized":
                 self.start_or_restart_vehicle(vehicle.id, settings)
 
     def stop_vehicle(self, vehicle_id: str) -> None:
@@ -58,7 +127,7 @@ class WorkerManager:
     def start_or_restart_vehicle(self, vehicle_id: str, mqtt_settings=None) -> None:
         mqtt_settings = mqtt_settings or load_runtime_mqtt_settings()
         vehicle = self.config_store.get_vehicle(vehicle_id)
-        if not vehicle or vehicle.manufacturer not in {"bmw", "gwm"}:
+        if not vehicle or vehicle.manufacturer not in {"bmw", "gwm", "acconia"}:
             return
         if not vehicle.enabled:
             self._set_runtime_state(vehicle_id, "inactive", "Fahrzeug ist inaktiv")
@@ -81,6 +150,22 @@ class WorkerManager:
             )
             self.log_store.append(vehicle_id, "ORA Workerstart angefordert")
             self._set_runtime_state(vehicle_id, "starting", "ORA Worker startet")
+            self.workers[vehicle_id].start()
+            return
+
+
+        if vehicle.manufacturer == "acconia":
+            self.workers[vehicle_id] = AcconiaMqttWorker(
+                vehicle=vehicle,
+                mqtt_settings=mqtt_settings,
+                on_connect=lambda vid=vehicle_id: self._set_runtime_state(vid, "connected", "Acconia/Silence MQTT Quelle verbunden"),
+                on_disconnect=lambda rc, vid=vehicle_id: self._set_runtime_state(vid, "disconnected", f"Acconia/Silence MQTT getrennt (rc={rc})"),
+                on_error=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "error", message),
+                on_message=lambda topic, payload, vid=vehicle_id: self._handle_acconia_payload(vid, topic, payload, mqtt_settings),
+                log_callback=lambda message, vid=vehicle_id: self.log_store.append(vid, message),
+            )
+            self.log_store.append(vehicle_id, "Acconia/Silence Workerstart angefordert")
+            self._set_runtime_state(vehicle_id, "starting", "Acconia/Silence Worker startet")
             self.workers[vehicle_id].start()
             return
 
@@ -546,6 +631,58 @@ class WorkerManager:
         if not is_meta_status:
             self.log_store.append(vehicle_id, f"ORA Datenpunkt empfangen: {source_topic} -> mapped aus {field_name or relative or 'status'} = {payload}")
         self._publish_meta(vehicle, runtime, mqtt_settings)
+
+
+    def _handle_acconia_payload(self, vehicle_id: str, source_topic: str, payload: str, mqtt_settings) -> None:
+        vehicle = self.config_store.get_vehicle(vehicle_id)
+        if not vehicle:
+            return
+        source_base = str((vehicle.provider_config or {}).get("source_topic_base") or "").strip().strip("/")
+        relative = str(source_topic or "").strip("/")
+        if source_base and relative.lower().startswith((source_base + "/").lower()):
+            relative = relative[len(source_base) + 1:]
+        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
+        runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
+        previous_metrics = dict(runtime.metrics or {})
+        metrics = apply_acconia_metric(
+            dict(previous_metrics),
+            relative,
+            payload,
+            int((vehicle.provider_config or {}).get("battery_count") or 0),
+            (vehicle.provider_config or {}).get("capacity_kwh"),
+        )
+        changed_keys = {key for key, value in metrics.items() if previous_metrics.get(key) != value}
+        runtime.connection_state = "connected"
+        runtime.connection_detail = "Acconia/Silence MQTT Quelle aktiv"
+        runtime.auth_state = vehicle.provider_state.auth_state
+        runtime.raw_topic = raw_topic_base
+        runtime.mapped_topic = mapped
+        runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+        runtime.metrics = metrics
+        runtime.provider_meta = {
+            "vehicle_id": vehicle.provider_config.get("vehicle_id", vehicle.id),
+            "source_topic_base": source_base,
+            "source_topic": source_topic,
+            "relative_topic": relative,
+        }
+        self.state_store.upsert(runtime)
+
+        client = LocalMqttClient(mqtt_settings)
+        try:
+            client.connect()
+            raw_topic = f"{raw_topic_base}/{relative}" if relative else raw_topic_base
+            client.publish(raw_topic, payload)
+            self._forward_publish(vehicle, mqtt_settings, raw_topic, payload, is_raw=True)
+            for key in sorted(changed_keys):
+                topic = f"{mapped}/{key}"
+                client.publish(topic, metrics.get(key))
+                self._forward_publish(vehicle, mqtt_settings, topic, metrics.get(key), is_raw=False)
+        finally:
+            client.disconnect()
+
+        self.log_store.append(vehicle_id, f"Acconia Datenpunkt empfangen: {source_topic} -> {relative} = {payload}")
+        self._publish_meta(vehicle, runtime, mqtt_settings)
+
 
     def publish_vehicle_saved_meta(self, vehicle_id: str) -> None:
         vehicle = self.config_store.get_vehicle(vehicle_id)

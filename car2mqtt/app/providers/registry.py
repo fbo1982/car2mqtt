@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.providers.base import BaseProvider
 from app.providers.bmw_provider import BmwProvider
 from app.providers.gwm_provider import GwmProvider
+from app.providers.acconia_provider import AcconiaProvider
 
 
 class ProviderRegistry:
@@ -10,6 +11,7 @@ class ProviderRegistry:
         self._providers: dict[str, BaseProvider] = {
             "bmw": BmwProvider(),
             "gwm": GwmProvider(),
+            "acconia": AcconiaProvider(),
         }
 
     def all(self):
