@@ -74,6 +74,10 @@ def map_bmw_payload(raw: Dict[str, Any]) -> Dict[str, Any]:
     else:
         vehicle_type = "ev"
 
+    limit_soc_value = _to_float_or_none(limit_soc)
+    if limit_soc_value is None and vehicle_type == "ev":
+        limit_soc_value = 100.0
+
     last_update_ts = (
         soc_ts or plugged_ts or odometer_ts or range_ts or limit_soc_ts or charging_ts
         or longitude_ts or latitude_ts or altitude_ts or preconditioning_ts or capacity_ts
@@ -100,7 +104,6 @@ def map_bmw_payload(raw: Dict[str, Any]) -> Dict[str, Any]:
         "lastUpdate": _ts_or_now(last_update_ts),
     }
 
-    limit_soc_value = _to_float_or_none(limit_soc)
     if limit_soc_value is not None:
         mapped["limitSoc"] = limit_soc_value
         mapped["limitSoc_ts"] = _ts_or_now(limit_soc_ts)
