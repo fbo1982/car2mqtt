@@ -11,18 +11,20 @@ from app.providers.mg_provider import MgProvider
 
 class ProviderRegistry:
     def __init__(self) -> None:
+        # Reihenfolge entspricht der alphabetischen Anzeige im Hersteller-Dropdown.
+        # "vag" bleibt nur als Legacy-Provider erhalten und wird in all() ausgeblendet.
         self._providers: dict[str, BaseProvider] = {
-            "bmw": BmwProvider(),
-            "gwm": GwmProvider(),
             "acconia": AcconiaProvider(),
+            "audi": VagBrandProvider("audi"),
+            "bmw": BmwProvider(),
+            "cupra": VagBrandProvider("cupra"),
+            "gwm": GwmProvider(),
             "hyundai": HyundaiProvider(),
             "mg": MgProvider(),
+            "seat": VagBrandProvider("seat"),
+            "skoda": VagBrandProvider("skoda"),
             "vw": VagBrandProvider("vw"),
             "vwcv": VagBrandProvider("vwcv"),
-            "audi": VagBrandProvider("audi"),
-            "skoda": VagBrandProvider("skoda"),
-            "seat": VagBrandProvider("seat"),
-            "cupra": VagBrandProvider("cupra"),
             # Kompatibilität für Fahrzeuge aus v1.1.82; wird nicht mehr in der UI angeboten.
             "vag": VagProvider(),
         }
