@@ -4,8 +4,8 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
 Manufacturer = Literal[
-    "bmw", "gwm", "acconia", "hyundai", "mg",
-    "citroen", "kia", "mercedes", "nissan", "opel", "peugeot", "renault", "toyota",
+    "bmw", "gwm", "acconia", "byd", "hyundai", "mg",
+    "citroen", "kia", "lucid", "mercedes", "nissan", "opel", "peugeot", "renault", "tesla", "toyota", "volvo",
     "vag", "vw", "vwcv", "audi", "skoda", "seat", "cupra"
 ]
 AuthState = Literal["not_started", "pending", "authorized", "error"]

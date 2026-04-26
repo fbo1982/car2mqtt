@@ -7,6 +7,13 @@ from app.providers.base import BaseProvider
 COMMON_POWERTRAINS = {"electric", "hybrid", "combustion", "unknown"}
 
 BRAND_DEFINITIONS: dict[str, dict[str, str]] = {
+    "byd": {
+        "name": "BYD",
+        "badge": "BYD",
+        "api_mode": "byd_cloud",
+        "api_label": "BYD Cloud / Diplus",
+        "source": "Community-Referenz: pyBYD / hass-byd-vehicle bzw. BYD Diplus API. Keine offiziell öffentliche Endkunden-API bekannt.",
+    },
     "citroen": {
         "name": "Citroën",
         "badge": "Citroën",
@@ -20,6 +27,13 @@ BRAND_DEFINITIONS: dict[str, dict[str, str]] = {
         "api_mode": "kia_connect",
         "api_label": "Kia Connect / UVO",
         "source": "Community-Referenz: Hyundai-Kia-Connect API / kia_uvo für Kia Connect, Hyundai Bluelink und UVO.",
+    },
+    "lucid": {
+        "name": "Lucid",
+        "badge": "Lucid",
+        "api_mode": "lucid_community",
+        "api_label": "Lucid Motors Community API",
+        "source": "Community-Referenz: ha-lucidmotors / python-lucidmotors. Keine offiziell öffentliche Endkunden-API bekannt.",
     },
     "mercedes": {
         "name": "Mercedes-Benz",
@@ -56,12 +70,26 @@ BRAND_DEFINITIONS: dict[str, dict[str, str]] = {
         "api_label": "MyRenault / Kamereon",
         "source": "Community-Referenz: renault-api für die private MyRenault/Kamereon API.",
     },
+    "tesla": {
+        "name": "Tesla",
+        "badge": "Tesla",
+        "api_mode": "tesla_fleet_api",
+        "api_label": "Tesla Fleet API",
+        "source": "Offizielle Referenz: Tesla Fleet API / Fleet Telemetry. Für produktiven Zugriff sind OAuth, Partner-App/Fleet-Zugang und ggf. Vehicle Command Proxy/Virtual Key nötig.",
+    },
     "toyota": {
         "name": "Toyota",
         "badge": "Toyota",
         "api_mode": "mytoyota",
         "api_label": "MyToyota / Toyota Connected Services",
         "source": "Community-Referenz: pytoyoda / ha_toyota für Toyota Connected Services Europe; keine offiziell öffentliche Endkunden-API.",
+    },
+    "volvo": {
+        "name": "Volvo",
+        "badge": "Volvo",
+        "api_mode": "volvo_connected_vehicle",
+        "api_label": "Volvo Cars Connected Vehicle API",
+        "source": "Offizielle Referenz: Volvo Cars Developer Portal / Connected Vehicle APIs. Community-Referenzen: volvo-vehicle-exporter, volvo2mqtt.",
     },
 }
 
@@ -74,6 +102,10 @@ ALLOWED_API_MODES = {
     "kia_connect",
     "mytoyota",
     "nissanconnect",
+    "byd_cloud",
+    "lucid_community",
+    "tesla_fleet_api",
+    "volvo_connected_vehicle",
 }
 
 
