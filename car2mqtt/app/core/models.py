@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
-Manufacturer = Literal["bmw", "gwm", "acconia", "vag"]
+Manufacturer = Literal["bmw", "gwm", "acconia", "vag", "vw", "vwcv", "audi", "skoda", "seat", "cupra"]
 AuthState = Literal["not_started", "pending", "authorized", "error"]
 
 

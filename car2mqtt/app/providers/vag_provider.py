@@ -5,31 +5,43 @@ from app.core.models import ProviderDescriptor
 from app.providers.base import BaseProvider
 
 VAG_BRANDS = {"vw", "vwcv", "audi", "skoda", "seat", "cupra"}
+VAG_BRAND_LABELS = {
+    "vw": "Volkswagen",
+    "vwcv": "Volkswagen Nutzfahrzeuge",
+    "audi": "Audi",
+    "skoda": "Škoda",
+    "seat": "SEAT",
+    "cupra": "CUPRA",
+}
 VAG_POWERTRAINS = {"electric", "hybrid", "combustion", "unknown"}
 VAG_API_MODES = {"official_fleet", "brand_app"}
 
 
-class VagProvider(BaseProvider):
+class VagBrandProvider(BaseProvider):
+    def __init__(self, brand: str) -> None:
+        if brand not in VAG_BRANDS:
+            raise ValueError(f"Unbekannte VAG-Marke: {brand}")
+        self.brand = brand
+
     def descriptor(self) -> ProviderDescriptor:
+        label = VAG_BRAND_LABELS[self.brand]
         return ProviderDescriptor(
-            id="vag",
-            name="Volkswagen Konzern",
+            id=self.brand,
+            name=label,
             category="API",
             auth_mode="account",
-            badge="VAG",
+            badge=label,
             notes=(
-                "Gemeinsame VAG-Grundstruktur für Volkswagen, Volkswagen Nutzfahrzeuge, Audi, Škoda, "
-                "SEAT und CUPRA. Dieser Schritt legt UI, Konfiguration und ein einheitliches Mapping "
-                "für Elektro, Hybrid und Verbrenner an. Die markenspezifischen API-Connectoren werden "
-                "darauf aufbauend schrittweise ergänzt."
+                f"{label}-Grundstruktur mit eigenem Hersteller-Eintrag. "
+                "Konfiguration und MQTT-Mapping sind wie bei BMW nach Elektro, Hybrid und Verbrenner getrennt vorbereitet. "
+                "Der markenspezifische Live-Connector wird im nächsten Schritt ergänzt."
             ),
             setup_steps=[
-                "Marke, API-Modus, Login und Antriebsart wählen.",
+                "API-Modus, Login und Antriebsart wählen.",
                 "Kennzeichen wird als interne Vehicle-ID und MQTT-Fahrzeugkennung verwendet.",
                 "Das Mapping verwendet dasselbe Fahrzeugtyp-Konzept wie BMW: electric, hybrid, combustion.",
             ],
             fields=[
-                {"name": "brand", "label": "Marke", "type": "select", "required": True},
                 {"name": "api_mode", "label": "API-Modus", "type": "select", "required": True, "default": "brand_app"},
                 {"name": "account", "label": "Benutzerkonto / E-Mail", "type": "text", "required": True},
                 {"name": "password", "label": "Passwort", "type": "password", "required": True},
@@ -41,18 +53,20 @@ class VagProvider(BaseProvider):
         )
 
     def validate_config(self, provider_config: Dict[str, Any]) -> Dict[str, Any]:
-        brand = str(provider_config.get("brand", "") or "").strip().lower()
+        brand = str(provider_config.get("brand", "") or self.brand).strip().lower()
+        if brand == "vag":
+            brand = self.brand
         if brand not in VAG_BRANDS:
-            raise ValueError("Bitte eine gültige VAG-Marke wählen.")
+            raise ValueError("Bitte eine gültige Marke wählen.")
         api_mode = str(provider_config.get("api_mode", "brand_app") or "brand_app").strip().lower()
         if api_mode not in VAG_API_MODES:
-            raise ValueError("Bitte einen gültigen VAG API-Modus wählen.")
+            raise ValueError("Bitte einen gültigen API-Modus wählen.")
         account = str(provider_config.get("account", "") or provider_config.get("username", "")).strip()
         password = str(provider_config.get("password", "") or "")
         if not account:
-            raise ValueError("VAG Benutzerkonto fehlt.")
+            raise ValueError(f"{VAG_BRAND_LABELS[brand]} Benutzerkonto fehlt.")
         if not password:
-            raise ValueError("VAG Passwort fehlt.")
+            raise ValueError(f"{VAG_BRAND_LABELS[brand]} Passwort fehlt.")
         powertrain = str(provider_config.get("powertrain", "unknown") or "unknown").strip().lower()
         if powertrain not in VAG_POWERTRAINS:
             raise ValueError("Bitte eine gültige Antriebsart wählen.")
@@ -80,3 +94,16 @@ class VagProvider(BaseProvider):
             "license_plate": str(provider_config.get("license_plate", "")).strip(),
             "vehicle_id": str(provider_config.get("vehicle_id", "")).strip(),
         }
+
+
+class VagProvider(VagBrandProvider):
+    """Compatibility provider for configs created with v1.1.82."""
+    def __init__(self) -> None:
+        super().__init__("vw")
+
+    def descriptor(self) -> ProviderDescriptor:
+        d = super().descriptor()
+        d.id = "vag"
+        d.name = "Volkswagen Konzern"
+        d.badge = "VAG"
+        return d

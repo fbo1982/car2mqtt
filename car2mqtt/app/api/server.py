@@ -443,7 +443,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
         plate = ''.join(ch for ch in parts[2].upper().strip() if ch.isalnum())
         section = parts[3]
         key = '/'.join(parts[4:])
-        if manufacturer not in {'bmw', 'gwm', 'acconia', 'vag'} or not plate:
+        if manufacturer not in {'bmw', 'gwm', 'acconia', 'vag', 'vw', 'vwcv', 'audi', 'skoda', 'seat', 'cupra'} or not plate:
             return
         entry = grouped.setdefault((manufacturer, plate), {'manufacturer': manufacturer, 'license_plate': plate, 'meta': {}, 'metrics': {}})
         payload = msg.payload.decode('utf-8', errors='ignore')
@@ -1079,13 +1079,13 @@ def create_app() -> FastAPI:
             vehicle.provider_state.auth_message = "Acconia/Silence API vorbereitet"
             log_store.append(vehicle.id, "Acconia/Silence API-Konfiguration gespeichert")
 
-        if payload.manufacturer == "vag":
+        if payload.manufacturer in {"vag", "vw", "vwcv", "audi", "skoda", "seat", "cupra"}:
             vehicle.provider_config["license_plate"] = vehicle.license_plate
             vehicle.provider_config["vehicle_id"] = _normalize_vehicle_id(vehicle.license_plate)
             vehicle.provider_config.pop("source_topic_base", None)
             vehicle.provider_state.auth_state = "authorized"
-            vehicle.provider_state.auth_message = "VAG Grundstruktur vorbereitet - API-Connector folgt im nächsten Schritt"
-            log_store.append(vehicle.id, "VAG Grundstruktur gespeichert")
+            vehicle.provider_state.auth_message = "Marken-Grundstruktur vorbereitet - API-Connector folgt im nächsten Schritt"
+            log_store.append(vehicle.id, "Marken-Grundstruktur gespeichert")
 
         if vehicle_id_to_replace and vehicle_id_to_replace != vehicle.id:
             if payload.manufacturer == "gwm":
@@ -1123,8 +1123,8 @@ def create_app() -> FastAPI:
             else:
                 log_store.append(vehicle.id, "Acconia/Silence Fahrzeug gespeichert - kein automatischer Start")
                 worker_manager.publish_vehicle_saved_meta(vehicle.id)
-        if payload.manufacturer == "vag":
-            log_store.append(vehicle.id, "VAG Fahrzeug gespeichert - noch kein Live-Login in dieser Grundversion")
+        if payload.manufacturer in {"vag", "vw", "vwcv", "audi", "skoda", "seat", "cupra"}:
+            log_store.append(vehicle.id, "Marken-Fahrzeug gespeichert - noch kein Live-Login in dieser Grundversion")
             worker_manager.publish_vehicle_saved_meta(vehicle.id)
         if payload.manufacturer == "gwm":
             if vehicle.enabled and mqtt_settings.host:

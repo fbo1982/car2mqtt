@@ -4,7 +4,7 @@ from app.providers.base import BaseProvider
 from app.providers.bmw_provider import BmwProvider
 from app.providers.gwm_provider import GwmProvider
 from app.providers.acconia_provider import AcconiaProvider
-from app.providers.vag_provider import VagProvider
+from app.providers.vag_provider import VagProvider, VagBrandProvider
 
 
 class ProviderRegistry:
@@ -13,11 +13,18 @@ class ProviderRegistry:
             "bmw": BmwProvider(),
             "gwm": GwmProvider(),
             "acconia": AcconiaProvider(),
+            "vw": VagBrandProvider("vw"),
+            "vwcv": VagBrandProvider("vwcv"),
+            "audi": VagBrandProvider("audi"),
+            "skoda": VagBrandProvider("skoda"),
+            "seat": VagBrandProvider("seat"),
+            "cupra": VagBrandProvider("cupra"),
+            # Kompatibilität für Fahrzeuge aus v1.1.82; wird nicht mehr in der UI angeboten.
             "vag": VagProvider(),
         }
 
     def all(self):
-        return [provider.descriptor() for provider in self._providers.values()]
+        return [provider.descriptor() for key, provider in self._providers.items() if key != "vag"]
 
     def get(self, provider_id: str) -> BaseProvider:
         if provider_id not in self._providers:

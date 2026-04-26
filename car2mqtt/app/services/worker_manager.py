@@ -118,7 +118,7 @@ class WorkerManager:
     def start_all(self) -> None:
         settings = load_runtime_mqtt_settings()
         for vehicle in self.config_store.load().vehicles:
-            if vehicle.manufacturer in {"bmw", "gwm", "acconia", "vag"} and vehicle.enabled and vehicle.provider_state.auth_state == "authorized":
+            if vehicle.manufacturer in {"bmw", "gwm", "acconia", "vag", "vw", "vwcv", "audi", "skoda", "seat", "cupra"} and vehicle.enabled and vehicle.provider_state.auth_state == "authorized":
                 self.start_or_restart_vehicle(vehicle.id, settings)
 
     def stop_vehicle(self, vehicle_id: str) -> None:
@@ -131,7 +131,7 @@ class WorkerManager:
     def start_or_restart_vehicle(self, vehicle_id: str, mqtt_settings=None) -> None:
         mqtt_settings = mqtt_settings or load_runtime_mqtt_settings()
         vehicle = self.config_store.get_vehicle(vehicle_id)
-        if not vehicle or vehicle.manufacturer not in {"bmw", "gwm", "acconia", "vag"}:
+        if not vehicle or vehicle.manufacturer not in {"bmw", "gwm", "acconia", "vag", "vw", "vwcv", "audi", "skoda", "seat", "cupra"}:
             return
         if not vehicle.enabled:
             self._set_runtime_state(vehicle_id, "inactive", "Fahrzeug ist inaktiv")
@@ -158,9 +158,9 @@ class WorkerManager:
             return
 
 
-        if vehicle.manufacturer == "vag":
-            self.log_store.append(vehicle_id, "VAG-Grundstruktur gespeichert - markenspezifischer API-Connector noch nicht aktiviert")
-            self._set_runtime_state(vehicle_id, "saved", "VAG vorbereitet - nächster Schritt ist der markenspezifische API-Connector")
+        if vehicle.manufacturer in {"vag", "vw", "vwcv", "audi", "skoda", "seat", "cupra"}:
+            self.log_store.append(vehicle_id, "Marken-Grundstruktur gespeichert - API-Connector noch nicht aktiviert")
+            self._set_runtime_state(vehicle_id, "saved", "Marke vorbereitet - nächster Schritt ist der API-Connector")
             return
 
         if vehicle.manufacturer == "acconia":
