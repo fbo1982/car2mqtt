@@ -4,6 +4,7 @@ from app.providers.base import BaseProvider
 from app.providers.bmw_provider import BmwProvider
 from app.providers.gwm_provider import GwmProvider
 from app.providers.acconia_provider import AcconiaProvider
+from app.providers.vag_provider import VagProvider
 
 
 class ProviderRegistry:
@@ -12,6 +13,7 @@ class ProviderRegistry:
             "bmw": BmwProvider(),
             "gwm": GwmProvider(),
             "acconia": AcconiaProvider(),
+            "vag": VagProvider(),
         }
 
     def all(self):

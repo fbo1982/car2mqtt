@@ -31,14 +31,14 @@
   #editDialog .dialog-narrow .grid.two{grid-template-columns:minmax(0,1fr)}
 }
 .toggle-field{display:flex;gap:12px;align-items:flex-start}.toggle-field input[type=checkbox]{margin-top:4px;transform:scale(1.25);accent-color:var(--ok)}.toggle-field .toggle-copy{min-width:0}.gwm-edit-box{display:grid;gap:16px}.gwm-edit-box .field,.gwm-edit-box .grid,.gwm-edit-box .toggle-field{min-width:0}
-#gwmCreateSection,#editGwmSection,#acconiaCreateSection,#editAcconiaSection{min-width:0}
-#gwmCreateSection .grid.two,#editGwmSection .grid.two,#acconiaCreateSection .grid.two,#editAcconiaSection .grid.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
-#gwmCreateSection .field,#editGwmSection .field,#acconiaCreateSection .field,#editAcconiaSection .field{min-width:0}
-#gwmCreateSection input,#gwmCreateSection select,#editGwmSection input,#editGwmSection select,#acconiaCreateSection input,#acconiaCreateSection select,#editAcconiaSection input,#editAcconiaSection select{width:100%;max-width:100%;box-sizing:border-box}
+#gwmCreateSection,#editGwmSection,#acconiaCreateSection,#editAcconiaSection,#vagCreateSection,#editVagSection{min-width:0}
+#gwmCreateSection .grid.two,#editGwmSection .grid.two,#acconiaCreateSection .grid.two,#editAcconiaSection .grid.two,#vagCreateSection .grid.two,#editVagSection .grid.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+#gwmCreateSection .field,#editGwmSection .field,#acconiaCreateSection .field,#editAcconiaSection .field,#vagCreateSection .field,#editVagSection .field{min-width:0}
+#gwmCreateSection input,#gwmCreateSection select,#editGwmSection input,#editGwmSection select,#acconiaCreateSection input,#acconiaCreateSection select,#editAcconiaSection input,#editAcconiaSection select,#vagCreateSection input,#vagCreateSection select,#editVagSection input,#editVagSection select{width:100%;max-width:100%;box-sizing:border-box}
 #gwmCreateSection .btn-row,#editGwmSection .btn-row{display:flex;flex-wrap:wrap;gap:12px}
 #gwmCreateSection .muted,#editGwmSection .muted{max-width:100%}
 @media (max-width: 900px){
-  #gwmCreateSection .grid.two,#editGwmSection .grid.two,#acconiaCreateSection .grid.two,#editAcconiaSection .grid.two{grid-template-columns:minmax(0,1fr)}
+  #gwmCreateSection .grid.two,#editGwmSection .grid.two,#acconiaCreateSection .grid.two,#editAcconiaSection .grid.two,#vagCreateSection .grid.two,#editVagSection .grid.two{grid-template-columns:minmax(0,1fr)}
 }.provider-card.selected{border-color:var(--accent)}.provider-card strong{display:block;font-size:20px;margin:8px 0}.provider-card span{color:var(--muted)}.info-box,.auth-box,.log-box{background:rgba(0,0,0,.14);border:1px solid var(--line);border-radius:22px;padding:18px}.auth-box{margin-top:18px}.auth-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.auth-link{word-break:break-all;color:#8ad7ff}.howto-btn{padding:10px 14px;border-radius:12px;font-size:14px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
 #bmwHowtoDialog[open]{display:flex}
 #evccConfigDialog[open]{display:flex}.howto-content{display:grid;gap:14px}.howto-card{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:18px;padding:16px}.howto-card h4{margin:0 0 10px;font-size:16px}.howto-card ol,.howto-card ul{margin:8px 0 0 18px;padding:0}.howto-card li{margin:6px 0}.howto-note{color:var(--muted);font-size:14px}.log-viewer{background:#0a1024;border:1px solid rgba(138,215,255,.18);border-radius:18px;padding:16px;min-height:220px;max-height:360px;overflow:auto;white-space:pre-wrap;color:#d9f2ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.7;box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}
@@ -184,6 +184,27 @@ select, option {
           <div class="muted" style="margin-top:10px">MQTT Quell-Topic und Vehicle ID werden automatisch aus dem Kennzeichen erzeugt.</div>
         </div>
       </div>
+      <div id="vagCreateSection" class="grid hidden">
+        <div class="info-box dialog-narrow">
+          <div class="eyebrow">Volkswagen Konzern Setup</div>
+          <div class="muted" style="margin-top:10px">Grundstruktur für VW, VW Nutzfahrzeuge, Audi, Škoda, SEAT und CUPRA. In diesem Schritt werden UI, Login-Daten und das einheitliche Powertrain-Mapping vorbereitet; die markenspezifischen API-Connectoren folgen danach.</div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="field"><label>Marke</label><select id="vagBrand"><option value="vw">Volkswagen</option><option value="vwcv">Volkswagen Nutzfahrzeuge</option><option value="audi">Audi</option><option value="skoda">Škoda</option><option value="seat">SEAT</option><option value="cupra">CUPRA</option></select></div>
+            <div class="field"><label>API-Modus</label><select id="vagApiMode"><option value="brand_app" selected>Marken-App API</option><option value="official_fleet">Official Fleet Interface Data</option></select></div>
+          </div>
+          <div class="field" style="margin-top:14px"><label>Benutzerkonto / E-Mail</label><input id="vagAccount" placeholder="mail@example.com" /></div>
+          <div class="field" style="margin-top:16px"><label>Passwort</label><input id="vagPassword" type="password" /></div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="field"><label>Land</label><input id="vagCountry" value="DE" /></div>
+            <div class="field"><label>Antrieb</label><select id="vagPowertrain"><option value="unknown">Unbekannt / automatisch</option><option value="electric">Elektro</option><option value="hybrid">Hybrid</option><option value="combustion">Verbrenner</option></select></div>
+          </div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="field"><label>Polling-Intervall (Sekunden)</label><input id="vagPollInterval" type="number" min="30" value="60" /></div>
+            <div class="field"><label>Akkukapazität (kWh)</label><input id="vagCapacity" type="number" step="0.1" placeholder="optional" /></div>
+          </div>
+          <div class="muted" style="margin-top:10px">Vehicle ID und MQTT Topics werden automatisch aus dem Kennzeichen erzeugt.</div>
+        </div>
+      </div>
 
 
     </div>
@@ -317,6 +338,26 @@ select, option {
           </div>
           <div class="field" style="margin-top:16px"><label>Akkukapazität gesamt (kWh)</label><input id="editAcconiaCapacity" type="number" step="0.1" /></div>
           <div class="muted" style="margin-top:10px">MQTT Quell-Topic und Vehicle ID werden automatisch aus dem Kennzeichen erzeugt. Bestehende BMW- und GWM-Konfigurationen bleiben unverändert.</div>
+        </div>
+      </div>
+      <div id="editVagSection" class="grid hidden">
+        <div class="field" style="grid-column:1/-1"><div class="eyebrow">Volkswagen Konzern-spezifische Einstellungen</div></div>
+        <div class="info-box dialog-narrow">
+          <div class="grid two" style="margin-top:16px">
+            <div class="field"><label>Marke</label><select id="editVagBrand"><option value="vw">Volkswagen</option><option value="vwcv">Volkswagen Nutzfahrzeuge</option><option value="audi">Audi</option><option value="skoda">Škoda</option><option value="seat">SEAT</option><option value="cupra">CUPRA</option></select></div>
+            <div class="field"><label>API-Modus</label><select id="editVagApiMode"><option value="brand_app">Marken-App API</option><option value="official_fleet">Official Fleet Interface Data</option></select></div>
+          </div>
+          <div class="field" style="margin-top:14px"><label>Benutzerkonto / E-Mail</label><input id="editVagAccount" /></div>
+          <div class="field" style="margin-top:16px"><label>Passwort</label><input id="editVagPassword" type="password" /></div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="field"><label>Land</label><input id="editVagCountry" /></div>
+            <div class="field"><label>Antrieb</label><select id="editVagPowertrain"><option value="unknown">Unbekannt / automatisch</option><option value="electric">Elektro</option><option value="hybrid">Hybrid</option><option value="combustion">Verbrenner</option></select></div>
+          </div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="field"><label>Polling-Intervall (Sekunden)</label><input id="editVagPollInterval" type="number" min="30" /></div>
+            <div class="field"><label>Akkukapazität (kWh)</label><input id="editVagCapacity" type="number" step="0.1" /></div>
+          </div>
+          <div class="muted" style="margin-top:10px">Die VAG-Grundstruktur ist vorbereitet. Live-Daten kommen, sobald der jeweilige Marken-Connector ergänzt ist.</div>
         </div>
       </div>
 
@@ -1238,10 +1279,12 @@ function setCreateManufacturerLayout(manufacturer){
   const isBmw = manufacturer === 'bmw';
   const isGwm = manufacturer === 'gwm';
   const isAcconia = manufacturer === 'acconia';
+  const isVag = manufacturer === 'vag';
   field('bmwHowtoCreateBtn')?.classList.toggle('hidden', !isBmw);
   field('bmwCreateSection').classList.toggle('hidden', !isBmw);
   field('gwmCreateSection').classList.toggle('hidden', !isGwm);
   field('acconiaCreateSection').classList.toggle('hidden', !isAcconia);
+  field('vagCreateSection')?.classList.toggle('hidden', !isVag);
   if(note){
     if(!manufacturer){ note.textContent = ''; }
     else{
@@ -1257,6 +1300,7 @@ function setEditManufacturerLayout(manufacturer){
   const isBmw = manufacturer === 'bmw';
   const isGwm = manufacturer === 'gwm';
   const isAcconia = manufacturer === 'acconia';
+  const isVag = manufacturer === 'vag';
   const editLabelWrap = field('editLabel')?.closest('.field');
   const editPlateWrap = field('editPlate')?.closest('.field');
   if(editLabelWrap) editLabelWrap.style.display = '';
@@ -1264,6 +1308,7 @@ function setEditManufacturerLayout(manufacturer){
   field('editBmwSection')?.classList.toggle('hidden', !isBmw);
   field('editGwmSection')?.classList.toggle('hidden', !isGwm);
   field('editAcconiaSection')?.classList.toggle('hidden', !isAcconia);
+  field('editVagSection')?.classList.toggle('hidden', !isVag);
   field('bmwHowtoBtn')?.classList.toggle('hidden', !isBmw);
   const verifyPanel = field('gwmVerifyPanel');
   if(verifyPanel){
@@ -1290,7 +1335,7 @@ function toggleEditGwmOptions(){
   field('editGwmPollIntervalWrap')?.classList.toggle('hidden', !pollingEnabled);
   field('editGwmRetryDelayWrap')?.classList.toggle('hidden', !delayedRetryEnabled);
 }
-function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity','gwmVerificationCode','acconiaAccount','acconiaPassword','acconiaApiKey','acconiaCapacity'].forEach(id=>field(id).value=''); field('gwmSourceTopicBase').value='GWM'; field('acconiaBatteryCount').value='2'; field('acconiaPollInterval').value='60'; field('bmwRegion').value='EU'; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('gwmPollingEnabled').checked=true; field('gwmAutoReconnect').checked=true; field('gwmDelayedRetryEnabled').checked=true; field('gwmRetryDelayMinutes').value='55'; field('gwmFallbackOnSilence').checked=true; field('createDeviceTrackerEnabled').checked=false; toggleCreateGwmOptions(); field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; setCreateManufacturerLayout(null); }
+function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity','gwmVerificationCode','acconiaAccount','acconiaPassword','acconiaApiKey','acconiaCapacity','vagAccount','vagPassword','vagCapacity'].forEach(id=>field(id).value=''); field('gwmSourceTopicBase').value='GWM'; field('acconiaBatteryCount').value='2'; field('acconiaPollInterval').value='60'; field('vagBrand').value='vw'; field('vagApiMode').value='brand_app'; field('vagCountry').value='DE'; field('vagPowertrain').value='unknown'; field('vagPollInterval').value='60'; field('bmwRegion').value='EU'; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('gwmPollingEnabled').checked=true; field('gwmAutoReconnect').checked=true; field('gwmDelayedRetryEnabled').checked=true; field('gwmRetryDelayMinutes').value='55'; field('gwmFallbackOnSilence').checked=true; field('createDeviceTrackerEnabled').checked=false; toggleCreateGwmOptions(); field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; setCreateManufacturerLayout(null); }
 function openWizard(){ resetCreate(); field('wizardDialog').showModal(); }
 async function loadDashboard(){ const res = await fetch('./api/dashboard'); const data = await res.json(); cards = data.vehicles || []; renderCards(); }
 async function postJson(url,payload,method='POST'){ const res = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})}); const text = await res.text(); let data={}; try{ data = text ? JSON.parse(text) : {}; }catch{ data = { detail: text }; } if(!res.ok) throw new Error(data.detail || 'Unbekannter Fehler'); return data; }
@@ -1472,6 +1517,10 @@ field('saveCreateBtn').onclick = async()=>{
       payload.provider_config = { account: field("acconiaAccount").value.trim(), password: field("acconiaPassword").value, api_key: field("acconiaApiKey").value.trim(), vehicle_id: derivedId, battery_count: field("acconiaBatteryCount").value, poll_interval: field("acconiaPollInterval").value.trim() || "60", capacity_kwh: field("acconiaCapacity").value.trim() };
       if(!payload.provider_config.account || !payload.provider_config.password || !payload.provider_config.api_key) throw new Error("Bitte Acconia/Silence Benutzerkonto, Passwort und Firebase API-Key eintragen.");
     }
+    if(createState.manufacturer === 'vag'){
+      payload.provider_config = { brand: field('vagBrand').value, api_mode: field('vagApiMode').value, account: field('vagAccount').value.trim(), password: field('vagPassword').value, country: field('vagCountry').value.trim() || 'DE', powertrain: field('vagPowertrain').value, poll_interval: field('vagPollInterval').value.trim() || '60', capacity_kwh: field('vagCapacity').value.trim(), vehicle_id: derivedId };
+      if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte VAG Benutzerkonto und Passwort eintragen.');
+    }
     if(createState.manufacturer === 'gwm'){
       payload.provider_config = { account: field('gwmAccount').value.trim(), password: field('gwmPassword').value.trim(), country: field('gwmCountry').value.trim(), language: field('gwmLanguage').value.trim(), polling_enabled: field('gwmPollingEnabled').checked, poll_interval: field('gwmPollInterval').value.trim(), vehicle_id: field('gwmVehicleId').value.trim() || derivedId, capacity_kwh: field('gwmCapacity').value.trim(), source_topic_base: field('gwmSourceTopicBase')?.value?.trim() || 'GWM', auto_reconnect: field('gwmAutoReconnect').checked, delayed_retry_enabled: field('gwmDelayedRetryEnabled').checked, retry_delay_minutes: field('gwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('gwmFallbackOnSilence').checked };
       if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.');
@@ -1513,7 +1562,7 @@ async function editVehicle(vehicleId){
   field('editBmwClientId').value = vehicle.provider_config.client_id || ''; field('editBmwMqttUsername').value = vehicle.provider_config.client_id || vehicle.provider_config.mqtt_username || ''; field('editBmwVin').value = vehicle.provider_config.vin || ''; field('editBmwRegion').value = vehicle.provider_config.region || 'EU'; field('editBmwAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editBmwManualReconnectMinutes').value = vehicle.provider_config.manual_reconnect_minutes || 15; toggleBmwReconnectMode();
   field('editGwmAccount').value = vehicle.provider_config.account || ''; field('editGwmPassword').value = vehicle.provider_config.password || ''; field('editGwmCountry').value = vehicle.provider_config.country || 'DE'; field('editGwmLanguage').value = vehicle.provider_config.language || 'de'; field('editGwmPollInterval').value = vehicle.provider_config.poll_interval || 60; field('editGwmVehicleId').value = vehicle.provider_config.vehicle_id || vehicle.id; field('editGwmCapacity').value = vehicle.provider_config.capacity_kwh || ''; const gwmSourceBase = vehicle.provider_config.source_topic_base || 'GWM';
   field('editGwmSourceTopicBase').value = (String(gwmSourceBase).startsWith('GWM/')) ? 'GWM' : gwmSourceBase;
-  field("editAcconiaAccount").value = vehicle.provider_config.account || ""; field("editAcconiaPassword").value = vehicle.provider_config.password || ""; field("editAcconiaApiKey").value = vehicle.provider_config.api_key || ""; field("editAcconiaBatteryCount").value = String(vehicle.provider_config.battery_count || 2); field("editAcconiaPollInterval").value = String(vehicle.provider_config.poll_interval || 60); field("editAcconiaCapacity").value = vehicle.provider_config.capacity_kwh || ""; field("editGwmVerificationCode").value = ""; field("editGwmPollingEnabled").checked = vehicle.provider_config.polling_enabled !== false; field("editGwmAutoReconnect").checked = vehicle.provider_config.auto_reconnect !== false; field("editGwmDelayedRetryEnabled").checked = vehicle.provider_config.delayed_retry_enabled !== false; field("editGwmRetryDelayMinutes").value = String(vehicle.provider_config.retry_delay_minutes || 55); field("editGwmFallbackOnSilence").checked = vehicle.provider_config.fallback_on_silence !== false; toggleEditGwmOptions();
+  field("editAcconiaAccount").value = vehicle.provider_config.account || ""; field("editAcconiaPassword").value = vehicle.provider_config.password || ""; field("editAcconiaApiKey").value = vehicle.provider_config.api_key || ""; field("editAcconiaBatteryCount").value = String(vehicle.provider_config.battery_count || 2); field("editAcconiaPollInterval").value = String(vehicle.provider_config.poll_interval || 60); field("editAcconiaCapacity").value = vehicle.provider_config.capacity_kwh || ""; field("editVagBrand").value = vehicle.provider_config.brand || "vw"; field("editVagApiMode").value = vehicle.provider_config.api_mode || "brand_app"; field("editVagAccount").value = vehicle.provider_config.account || ""; field("editVagPassword").value = vehicle.provider_config.password || ""; field("editVagCountry").value = vehicle.provider_config.country || "DE"; field("editVagPowertrain").value = vehicle.provider_config.powertrain || "unknown"; field("editVagPollInterval").value = String(vehicle.provider_config.poll_interval || 60); field("editVagCapacity").value = vehicle.provider_config.capacity_kwh || ""; field("editGwmVerificationCode").value = ""; field("editGwmPollingEnabled").checked = vehicle.provider_config.polling_enabled !== false; field("editGwmAutoReconnect").checked = vehicle.provider_config.auto_reconnect !== false; field("editGwmDelayedRetryEnabled").checked = vehicle.provider_config.delayed_retry_enabled !== false; field("editGwmRetryDelayMinutes").value = String(vehicle.provider_config.retry_delay_minutes || 55); field("editGwmFallbackOnSilence").checked = vehicle.provider_config.fallback_on_silence !== false; toggleEditGwmOptions();
   const gwmNeedsReauth = vehicle.manufacturer === 'gwm' && (/refresh token abgelaufen|reauth erforderlich/i.test(vehicle.status || '') || /refresh token abgelaufen|reauth erforderlich/i.test(vehicle.status_detail || '') || /refresh token/i.test(vehicle.provider_state?.last_error || '') || /reauth erforderlich/i.test(vehicle.provider_state?.auth_message || ''));
   field('editReauthTitle').textContent = vehicle.manufacturer === 'gwm' ? 'ORA ReAuth' : 'BMW Re-Auth';
   field('editAuthState').textContent = vehicle.enabled === false ? 'Fahrzeug ist inaktiv.' : (vehicle.manufacturer === 'gwm' ? (gwmNeedsReauth ? 'ReAuth erforderlich - gespeicherte Anmeldung ist abgelaufen.' : (vehicle.status === 'waiting_for_code' ? 'Verifikationscode erforderlich.' : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'Anmeldung prüfen.'))) : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'Anmeldung prüfen.'));
@@ -1612,6 +1661,7 @@ async function saveEdit(closeAfter){ try{ const manufacturer = field('editManufa
   if(!payload.label || !payload.license_plate || !derivedId) throw new Error('Bitte Titel und Kennzeichen ausfüllen.');
   if(manufacturer === 'bmw'){ payload.provider_config = { client_id: field('editBmwClientId').value.trim(), mqtt_username: field('editBmwClientId').value.trim(), vin: field('editBmwVin').value.trim(), region: field('editBmwRegion').value.trim(), auto_reconnect: field('editBmwAutoReconnect').checked, manual_reconnect_minutes: Math.max(15, Math.min(60, parseInt(field('editBmwManualReconnectMinutes').value || '15', 10))) }; if(!payload.provider_config.client_id || !payload.provider_config.vin) throw new Error('Bitte BMW Client ID und VIN eintragen.'); }
   if(manufacturer === 'acconia'){ payload.provider_config = { account: field("editAcconiaAccount").value.trim(), password: field("editAcconiaPassword").value, api_key: field("editAcconiaApiKey").value.trim(), vehicle_id: derivedId, battery_count: field("editAcconiaBatteryCount").value, poll_interval: field("editAcconiaPollInterval").value.trim() || "60", capacity_kwh: field("editAcconiaCapacity").value.trim() }; if(!payload.provider_config.account || !payload.provider_config.password || !payload.provider_config.api_key) throw new Error("Bitte Acconia/Silence Benutzerkonto, Passwort und Firebase API-Key eintragen."); }
+  if(manufacturer === 'vag'){ payload.provider_config = { brand: field('editVagBrand').value, api_mode: field('editVagApiMode').value, account: field('editVagAccount').value.trim(), password: field('editVagPassword').value, country: field('editVagCountry').value.trim() || 'DE', powertrain: field('editVagPowertrain').value, poll_interval: field('editVagPollInterval').value.trim() || '60', capacity_kwh: field('editVagCapacity').value.trim(), vehicle_id: derivedId }; if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte VAG Benutzerkonto und Passwort eintragen.'); }
   if(manufacturer === 'gwm'){ payload.provider_config = { account: field('editGwmAccount').value.trim(), password: field('editGwmPassword').value.trim(), country: field('editGwmCountry').value.trim(), language: field('editGwmLanguage').value.trim(), polling_enabled: field('editGwmPollingEnabled').checked, poll_interval: field('editGwmPollInterval').value.trim(), vehicle_id: field('editGwmVehicleId').value.trim() || derivedId, capacity_kwh: field('editGwmCapacity').value.trim(), source_topic_base: field('editGwmSourceTopicBase').value.trim(), auto_reconnect: field('editGwmAutoReconnect').checked, delayed_retry_enabled: field('editGwmDelayedRetryEnabled').checked, retry_delay_minutes: field('editGwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('editGwmFallbackOnSilence').checked }; if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.'); }
   await postJson(`./api/vehicles/${editState.vehicleId}`, payload, 'PUT'); await loadDashboard(); if(closeAfter){ field('editDialog').close(); } } catch(err){ showNotice('editError', err.message); } }
 field('saveEditKeepOpenBtn').onclick = ()=>saveEdit(false);

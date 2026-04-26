@@ -21,6 +21,7 @@ from app.core.vehicle_log_store import VehicleLogStore
 from app.mapping.bmw_mapper import map_bmw_payload
 from app.mapping.gwm_mapper import apply_gwm_metric
 from app.mapping.acconia_mapper import apply_acconia_metric
+from app.mapping.vag_mapper import map_vag_payload
 
 GWM_OBSOLETE_MAPPED_KEYS = {
     "chargeLimitMode",
@@ -117,7 +118,7 @@ class WorkerManager:
     def start_all(self) -> None:
         settings = load_runtime_mqtt_settings()
         for vehicle in self.config_store.load().vehicles:
-            if vehicle.manufacturer in {"bmw", "gwm", "acconia"} and vehicle.enabled and vehicle.provider_state.auth_state == "authorized":
+            if vehicle.manufacturer in {"bmw", "gwm", "acconia", "vag"} and vehicle.enabled and vehicle.provider_state.auth_state == "authorized":
                 self.start_or_restart_vehicle(vehicle.id, settings)
 
     def stop_vehicle(self, vehicle_id: str) -> None:
@@ -130,7 +131,7 @@ class WorkerManager:
     def start_or_restart_vehicle(self, vehicle_id: str, mqtt_settings=None) -> None:
         mqtt_settings = mqtt_settings or load_runtime_mqtt_settings()
         vehicle = self.config_store.get_vehicle(vehicle_id)
-        if not vehicle or vehicle.manufacturer not in {"bmw", "gwm", "acconia"}:
+        if not vehicle or vehicle.manufacturer not in {"bmw", "gwm", "acconia", "vag"}:
             return
         if not vehicle.enabled:
             self._set_runtime_state(vehicle_id, "inactive", "Fahrzeug ist inaktiv")
@@ -156,6 +157,11 @@ class WorkerManager:
             self.workers[vehicle_id].start()
             return
 
+
+        if vehicle.manufacturer == "vag":
+            self.log_store.append(vehicle_id, "VAG-Grundstruktur gespeichert - markenspezifischer API-Connector noch nicht aktiviert")
+            self._set_runtime_state(vehicle_id, "saved", "VAG vorbereitet - nächster Schritt ist der markenspezifische API-Connector")
+            return
 
         if vehicle.manufacturer == "acconia":
             self.workers[vehicle_id] = AcconiaApiWorker(
@@ -717,7 +723,7 @@ class WorkerManager:
                 self._forward_publish(vehicle, mqtt_settings, topic, metrics.get(key), is_raw=False)
         finally:
             client.disconnect()
-        self.log_store.append(vehicle_id, f"Acconia/Silence Snapshot verarbeitet: soc={metrics.get("soc")} charging={metrics.get("charging")} gps={metrics.get("latitude")},{metrics.get("longitude")}")
+        self.log_store.append(vehicle_id, f"Acconia/Silence Snapshot verarbeitet: soc={metrics.get('soc')} charging={metrics.get('charging')} gps={metrics.get('latitude')},{metrics.get('longitude')}")
         self._publish_meta(vehicle, runtime, mqtt_settings)
 
     def publish_vehicle_saved_meta(self, vehicle_id: str) -> None:
