@@ -44,11 +44,11 @@ def _ts_or_now(ts: Any) -> str:
 
 
 def map_bmw_payload(raw: Dict[str, Any]) -> Dict[str, Any]:
-    soc, soc_ts = _metric(raw, "vehicle.drivetrain.batteryManagement.header", 0)
+    soc, soc_ts = _metric(raw, "vehicle.drivetrain.batteryManagement.header", None)
     plugged_raw, plugged_ts = _metric(raw, "vehicle.body.chargingPort.status", None)
-    odometer, odometer_ts = _metric(raw, "vehicle.vehicle.travelledDistance", 0)
-    ev_range, range_ts = _metric(raw, "vehicle.drivetrain.electricEngine.kombiRemainingElectricRange", 0)
-    limit_soc, limit_soc_ts = _metric(raw, "vehicle.powertrain.electric.battery.stateOfCharge.target", 100)
+    odometer, odometer_ts = _metric(raw, "vehicle.vehicle.travelledDistance", None)
+    ev_range, range_ts = _metric(raw, "vehicle.drivetrain.electricEngine.kombiRemainingElectricRange", None)
+    limit_soc, limit_soc_ts = _metric(raw, "vehicle.powertrain.electric.battery.stateOfCharge.target", None)
     charging_raw, charging_ts = _metric(raw, "vehicle.drivetrain.electricEngine.charging.status", None)
     longitude, longitude_ts = _metric(raw, "vehicle.cabin.infotainment.navigation.currentLocation.longitude", None)
     latitude, latitude_ts = _metric(raw, "vehicle.cabin.infotainment.navigation.currentLocation.latitude", None)
@@ -62,9 +62,22 @@ def map_bmw_payload(raw: Dict[str, Any]) -> Dict[str, Any]:
     if capacity in (None, "", 0, "0", "0.0"):
         capacity, capacity_ts = _metric(raw, "vehicle.drivetrain.batteryManagement.batterySizeMax", None)
 
+    fuel_level, fuel_level_ts = _metric(raw, "vehicle.drivetrain.fuelSystem.level", None)
+    fuel_range, fuel_range_ts = _metric(raw, "vehicle.drivetrain.lastRemainingRange", None)
+
+    has_fuel = fuel_level not in (None, "", "null")
+    has_battery_signal = any(v not in (None, "", "null") for v in [soc, ev_range, limit_soc, capacity])
+    if has_fuel and has_battery_signal:
+        vehicle_type = "hybrid"
+    elif has_fuel:
+        vehicle_type = "combustion"
+    else:
+        vehicle_type = "ev"
+
     last_update_ts = (
         soc_ts or plugged_ts or odometer_ts or range_ts or limit_soc_ts or charging_ts
         or longitude_ts or latitude_ts or altitude_ts or preconditioning_ts or capacity_ts
+        or fuel_level_ts or fuel_range_ts
     )
 
     mapped = {
@@ -90,6 +103,12 @@ def map_bmw_payload(raw: Dict[str, Any]) -> Dict[str, Any]:
         "preconditioning_ts": _ts_or_now(preconditioning_ts),
         "capacityKwh": _to_float_or_none(capacity),
         "capacityKwh_ts": _ts_or_now(capacity_ts),
+        "fuelLevel": _to_float_or_none(fuel_level),
+        "fuelLevel_ts": _ts_or_now(fuel_level_ts),
+        "fuelRange": _to_float_or_none(fuel_range),
+        "fuelRange_ts": _ts_or_now(fuel_range_ts),
+        "vehicleType": vehicle_type,
+        "vehicleType_ts": _ts_or_now(last_update_ts),
         "lastUpdate": _ts_or_now(last_update_ts),
     }
     return mapped
