@@ -189,7 +189,7 @@ select, option {
           <div class="eyebrow">Hersteller-spezifisches Setup</div>
           <div class="muted" style="margin-top:10px">Der ausgewählte Hersteller wird direkt verwendet. Login-Daten sind optional und können später im Fahrzeug nachgetragen werden. Powertrain-Mapping ist für Elektro, Hybrid und Verbrenner vorbereitet; der jeweilige API-Connector folgt schrittweise.</div>
           <div class="grid two" style="margin-top:16px">
-            <div class="field"><label>API-Modus</label><select id="vagApiMode"><option value="brand_app" selected>Marken-App API</option><option value="bluelink">Hyundai Bluelink</option><option value="official_fleet">Official Fleet Interface Data</option></select></div>
+            <div class="field"><label>API-Modus</label><select id="vagApiMode"><option value="brand_app" selected>Marken-App API</option><option value="bluelink">Hyundai Bluelink</option><option value="ismart">MG iSMART</option><option value="official_fleet">Official Fleet Interface Data</option></select></div>
           </div>
           <div class="field" style="margin-top:14px"><label>Benutzerkonto / E-Mail <span class="muted">optional</span></label><input id="vagAccount" placeholder="Kann später im Fahrzeug eingetragen werden" /></div>
           <div class="field" style="margin-top:16px"><label>Passwort <span class="muted">optional</span></label><input id="vagPassword" type="password" /></div>
@@ -344,7 +344,7 @@ select, option {
         <div class="field" style="grid-column:1/-1"><div class="eyebrow">Hersteller-spezifische Einstellungen</div></div>
         <div class="info-box dialog-narrow">
           <div class="grid two" style="margin-top:16px">
-            <div class="field"><label>API-Modus</label><select id="editVagApiMode"><option value="brand_app">Marken-App API</option><option value="bluelink">Hyundai Bluelink</option><option value="official_fleet">Official Fleet Interface Data</option></select></div>
+            <div class="field"><label>API-Modus</label><select id="editVagApiMode"><option value="brand_app">Marken-App API</option><option value="bluelink">Hyundai Bluelink</option><option value="ismart">MG iSMART</option><option value="official_fleet">Official Fleet Interface Data</option></select></div>
           </div>
           <div class="field" style="margin-top:14px"><label>Benutzerkonto / E-Mail</label><input id="editVagAccount" placeholder="Login hier nachtragen" /></div>
           <div class="field" style="margin-top:16px"><label>Passwort</label><input id="editVagPassword" type="password" /></div>
@@ -1273,7 +1273,7 @@ function cardHtml(card){
 function renderCards(){ field('cardsGrid').innerHTML = cards.map(cardHtml).join('') + `<button class="add-card" id="openWizardBtn"><span>＋</span><strong>Fahrzeug hinzufügen</strong></button>`; field('openWizardBtn').onclick = openWizard; }
 function renderProviderList(){ const select = field('createManufacturer'); select.innerHTML = `<option value="">Bitte Hersteller wählen</option>` + providers.map(provider => `<option value="${provider.id}">${provider.name}</option>`).join(''); select.value = createState.manufacturer || ''; }
 function fillManufacturerSelect(){ field('editManufacturer').innerHTML = providers.map(p => `<option value="${p.id}">${p.name}</option>`).join(''); }
-const VAG_MANUFACTURERS = ['vw','vwcv','audi','skoda','seat','cupra','vag','hyundai'];
+const VAG_MANUFACTURERS = ['vw','vwcv','audi','skoda','seat','cupra','vag','hyundai','mg'];
 function isVagManufacturer(manufacturer){ return VAG_MANUFACTURERS.includes(String(manufacturer || '').toLowerCase()); }
 
 function setCreateManufacturerLayout(manufacturer){
@@ -1282,7 +1282,7 @@ function setCreateManufacturerLayout(manufacturer){
   const isGwm = manufacturer === 'gwm';
   const isAcconia = manufacturer === 'acconia';
   const isVag = isVagManufacturer(manufacturer);
-  if(isVag){ const api = field('vagApiMode'); if(api){ if(manufacturer === 'hyundai' && api.value !== 'bluelink') api.value = 'bluelink'; if(manufacturer !== 'hyundai' && api.value === 'bluelink') api.value = 'brand_app'; } }
+  if(isVag){ const api = field('vagApiMode'); if(api){ if(manufacturer === 'hyundai' && api.value !== 'bluelink') api.value = 'bluelink'; else if(manufacturer === 'mg' && api.value !== 'ismart') api.value = 'ismart'; else if(!['hyundai','mg'].includes(manufacturer) && ['bluelink','ismart'].includes(api.value)) api.value = 'brand_app'; } }
   field('bmwHowtoCreateBtn')?.classList.toggle('hidden', !isBmw);
   field('bmwCreateSection').classList.toggle('hidden', !isBmw);
   field('gwmCreateSection').classList.toggle('hidden', !isGwm);
@@ -1304,7 +1304,7 @@ function setEditManufacturerLayout(manufacturer){
   const isGwm = manufacturer === 'gwm';
   const isAcconia = manufacturer === 'acconia';
   const isVag = isVagManufacturer(manufacturer);
-  if(isVag){ const api = field('editVagApiMode'); if(api){ if(manufacturer === 'hyundai' && api.value !== 'bluelink') api.value = 'bluelink'; if(manufacturer !== 'hyundai' && api.value === 'bluelink') api.value = 'brand_app'; } }
+  if(isVag){ const api = field('editVagApiMode'); if(api){ if(manufacturer === 'hyundai' && api.value !== 'bluelink') api.value = 'bluelink'; else if(manufacturer === 'mg' && api.value !== 'ismart') api.value = 'ismart'; else if(!['hyundai','mg'].includes(manufacturer) && ['bluelink','ismart'].includes(api.value)) api.value = 'brand_app'; } }
   const editLabelWrap = field('editLabel')?.closest('.field');
   const editPlateWrap = field('editPlate')?.closest('.field');
   if(editLabelWrap) editLabelWrap.style.display = '';

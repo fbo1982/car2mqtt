@@ -6,6 +6,7 @@ from app.providers.gwm_provider import GwmProvider
 from app.providers.acconia_provider import AcconiaProvider
 from app.providers.vag_provider import VagProvider, VagBrandProvider
 from app.providers.hyundai_provider import HyundaiProvider
+from app.providers.mg_provider import MgProvider
 
 
 class ProviderRegistry:
@@ -15,6 +16,7 @@ class ProviderRegistry:
             "gwm": GwmProvider(),
             "acconia": AcconiaProvider(),
             "hyundai": HyundaiProvider(),
+            "mg": MgProvider(),
             "vw": VagBrandProvider("vw"),
             "vwcv": VagBrandProvider("vwcv"),
             "audi": VagBrandProvider("audi"),
