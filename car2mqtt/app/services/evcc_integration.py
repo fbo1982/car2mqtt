@@ -57,6 +57,17 @@ def _evcc_name_from_item(item: dict[str, Any], fallback: str = "") -> str:
     return fallback
 
 
+def _evcc_onidentify_mode(cfg: dict[str, Any]) -> str:
+    mode = str(cfg.get("evcc_onidentify_mode") or cfg.get("onidentify_mode") or "pv").strip().lower()
+    aliases = {
+        "aus": "off", "off": "off",
+        "pv": "pv",
+        "min+pv": "minpv", "minpv": "minpv", "min_pv": "minpv", "min-pv": "minpv",
+        "schnell": "now", "now": "now",
+    }
+    return aliases.get(mode, "pv")
+
+
 def build_evcc_vehicle_name(vehicle: VehicleConfig) -> str:
     return f"car2mqtt_{_slug(vehicle.manufacturer)}_{_slug(normalize_plate(vehicle.license_plate) or vehicle.id)}"
 
@@ -83,7 +94,7 @@ def build_evcc_custom_vehicle_payload(vehicle: VehicleConfig, mqtt_settings: Run
         "range": {"source": "mqtt", "topic": f"{root}/range"},
         "odometer": {"source": "mqtt", "topic": f"{root}/odometer"},
         "limitsoc": {"source": "mqtt", "topic": f"{root}/limitSoc"},
-        "onIdentify": {"mode": "pv"},
+        "onIdentify": {"mode": _evcc_onidentify_mode(cfg)},
     }
     return payload
 

@@ -118,13 +118,14 @@ class EvccVehicleConfigPayload(BaseModel):
     evcc_onidentify_pv: str = ""
     evcc_onidentify_minpv: str = ""
     evcc_onidentify_now: str = ""
+    evcc_onidentify_mode: str = "pv"
 
 
 EVCC_PROVIDER_CONFIG_KEYS = {
     "evcc_ref", "evcc_managed", "evcc_auto_sync", "evcc_name", "evcc_title",
     "capacity_kwh", "evcc_capacity_kwh", "evcc_phases", "evcc_identifiers",
     "evcc_onidentify_off", "evcc_onidentify_pv",
-    "evcc_onidentify_minpv", "evcc_onidentify_now",
+    "evcc_onidentify_minpv", "evcc_onidentify_now", "evcc_onidentify_mode",
     "evcc_onidentify_unknown", "evcc_onidentify_disconnected",
     "evcc_onidentify_connected", "evcc_onidentify_charging",
 }
@@ -143,6 +144,19 @@ def _normalize_evcc_identifier_list(value: Any) -> list[str]:
     return result
 
 
+def _normalize_evcc_onidentify_mode(value: Any, fallback: str = "pv") -> str:
+    mode = str(value or "").strip().lower()
+    aliases = {
+        "aus": "off", "off": "off",
+        "pv": "pv",
+        "min+pv": "minpv", "minpv": "minpv", "min_pv": "minpv", "min-pv": "minpv",
+        "schnell": "now", "now": "now",
+    }
+    if mode in aliases:
+        return aliases[mode]
+    return fallback if fallback in {"off", "pv", "minpv", "now"} else "pv"
+
+
 def _evcc_cfg_from_payload(payload: EvccVehicleConfigPayload) -> dict[str, Any]:
     cfg = {
         "evcc_ref": str(payload.evcc_ref or "").strip(),
@@ -154,10 +168,11 @@ def _evcc_cfg_from_payload(payload: EvccVehicleConfigPayload) -> dict[str, Any]:
         "capacity_kwh": str(payload.evcc_capacity_kwh or "").strip(),
         "evcc_phases": str(payload.evcc_phases or "").strip(),
         "evcc_identifiers": ", ".join(_normalize_evcc_identifier_list(payload.evcc_identifiers)),
-        "evcc_onidentify_off": str(payload.evcc_onidentify_off or "off").strip() or "off",
-        "evcc_onidentify_pv": str(payload.evcc_onidentify_pv or "pv").strip() or "pv",
-        "evcc_onidentify_minpv": str(payload.evcc_onidentify_minpv or "minpv").strip() or "minpv",
-        "evcc_onidentify_now": str(payload.evcc_onidentify_now or "now").strip() or "now",
+        "evcc_onidentify_mode": _normalize_evcc_onidentify_mode(payload.evcc_onidentify_mode or payload.evcc_onidentify_pv or "pv"),
+        "evcc_onidentify_off": "off",
+        "evcc_onidentify_pv": "pv",
+        "evcc_onidentify_minpv": "minpv",
+        "evcc_onidentify_now": "now",
     }
     return cfg
 
@@ -175,10 +190,11 @@ def _evcc_cfg_from_provider(provider_config: dict[str, Any] | None) -> dict[str,
         "capacity_kwh": str(cap or "").strip(),
         "evcc_phases": str(cfg.get("evcc_phases") or "").strip(),
         "evcc_identifiers": ", ".join(_normalize_evcc_identifier_list(cfg.get("evcc_identifiers") or "")),
-        "evcc_onidentify_off": str(cfg.get("evcc_onidentify_off") or cfg.get("evcc_onidentify_disconnected") or "off").strip() or "off",
-        "evcc_onidentify_pv": str(cfg.get("evcc_onidentify_pv") or cfg.get("evcc_onidentify_connected") or "pv").strip() or "pv",
-        "evcc_onidentify_minpv": str(cfg.get("evcc_onidentify_minpv") or "minpv").strip() or "minpv",
-        "evcc_onidentify_now": str(cfg.get("evcc_onidentify_now") or cfg.get("evcc_onidentify_charging") or "now").strip() or "now",
+        "evcc_onidentify_mode": _normalize_evcc_onidentify_mode(cfg.get("evcc_onidentify_mode") or cfg.get("evcc_onidentify_pv") or cfg.get("evcc_onidentify_connected") or "pv"),
+        "evcc_onidentify_off": "off",
+        "evcc_onidentify_pv": "pv",
+        "evcc_onidentify_minpv": "minpv",
+        "evcc_onidentify_now": "now",
     }
 
 
@@ -663,10 +679,7 @@ def _evcc_mqtt_values(provider_config: dict[str, Any] | None) -> dict[str, Any]:
         "evcc/phases": cfg.get("evcc_phases") or "",
         "evcc/identifiers": identifiers,
         "evcc/identifiers_csv": ",".join(identifiers),
-        "evcc/onIdentify/off": cfg.get("evcc_onidentify_off") or "off",
-        "evcc/onIdentify/pv": cfg.get("evcc_onidentify_pv") or "pv",
-        "evcc/onIdentify/minpv": cfg.get("evcc_onidentify_minpv") or "minpv",
-        "evcc/onIdentify/now": cfg.get("evcc_onidentify_now") or "now",
+        "evcc/onIdentify/mode": cfg.get("evcc_onidentify_mode") or "pv",
     }
 
 
@@ -898,7 +911,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.96",
+                "version": "1.1.97",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),

@@ -369,14 +369,9 @@ select, option {
           <div class="field"><label>Phases</label><select id="editEvccPhases"><option value="">Nicht setzen</option><option value="1">1 Phase</option><option value="3">3 Phasen</option></select></div>
           <div class="field"><label>Identifiers</label><input id="editEvccIdentifiers" placeholder="z. B. RFID1, RFID2" /></div>
         </div>
-        <div class="grid two" style="margin-top:14px">
-          <div class="field"><label>onIdentify Modus: Aus</label><input id="editEvccOnIdentifyOff" placeholder="off" /></div>
-          <div class="field"><label>onIdentify Modus: PV</label><input id="editEvccOnIdentifyPv" placeholder="pv" /></div>
-          <div class="field"><label>onIdentify Modus: Min+PV</label><input id="editEvccOnIdentifyMinpv" placeholder="minpv" /></div>
-          <div class="field"><label>onIdentify Modus: Schnell</label><input id="editEvccOnIdentifyNow" placeholder="now" /></div>
-        </div>
+        <div class="field" style="margin-top:14px"><label>onIdentify Modus</label><select id="editEvccOnIdentifyMode"><option value="off">Aus (off)</option><option value="pv">PV (pv)</option><option value="minpv">Min+PV (minpv)</option><option value="now">Schnell (now)</option></select></div>
         <div class="log-actions" style="margin-top:14px"><button id="saveEvccVehicleConfigBtn" type="button" class="ghost-btn">EVCC/MQTT-Konfiguration speichern</button></div>
-        <div class="muted" style="margin-top:10px">Diese Werte werden pro lokalem Fahrzeug und pro Remote-Fahrzeug separat gespeichert und unter <code>.../mapped/evcc/...</code> per MQTT veröffentlicht. Die onIdentify-Modi entsprechen EVCC: <code>off</code> = Aus, <code>pv</code> = PV, <code>minpv</code> = Min+PV, <code>now</code> = Schnell. Beim EVCC-Sync wird bei fehlgeschlagenem Update kein Ersatzfahrzeug mehr angelegt.</div>
+        <div class="muted" style="margin-top:10px">Pro Fahrzeug darf genau ein EVCC-onIdentify-Lademodus aktiv sein. Der gewählte Modus wird unter <code>.../mapped/evcc/onIdentify/mode</code> per MQTT veröffentlicht und beim EVCC-Sync als <code>onIdentify.mode</code> gesetzt. Beim EVCC-Sync wird bei fehlgeschlagenem Update kein Ersatzfahrzeug mehr angelegt.</div>
       </div>
 
       <div class="info-box dialog-narrow" style="margin-top:18px">
@@ -624,6 +619,14 @@ function manufacturerTopicPrefix(manufacturer){
 function getCurrentEditCard(){
   return cards.find(card => card.id === editState.vehicleId) || null;
 }
+function normalizeEvccOnIdentifyMode(value){
+  const mode = String(value || '').trim().toLowerCase();
+  if(mode === 'aus' || mode === 'off') return 'off';
+  if(mode === 'pv') return 'pv';
+  if(mode === 'min+pv' || mode === 'minpv' || mode === 'min_pv' || mode === 'min-pv') return 'minpv';
+  if(mode === 'schnell' || mode === 'now') return 'now';
+  return 'pv';
+}
 function evccCfgFromCardOrVehicle(obj){
   const cfg = (obj && obj.evcc_config) || (obj && obj.provider_config) || {};
   const cap = cfg.evcc_capacity_kwh ?? cfg.capacity_kwh ?? '';
@@ -636,10 +639,7 @@ function evccCfgFromCardOrVehicle(obj){
     evcc_capacity_kwh: cap || '',
     evcc_phases: cfg.evcc_phases || '',
     evcc_identifiers: Array.isArray(cfg.evcc_identifiers) ? cfg.evcc_identifiers.join(', ') : (cfg.evcc_identifiers || ''),
-    evcc_onidentify_off: cfg.evcc_onidentify_off || cfg.evcc_onidentify_disconnected || 'off',
-    evcc_onidentify_pv: cfg.evcc_onidentify_pv || cfg.evcc_onidentify_connected || 'pv',
-    evcc_onidentify_minpv: cfg.evcc_onidentify_minpv || 'minpv',
-    evcc_onidentify_now: cfg.evcc_onidentify_now || cfg.evcc_onidentify_charging || 'now',
+    evcc_onidentify_mode: normalizeEvccOnIdentifyMode(cfg.evcc_onidentify_mode || cfg.evcc_onidentify_pv || cfg.evcc_onidentify_connected || 'pv'),
   };
 }
 function fillEvccVehicleConfigFields(obj){
@@ -650,10 +650,7 @@ function fillEvccVehicleConfigFields(obj){
   field('editEvccCapacity').value = cfg.evcc_capacity_kwh || '';
   field('editEvccPhases').value = cfg.evcc_phases || '';
   field('editEvccIdentifiers').value = cfg.evcc_identifiers || '';
-  field('editEvccOnIdentifyOff').value = cfg.evcc_onidentify_off || 'off';
-  field('editEvccOnIdentifyPv').value = cfg.evcc_onidentify_pv || 'pv';
-  field('editEvccOnIdentifyMinpv').value = cfg.evcc_onidentify_minpv || 'minpv';
-  field('editEvccOnIdentifyNow').value = cfg.evcc_onidentify_now || 'now';
+  field('editEvccOnIdentifyMode').value = normalizeEvccOnIdentifyMode(cfg.evcc_onidentify_mode || 'pv');
 }
 function collectEvccVehicleConfigPayload(){
   return {
@@ -665,10 +662,7 @@ function collectEvccVehicleConfigPayload(){
     evcc_capacity_kwh: field('editEvccCapacity')?.value?.trim() || '',
     evcc_phases: field('editEvccPhases')?.value || '',
     evcc_identifiers: field('editEvccIdentifiers')?.value?.trim() || '',
-    evcc_onidentify_off: field('editEvccOnIdentifyOff')?.value?.trim() || 'off',
-    evcc_onidentify_pv: field('editEvccOnIdentifyPv')?.value?.trim() || 'pv',
-    evcc_onidentify_minpv: field('editEvccOnIdentifyMinpv')?.value?.trim() || 'minpv',
-    evcc_onidentify_now: field('editEvccOnIdentifyNow')?.value?.trim() || 'now',
+    evcc_onidentify_mode: normalizeEvccOnIdentifyMode(field('editEvccOnIdentifyMode')?.value || 'pv'),
   };
 }
 function setEditRemoteMode(enabled, card=null){
@@ -725,7 +719,9 @@ function getCopyConfigContext(){
   const topicBase = `car/${manufacturerPrefix}/${id}/mapped`;
   const entityBase = `car_${manufacturerPrefix}_${id.toLowerCase()}`;
   const varPrefix = `${id.toLowerCase()}_`;
-  return { manufacturer, manufacturerPrefix, id, rawPlate, title, current, capacity, topicBase, entityBase, varPrefix };
+  const evccCfg = evccCfgFromCardOrVehicle(current || {});
+  const onIdentifyMode = normalizeEvccOnIdentifyMode(field('editEvccOnIdentifyMode')?.value || evccCfg.evcc_onidentify_mode || 'pv');
+  return { manufacturer, manufacturerPrefix, id, rawPlate, title, current, capacity, topicBase, entityBase, varPrefix, onIdentifyMode };
 }
 function getHelperCards(){
   return (cards || []).filter(card => card && card.license_plate && card.manufacturer);
@@ -1136,7 +1132,7 @@ daheimladen_force_evcc_vehicle:
 }
 
 function buildEvccCustomTemplate(){
-  const { id, title, capacity, topicBase } = getCopyConfigContext();
+  const { id, title, capacity, topicBase, onIdentifyMode } = getCopyConfigContext();
   return `###########################################
 ###### CAR2MQTT Custom EVCC Template ######
 ###########################################
@@ -1152,11 +1148,8 @@ soc:
   topic: ${topicBase}/soc
   timeout: 24h
 
-onIdentify: #<- es darf nur ein Lademodus aktiv sein.
-  #mode: off # Aus
-  mode: pv # PV
-  #mode: minpv # Min+PV
-  #mode: now # Schnell
+onIdentify: #<- genau ein Lademodus aktiv
+  mode: ${onIdentifyMode} # off=Aus, pv=PV, minpv=Min+PV, now=Schnell
 
 range:
   source: mqtt
