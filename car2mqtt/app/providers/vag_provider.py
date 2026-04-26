@@ -37,14 +37,14 @@ class VagBrandProvider(BaseProvider):
                 "Der markenspezifische Live-Connector wird im nächsten Schritt ergänzt."
             ),
             setup_steps=[
-                "API-Modus, Login und Antriebsart wählen.",
+                "API-Modus und Antriebsart wählen; Login kann sofort oder später im Fahrzeug nachgetragen werden.",
                 "Kennzeichen wird als interne Vehicle-ID und MQTT-Fahrzeugkennung verwendet.",
                 "Das Mapping verwendet dasselbe Fahrzeugtyp-Konzept wie BMW: electric, hybrid, combustion.",
             ],
             fields=[
                 {"name": "api_mode", "label": "API-Modus", "type": "select", "required": True, "default": "brand_app"},
-                {"name": "account", "label": "Benutzerkonto / E-Mail", "type": "text", "required": True},
-                {"name": "password", "label": "Passwort", "type": "password", "required": True},
+                {"name": "account", "label": "Benutzerkonto / E-Mail", "type": "text", "required": False},
+                {"name": "password", "label": "Passwort", "type": "password", "required": False},
                 {"name": "country", "label": "Land", "type": "text", "required": False, "default": "DE"},
                 {"name": "powertrain", "label": "Antrieb", "type": "select", "required": True, "default": "unknown"},
                 {"name": "poll_interval", "label": "Polling-Intervall (Sekunden)", "type": "number", "required": False, "default": 60},
@@ -63,10 +63,6 @@ class VagBrandProvider(BaseProvider):
             raise ValueError("Bitte einen gültigen API-Modus wählen.")
         account = str(provider_config.get("account", "") or provider_config.get("username", "")).strip()
         password = str(provider_config.get("password", "") or "")
-        if not account:
-            raise ValueError(f"{VAG_BRAND_LABELS[brand]} Benutzerkonto fehlt.")
-        if not password:
-            raise ValueError(f"{VAG_BRAND_LABELS[brand]} Passwort fehlt.")
         powertrain = str(provider_config.get("powertrain", "unknown") or "unknown").strip().lower()
         if powertrain not in VAG_POWERTRAINS:
             raise ValueError("Bitte eine gültige Antriebsart wählen.")
