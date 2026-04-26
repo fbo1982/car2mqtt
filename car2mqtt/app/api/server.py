@@ -395,8 +395,8 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         },
         "last_update": (runtime_state or {}).get("last_update", ""),
         "enabled": vehicle.enabled,
-        "manufacturer_note": "ORA Runner vorbereitet" if vehicle.manufacturer == "gwm" else ("Acconia/Silence MQTT vorbereitet" if vehicle.manufacturer == "acconia" else ""),
-        "source_topic_base": vehicle.provider_config.get("source_topic_base", "") if vehicle.manufacturer in {"gwm","acconia"} else "",
+        "manufacturer_note": "ORA Runner vorbereitet" if vehicle.manufacturer == "gwm" else ("Acconia/Silence API vorbereitet" if vehicle.manufacturer == "acconia" else ""),
+        "source_topic_base": vehicle.provider_config.get("source_topic_base", "") if vehicle.manufacturer in {"gwm"} else "",
         "device_tracker_enabled": bool(getattr(vehicle, 'device_tracker_enabled', False)),
     }
 
@@ -757,7 +757,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.79",
+                "version": "1.1.81",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -1073,14 +1073,11 @@ def create_app() -> FastAPI:
 
         if payload.manufacturer == "acconia":
             vehicle.provider_config["license_plate"] = vehicle.license_plate
-            if not vehicle.provider_config.get("vehicle_id"):
-                vehicle.provider_config["vehicle_id"] = vehicle.id
-            if not vehicle.provider_config.get("source_topic_base"):
-                normalized_plate = _normalize_vehicle_id(vehicle.license_plate)
-                vehicle.provider_config["source_topic_base"] = f"acconia/{normalized_plate}"
+            vehicle.provider_config["vehicle_id"] = _normalize_vehicle_id(vehicle.license_plate)
+            vehicle.provider_config.pop("source_topic_base", None)
             vehicle.provider_state.auth_state = "authorized"
-            vehicle.provider_state.auth_message = "Acconia/Silence MQTT vorbereitet"
-            log_store.append(vehicle.id, "Acconia/Silence Konfiguration gespeichert")
+            vehicle.provider_state.auth_message = "Acconia/Silence API vorbereitet"
+            log_store.append(vehicle.id, "Acconia/Silence API-Konfiguration gespeichert")
 
         if vehicle_id_to_replace and vehicle_id_to_replace != vehicle.id:
             if payload.manufacturer == "gwm":
@@ -1113,7 +1110,7 @@ def create_app() -> FastAPI:
             worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
         if payload.manufacturer == "acconia":
             if vehicle.enabled and mqtt_settings.host:
-                log_store.append(vehicle.id, "Acconia/Silence Fahrzeug gespeichert - MQTT Source Listener gestartet")
+                log_store.append(vehicle.id, "Acconia/Silence Fahrzeug gespeichert - API Polling gestartet")
                 worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
             else:
                 log_store.append(vehicle.id, "Acconia/Silence Fahrzeug gespeichert - kein automatischer Start")
