@@ -5,6 +5,7 @@ import os
 import shutil
 import re
 import asyncio
+import logging
 from pathlib import Path
 from typing import Any, Dict
 import time
@@ -24,7 +25,7 @@ from app.core.models import AuthSession, VehicleConfig, MqttForwardClientConfig,
 from app.core.runtime_settings import load_runtime_mqtt_settings
 from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
-from app.mqtt.client import test_connection
+from app.mqtt.client import LocalMqttClient, test_connection
 from app.mqtt.topic_builder import mapped_topic, raw_vehicle_topic
 from app.providers.bmw.oauth import poll_device_flow, save_token_file, start_device_flow
 from app.providers.registry import ProviderRegistry
@@ -38,6 +39,8 @@ from app.providers.gwm_config import (
     clear_ora_token_backup,
 )
 from app.services.worker_manager import WorkerManager
+
+logger = logging.getLogger("car2mqtt.server")
 
 
 class VehiclePayload(BaseModel):
@@ -586,10 +589,13 @@ def _device_tracker_token(card: dict[str, Any]) -> str:
 
 def _publish_device_trackers(cards: list[dict[str, Any]], mqtt_settings, enabled: bool) -> None:
     if not getattr(mqtt_settings, 'host', ''):
+        logger.warning("Device Tracker: kein MQTT Host konfiguriert")
         return
     client = LocalMqttClient(mqtt_settings)
+    published = 0
     try:
         client.connect()
+        logger.info("Device Tracker: MQTT verbunden zu %s:%s", mqtt_settings.host, mqtt_settings.port)
         for card in cards:
             slug = _device_tracker_slug(card)
             config_topic = f"homeassistant/device_tracker/{slug}/config"
@@ -597,6 +603,7 @@ def _publish_device_trackers(cards: list[dict[str, Any]], mqtt_settings, enabled
             attrs_topic = f"{getattr(mqtt_settings, 'base_topic', 'car')}/_device_tracker/{slug}/attributes"
             if not enabled or not bool(card.get('device_tracker_enabled')):
                 client.publish(config_topic, '', retain=True)
+                logger.info("Device Tracker: Discovery entfernt für %s", slug)
                 continue
             metrics = dict(card.get('metrics') or {})
             lat = metrics.get('latitude')
@@ -619,6 +626,7 @@ def _publish_device_trackers(cards: list[dict[str, Any]], mqtt_settings, enabled
             state = 'not_home' if 'latitude' in attrs and 'longitude' in attrs else 'unknown'
             device_payload = {
                 'name': label,
+                'object_id': slug,
                 'unique_id': slug,
                 'state_topic': state_topic,
                 'json_attributes_topic': attrs_topic,
@@ -633,16 +641,20 @@ def _publish_device_trackers(cards: list[dict[str, Any]], mqtt_settings, enabled
                     'model': license_plate or label,
                 },
             }
+            logger.info("Device Tracker: veröffentliche Discovery für %s via %s", slug, config_topic)
             client.publish(config_topic, device_payload, retain=True)
             client.publish(attrs_topic, attrs, retain=True)
             client.publish(state_topic, state, retain=True)
+            published += 1
+        logger.info("Device Tracker: %s Tracker veröffentlicht", published)
     except Exception:
-        return
+        logger.exception("Device Tracker Publish fehlgeschlagen")
     finally:
         try:
             client.disconnect()
         except Exception:
             pass
+
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Car2MQTT")
@@ -677,7 +689,7 @@ def create_app() -> FastAPI:
                     _publish_device_trackers(cards, load_runtime_mqtt_settings(), global_enabled)
                     app.state.device_tracker_tokens = tokens
             except Exception:
-                pass
+                logger.exception("Device Tracker Sync Loop fehlgeschlagen")
             await asyncio.sleep(15)
 
     @app.on_event("startup")
@@ -690,7 +702,7 @@ def create_app() -> FastAPI:
                 _publish_device_trackers(cards, load_runtime_mqtt_settings(), True)
                 app.state.device_tracker_tokens = {str(card.get('id') or ''): _device_tracker_token(card) for card in cards}
             except Exception:
-                pass
+                logger.exception("Device Tracker Initialpublish fehlgeschlagen")
         app.state.device_tracker_task = asyncio.create_task(_device_tracker_sync_loop())
 
     @app.on_event("shutdown")
@@ -739,7 +751,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.73",
+                "version": "1.1.75",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
