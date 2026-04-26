@@ -203,9 +203,6 @@ select, option {
             <div class="field"><label>Akkukapazität (kWh)</label><input id="vagCapacity" type="number" step="0.1" placeholder="optional" /></div>
           </div>
           <div class="muted" style="margin-top:10px">Vehicle ID und MQTT Topics werden automatisch aus dem Kennzeichen erzeugt.</div>
-        </div>
-      </div>
-
 
     </div>
     <div class="modal-foot"><button id="cancelWizardBtn" class="ghost-btn">Abbrechen</button><div class="spacer"></div><button id="saveCreateBtn" class="primary-btn">Überprüfen &amp; speichern</button></div>
@@ -216,7 +213,7 @@ select, option {
   <div class="panel">
     <div class="modal-head"><div><div class="eyebrow">Fahrzeug</div><h3>Fahrzeug bearbeiten</h3></div><button id="closeEditBtn" class="icon-btn">✕</button></div>
     <div id="editError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyConfigsBtn" type="button" class="ghost-btn">Copy Configs</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyConfigsBtn" type="button" class="ghost-btn">Copy Configs</button><button id="publishVehicleDiscoveryBtn" type="button" class="ghost-btn">HA Discovery</button><button id="evccSyncBtn" type="button" class="ghost-btn">EVCC Sync</button><button id="evccLinkBtn" type="button" class="ghost-btn">EVCC ID zuordnen</button></div>
     <div class="modal-body grid">
       <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
@@ -472,6 +469,20 @@ select, option {
             </label>
             <div class="muted" style="margin-top:10px">Erstellt für lokale und remote Fahrzeuge automatisch MQTT Device Tracker Entitäten.</div>
           </div>
+        </div>
+        <div class="howto-card">
+          <h4>Home Assistant MQTT Discovery</h4>
+          <div class="field" style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px"><input id="settingsHaDiscoveryEnabled" type="checkbox"><span>Fahrzeug-Entitäten automatisch erstellen</span></label><div class="muted">Veröffentlicht Sensoren, Binary-Sensoren, Numbers, Buttons und Device Tracker über MQTT Discovery.</div></div>
+          <div class="grid two" style="margin-top:14px"><div class="field"><label>Discovery Prefix</label><input id="settingsHaDiscoveryPrefix" placeholder="homeassistant" /></div><div class="field"><label style="display:flex;align-items:center;gap:10px"><input id="settingsHaDiscoveryRetain" type="checkbox"><span>Retained</span></label></div></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button id="publishHaDiscoveryBtn" type="button" class="ghost-btn">Discovery neu senden</button></div>
+        </div>
+        <div class="howto-card">
+          <h4>EVCC Datenbank / UI-Konfiguration</h4>
+          <div class="field" style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px"><input id="settingsEvccEnabled" type="checkbox"><span>EVCC Integration aktiv</span></label></div>
+          <div class="grid two" style="margin-top:14px"><div class="field"><label>EVCC URL</label><input id="settingsEvccUrl" placeholder="http://localhost:7070" /></div><div class="field"><label>EVCC Passwort <span class="muted">optional</span></label><input id="settingsEvccPassword" type="password" placeholder="leer lassen = unverändert" /></div></div>
+          <div class="grid two" style="margin-top:14px"><label class="comm-toggle"><input id="settingsEvccAutoCreate" type="checkbox"><span><span class="comm-title">Neue Fahrzeuge automatisch anlegen</span></span></label><label class="comm-toggle"><input id="settingsEvccAutoUpdate" type="checkbox"><span><span class="comm-title">Verknüpfte Fahrzeuge automatisch updaten</span></span></label><label class="comm-toggle"><input id="settingsEvccAutoDelete" type="checkbox"><span><span class="comm-title">Verwaltete Fahrzeuge beim Löschen entfernen</span></span></label></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button id="testEvccBtn" type="button" class="ghost-btn">EVCC Verbindung testen</button><button id="loadEvccVehiclesBtn" type="button" class="ghost-btn">EVCC Fahrzeuge laden</button></div>
+          <div id="settingsEvccStatus" class="muted" style="margin-top:10px"></div>
         </div>
       </div>
     </div>
@@ -840,6 +851,16 @@ function renderSettingsDialog(data){
   });
   if(info) info.textContent = describeHomezone(data?.effective_homezone || helperHomezoneJson);
   if(trackerToggle) trackerToggle.checked = !!(data?.ui_settings?.device_tracker_enabled);
+  const ui = data?.ui_settings || {};
+  if(field("settingsHaDiscoveryEnabled")) field("settingsHaDiscoveryEnabled").checked = ui.ha_discovery_enabled !== false;
+  if(field("settingsHaDiscoveryPrefix")) field("settingsHaDiscoveryPrefix").value = ui.ha_discovery_prefix || "homeassistant";
+  if(field("settingsHaDiscoveryRetain")) field("settingsHaDiscoveryRetain").checked = ui.ha_discovery_retain !== false;
+  if(field("settingsEvccEnabled")) field("settingsEvccEnabled").checked = !!ui.evcc_enabled;
+  if(field("settingsEvccUrl")) field("settingsEvccUrl").value = ui.evcc_url || "http://localhost:7070";
+  if(field("settingsEvccPassword")) field("settingsEvccPassword").value = "";
+  if(field("settingsEvccAutoCreate")) field("settingsEvccAutoCreate").checked = !!ui.evcc_auto_create;
+  if(field("settingsEvccAutoUpdate")) field("settingsEvccAutoUpdate").checked = ui.evcc_auto_update !== false;
+  if(field("settingsEvccAutoDelete")) field("settingsEvccAutoDelete").checked = !!ui.evcc_auto_delete;
 }
 async function openSettingsDialog(){
   const dlg = field('settingsDialog');
@@ -1401,7 +1422,7 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
   try{
     const select = field('settingsHomeZoneSelect');
     const trackerToggle = field('settingsDeviceTrackerEnabled');
-    const resp = await postJson('api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '', device_tracker_enabled: !!(trackerToggle && trackerToggle.checked) });
+    const resp = await postJson('api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '', device_tracker_enabled: !!(trackerToggle && trackerToggle.checked), ha_discovery_enabled: !!field('settingsHaDiscoveryEnabled')?.checked, ha_discovery_prefix: field('settingsHaDiscoveryPrefix')?.value || 'homeassistant', ha_discovery_retain: !!field('settingsHaDiscoveryRetain')?.checked, evcc_enabled: !!field('settingsEvccEnabled')?.checked, evcc_url: field('settingsEvccUrl')?.value || 'http://localhost:7070', evcc_password: field('settingsEvccPassword')?.value || '', evcc_auto_create: !!field('settingsEvccAutoCreate')?.checked, evcc_auto_update: !!field('settingsEvccAutoUpdate')?.checked, evcc_auto_delete: !!field('settingsEvccAutoDelete')?.checked });
     uiSettings = resp.ui_settings || {};
     helperHomezoneJson = resp.effective_homezone || helperHomezoneJson;
     const info = field('settingsHomeZoneInfo');
@@ -1411,6 +1432,66 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
     alert(err.message || 'Einstellungen konnten nicht gespeichert werden.');
   }
 };
+async function publishAllHaDiscovery(){
+  try{
+    const data = await postJson('./api/ha-discovery/publish', {});
+    const el = field('settingsEvccStatus'); if(el) el.textContent = `Home Assistant Discovery veröffentlicht: ${data.published || 0} Entitäten.`;
+  }catch(err){ alert(err.message || 'Discovery konnte nicht veröffentlicht werden.'); }
+}
+async function testEvccConnection(){
+  try{
+    const data = await postJson('./api/evcc/test', {});
+    const el = field('settingsEvccStatus'); if(el) el.textContent = `EVCC OK. Fahrzeuge gefunden: ${(data.vehicles || []).length}${data.version ? ' · Version: '+data.version : ''}`;
+  }catch(err){ const el = field('settingsEvccStatus'); if(el) el.textContent = err.message || 'EVCC Test fehlgeschlagen.'; }
+}
+async function loadEvccVehiclesStatus(){
+  try{
+    const res = await fetch('./api/evcc/vehicles'); const data = await res.json(); if(!res.ok) throw new Error(data.detail || JSON.stringify(data));
+    const names = (data.vehicles || []).map(v => `${v.title || v.name || v.ref} (${v.ref || v.name || '-'})`).join(', ');
+    const el = field('settingsEvccStatus'); if(el) el.textContent = names ? `EVCC Fahrzeuge: ${names}` : 'Keine EVCC Fahrzeuge gefunden.';
+  }catch(err){ const el = field('settingsEvccStatus'); if(el) el.textContent = err.message || 'EVCC Fahrzeuge konnten nicht geladen werden.'; }
+}
+async function syncCurrentVehicleToEvcc(){
+  if(!editState.vehicleId) return;
+  try{
+    const data = await postJson(`./api/vehicles/${editState.vehicleId}/evcc/sync`, {});
+    alert(`EVCC Sync erfolgreich: ${data.result?.action || 'ok'} ${data.result?.ref || ''}`);
+    await loadDashboard(); await refreshVehicleLogs();
+  }catch(err){ alert(err.message || 'EVCC Sync fehlgeschlagen.'); }
+}
+async function publishCurrentVehicleDiscovery(){
+  if(!editState.vehicleId) return;
+  try{
+    const data = await postJson(`./api/vehicles/${editState.vehicleId}/ha-discovery/publish`, {});
+    alert(`Home Assistant Discovery veröffentlicht: ${data.published || 0} Entitäten.`);
+  }catch(err){ alert(err.message || 'Discovery fehlgeschlagen.'); }
+}
+async function linkCurrentVehicleToEvcc(){
+  if(!editState.vehicleId) return;
+  let options = [];
+  try{ const res = await fetch('./api/evcc/vehicles'); const data = await res.json(); if(res.ok) options = data.vehicles || []; }catch(err){}
+  const hint = options.length ? '\n\nGefundene EVCC Fahrzeuge:\n' + options.map(v => `${v.ref || v.name || '-'} = ${v.title || v.name || ''}`).join('\n') : '';
+  const ref = prompt('EVCC Fahrzeug-ID/Ref eintragen, z. B. db:1 oder bestehender name. Leer = neues car2mqtt-Fahrzeug beim Sync anlegen.' + hint, '');
+  if(ref === null) return;
+  const card = getCurrentEditCard();
+  try{
+    await postJson(`./api/vehicles/${editState.vehicleId}/evcc/link`, { evcc_ref: ref.trim(), evcc_managed: true, evcc_auto_sync: true, evcc_title: card?.label || '', evcc_capacity_kwh: card?.metrics?.capacityKwh || '' });
+    alert('EVCC Zuordnung gespeichert. Danach kann EVCC Sync ausgeführt werden.');
+    await refreshVehicleLogs();
+  }catch(err){ alert(err.message || 'EVCC Zuordnung konnte nicht gespeichert werden.'); }
+}
+const publishHaDiscoveryBtn = field('publishHaDiscoveryBtn');
+if(publishHaDiscoveryBtn) publishHaDiscoveryBtn.onclick = (ev)=>{ ev.preventDefault(); publishAllHaDiscovery(); };
+const testEvccBtn = field('testEvccBtn');
+if(testEvccBtn) testEvccBtn.onclick = (ev)=>{ ev.preventDefault(); testEvccConnection(); };
+const loadEvccVehiclesBtn = field('loadEvccVehiclesBtn');
+if(loadEvccVehiclesBtn) loadEvccVehiclesBtn.onclick = (ev)=>{ ev.preventDefault(); loadEvccVehiclesStatus(); };
+const evccSyncBtn = field('evccSyncBtn');
+if(evccSyncBtn) evccSyncBtn.onclick = (ev)=>{ ev.preventDefault(); syncCurrentVehicleToEvcc(); };
+const publishVehicleDiscoveryBtn = field('publishVehicleDiscoveryBtn');
+if(publishVehicleDiscoveryBtn) publishVehicleDiscoveryBtn.onclick = (ev)=>{ ev.preventDefault(); publishCurrentVehicleDiscovery(); };
+const evccLinkBtn = field('evccLinkBtn');
+if(evccLinkBtn) evccLinkBtn.onclick = (ev)=>{ ev.preventDefault(); linkCurrentVehicleToEvcc(); };
 const helperConfigBtn = field('copyHelperBtn');
 if(helperConfigBtn) helperConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openHelperConfigDialog(); };
 const closeHelperConfigBtn = field('closeHelperConfigBtn');

@@ -49,6 +49,15 @@ class UiSettings(BaseModel):
     helper_home_zone_entity_id: str = ""
     device_tracker_enabled: bool = False
     remote_device_tracker_ids: List[str] = Field(default_factory=list)
+    ha_discovery_enabled: bool = True
+    ha_discovery_prefix: str = "homeassistant"
+    ha_discovery_retain: bool = True
+    evcc_enabled: bool = False
+    evcc_url: str = "http://localhost:7070"
+    evcc_password: str = ""
+    evcc_auto_create: bool = False
+    evcc_auto_update: bool = True
+    evcc_auto_delete: bool = False
 
 
 class MqttForwardClientConfig(BaseModel):

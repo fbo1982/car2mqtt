@@ -39,6 +39,8 @@ from app.providers.gwm_config import (
     clear_ora_token_backup,
 )
 from app.services.worker_manager import WorkerManager
+from app.services.ha_discovery import publish_all_discovery, publish_vehicle_discovery, clear_vehicle_discovery
+from app.services.evcc_integration import EvccClient, build_evcc_custom_vehicle_payload
 
 logger = logging.getLogger("car2mqtt.server")
 
@@ -84,6 +86,23 @@ class GwmVerificationPayload(BaseModel):
 class HomeZoneSettingsPayload(BaseModel):
     helper_home_zone_entity_id: str = ""
     device_tracker_enabled: bool = False
+    ha_discovery_enabled: bool = True
+    ha_discovery_prefix: str = "homeassistant"
+    ha_discovery_retain: bool = True
+    evcc_enabled: bool = False
+    evcc_url: str = "http://localhost:7070"
+    evcc_password: str = ""
+    evcc_auto_create: bool = False
+    evcc_auto_update: bool = True
+    evcc_auto_delete: bool = False
+
+class EvccLinkPayload(BaseModel):
+    evcc_ref: str = ""
+    evcc_managed: bool = True
+    evcc_auto_sync: bool = True
+    evcc_name: str = ""
+    evcc_title: str = ""
+    evcc_capacity_kwh: str = ""
 
 
 def _normalize_vehicle_id(license_plate: str) -> str:
@@ -757,7 +776,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.89",
+                "version": "1.1.90",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -791,6 +810,16 @@ def create_app() -> FastAPI:
         cfg = store.load()
         cfg.ui_settings.helper_home_zone_entity_id = str(payload.helper_home_zone_entity_id or '').strip()
         cfg.ui_settings.device_tracker_enabled = bool(payload.device_tracker_enabled)
+        cfg.ui_settings.ha_discovery_enabled = bool(payload.ha_discovery_enabled)
+        cfg.ui_settings.ha_discovery_prefix = str(payload.ha_discovery_prefix or 'homeassistant').strip() or 'homeassistant'
+        cfg.ui_settings.ha_discovery_retain = bool(payload.ha_discovery_retain)
+        cfg.ui_settings.evcc_enabled = bool(payload.evcc_enabled)
+        cfg.ui_settings.evcc_url = str(payload.evcc_url or '').strip() or 'http://localhost:7070'
+        if payload.evcc_password:
+            cfg.ui_settings.evcc_password = str(payload.evcc_password)
+        cfg.ui_settings.evcc_auto_create = bool(payload.evcc_auto_create)
+        cfg.ui_settings.evcc_auto_update = bool(payload.evcc_auto_update)
+        cfg.ui_settings.evcc_auto_delete = bool(payload.evcc_auto_delete)
         store.save(cfg)
         try:
             cards, _ = build_cards()
@@ -877,6 +906,114 @@ def create_app() -> FastAPI:
         except Exception:
             pass
         return {'status':'ok','vehicle_id':vehicle_id,'device_tracker_enabled': enabled}
+
+    @app.post("/api/ha-discovery/publish")
+    async def publish_ha_discovery_all():
+        cfg = store.load()
+        settings = load_runtime_mqtt_settings()
+        if not settings.host:
+            raise HTTPException(status_code=400, detail="MQTT Host ist nicht gesetzt")
+        try:
+            count = publish_all_discovery(cfg, settings)
+            return {"status": "ok", "published": count}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post("/api/vehicles/{vehicle_id}/ha-discovery/publish")
+    async def publish_ha_discovery_vehicle(vehicle_id: str):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+        cfg = store.load()
+        settings = load_runtime_mqtt_settings()
+        if not settings.host:
+            raise HTTPException(status_code=400, detail="MQTT Host ist nicht gesetzt")
+        try:
+            count = publish_vehicle_discovery(vehicle, settings, discovery_prefix=cfg.ui_settings.ha_discovery_prefix, retain=cfg.ui_settings.ha_discovery_retain)
+            log_store.append(vehicle_id, f"Home Assistant Discovery veröffentlicht: {count} Entitäten")
+            return {"status": "ok", "published": count}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    def _evcc_client_from_settings():
+        cfg = store.load()
+        ui = cfg.ui_settings
+        if not ui.evcc_url:
+            raise HTTPException(status_code=400, detail="EVCC URL ist nicht gesetzt")
+        return EvccClient(ui.evcc_url, ui.evcc_password or "")
+
+    @app.get("/api/evcc/vehicles")
+    async def evcc_list_vehicles():
+        try:
+            client = _evcc_client_from_settings()
+            return {"status": "ok", "vehicles": client.list_vehicles()}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post("/api/evcc/test")
+    async def evcc_test():
+        try:
+            client = _evcc_client_from_settings()
+            state = client.status()
+            vehicles = client.list_vehicles()
+            return {"status": "ok", "vehicles": vehicles, "version": (state or {}).get("version", "") if isinstance(state, dict) else ""}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post("/api/vehicles/{vehicle_id}/evcc/link")
+    async def evcc_link_vehicle(vehicle_id: str, payload: EvccLinkPayload):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+        vehicle.provider_config["evcc_ref"] = str(payload.evcc_ref or "").strip()
+        vehicle.provider_config["evcc_managed"] = bool(payload.evcc_managed)
+        vehicle.provider_config["evcc_auto_sync"] = bool(payload.evcc_auto_sync)
+        if payload.evcc_name:
+            vehicle.provider_config["evcc_name"] = str(payload.evcc_name).strip()
+        if payload.evcc_title:
+            vehicle.provider_config["evcc_title"] = str(payload.evcc_title).strip()
+        if payload.evcc_capacity_kwh:
+            vehicle.provider_config["capacity_kwh"] = str(payload.evcc_capacity_kwh).strip()
+        store.upsert_vehicle(vehicle)
+        log_store.append(vehicle_id, f"EVCC Verknüpfung gespeichert: {vehicle.provider_config.get('evcc_ref') or 'neu'}")
+        return {"status": "ok", "vehicle_id": vehicle_id, "provider_config": vehicle.provider_config}
+
+    @app.post("/api/vehicles/{vehicle_id}/evcc/sync")
+    async def evcc_sync_vehicle(vehicle_id: str):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+        try:
+            client = _evcc_client_from_settings()
+            payload = build_evcc_custom_vehicle_payload(vehicle, load_runtime_mqtt_settings())
+            result = client.upsert_vehicle(payload, str(vehicle.provider_config.get("evcc_ref") or ""))
+            ref = str(result.get("ref") or vehicle.provider_config.get("evcc_ref") or payload.get("name") or "")
+            if ref:
+                vehicle.provider_config["evcc_ref"] = ref
+            vehicle.provider_config["evcc_managed"] = True
+            vehicle.provider_config["evcc_auto_sync"] = True
+            store.upsert_vehicle(vehicle)
+            log_store.append(vehicle_id, f"EVCC Sync erfolgreich: {result.get('action')} {ref}")
+            return {"status": "ok", "result": result, "payload": payload}
+        except Exception as exc:
+            log_store.append(vehicle_id, f"EVCC Sync fehlgeschlagen: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.delete("/api/vehicles/{vehicle_id}/evcc")
+    async def evcc_delete_vehicle(vehicle_id: str):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+        try:
+            client = _evcc_client_from_settings()
+            result = client.delete_vehicle(str(vehicle.provider_config.get("evcc_ref") or ""))
+            vehicle.provider_config.pop("evcc_ref", None)
+            vehicle.provider_config["evcc_managed"] = False
+            store.upsert_vehicle(vehicle)
+            log_store.append(vehicle_id, f"EVCC Fahrzeug entfernt: {result}")
+            return {"status": "ok", "result": result}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @app.get("/api/providers")
     async def get_providers():
@@ -1110,7 +1247,31 @@ def create_app() -> FastAPI:
             worker_manager.stop_vehicle(vehicle_id_to_replace)
             log_store.append(vehicle.id, f"Fahrzeug-ID geändert von {vehicle_id_to_replace} auf {vehicle.id}")
         store.upsert_vehicle(vehicle)
+        try:
+            cfg_now = store.load()
+            if getattr(cfg_now.ui_settings, "ha_discovery_enabled", True):
+                publish_vehicle_discovery(vehicle, load_runtime_mqtt_settings(), discovery_prefix=cfg_now.ui_settings.ha_discovery_prefix, retain=cfg_now.ui_settings.ha_discovery_retain)
+                log_store.append(vehicle.id, "Home Assistant MQTT Discovery automatisch veröffentlicht")
+        except Exception as exc:
+            log_store.append(vehicle.id, f"Home Assistant Discovery konnte nicht veröffentlicht werden: {exc}")
+        try:
+            cfg_now = store.load()
+            auto_sync = bool((vehicle.provider_config or {}).get("evcc_auto_sync") or (cfg_now.ui_settings.evcc_enabled and cfg_now.ui_settings.evcc_auto_create))
+            if auto_sync and cfg_now.ui_settings.evcc_enabled:
+                client = EvccClient(cfg_now.ui_settings.evcc_url, cfg_now.ui_settings.evcc_password or "")
+                payload_evcc = build_evcc_custom_vehicle_payload(vehicle, load_runtime_mqtt_settings())
+                result_evcc = client.upsert_vehicle(payload_evcc, str(vehicle.provider_config.get("evcc_ref") or ""))
+                ref_evcc = str(result_evcc.get("ref") or vehicle.provider_config.get("evcc_ref") or payload_evcc.get("name") or "")
+                if ref_evcc:
+                    vehicle.provider_config["evcc_ref"] = ref_evcc
+                    vehicle.provider_config["evcc_managed"] = True
+                    vehicle.provider_config["evcc_auto_sync"] = True
+                    store.upsert_vehicle(vehicle)
+                log_store.append(vehicle.id, f"EVCC automatisch synchronisiert: {result_evcc.get('action')} {ref_evcc}")
+        except Exception as exc:
+            log_store.append(vehicle.id, f"EVCC Auto-Sync fehlgeschlagen: {exc}")
         worker_manager.publish_vehicle_saved_meta(vehicle.id)
+
         worker_manager.sync_vehicle_to_forward_clients(vehicle.id)
         try:
             cards, _ = build_cards()
@@ -1264,10 +1425,23 @@ def create_app() -> FastAPI:
         vehicle = store.get_vehicle(vehicle_id)
         if not vehicle:
             raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+        cfg_before = store.load()
+        try:
+            clear_vehicle_discovery(vehicle, load_runtime_mqtt_settings(), discovery_prefix=cfg_before.ui_settings.ha_discovery_prefix)
+            log_store.append(vehicle_id, "Home Assistant Discovery entfernt")
+        except Exception as exc:
+            log_store.append(vehicle_id, f"Home Assistant Discovery konnte nicht entfernt werden: {exc}")
+        try:
+            if cfg_before.ui_settings.evcc_enabled and cfg_before.ui_settings.evcc_auto_delete and bool((vehicle.provider_config or {}).get("evcc_managed")):
+                EvccClient(cfg_before.ui_settings.evcc_url, cfg_before.ui_settings.evcc_password or "").delete_vehicle(str(vehicle.provider_config.get("evcc_ref") or ""))
+                log_store.append(vehicle_id, "EVCC Fahrzeug automatisch entfernt")
+        except Exception as exc:
+            log_store.append(vehicle_id, f"EVCC Auto-Delete fehlgeschlagen: {exc}")
         config = store.load()
         config.vehicles = [v for v in config.vehicles if v.id != vehicle_id]
         store.save(config)
         worker_manager.delete_vehicle(vehicle_id)
+
         provider_dir = Path(data_dir) / "providers" / vehicle_id
         if provider_dir.exists():
             shutil.rmtree(provider_dir, ignore_errors=True)
