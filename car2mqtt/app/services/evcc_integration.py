@@ -58,14 +58,14 @@ def _evcc_name_from_item(item: dict[str, Any], fallback: str = "") -> str:
 
 
 def _evcc_onidentify_mode(cfg: dict[str, Any]) -> str:
-    mode = str(cfg.get("evcc_onidentify_mode") or cfg.get("onidentify_mode") or "pv").strip().lower()
+    mode = str(cfg.get("evcc_onidentify_mode") or cfg.get("onidentify_mode") or "off").strip().lower()
     aliases = {
         "aus": "off", "off": "off",
         "pv": "pv",
         "min+pv": "minpv", "minpv": "minpv", "min_pv": "minpv", "min-pv": "minpv",
         "schnell": "now", "now": "now",
     }
-    return aliases.get(mode, "pv")
+    return aliases.get(mode, "off")
 
 
 def build_evcc_vehicle_name(vehicle: VehicleConfig) -> str:
@@ -124,7 +124,8 @@ def build_evcc_config_device_payload(custom_payload: dict[str, Any]) -> dict[str
 
 
 def build_evcc_custom_vehicle_payload_from_card(card: dict[str, Any], mqtt_settings: RuntimeMqttSettings, link_cfg: dict[str, Any] | None = None) -> dict[str, Any]:
-    cfg = dict(link_cfg or {})
+    cfg = dict(card.get("evcc_config") or {})
+    cfg.update(dict(link_cfg or {}))
     metrics = card.get("metrics") or {}
     if metrics.get("capacityKwh") not in (None, "") and not cfg.get("capacity_kwh"):
         cfg["capacity_kwh"] = metrics.get("capacityKwh")

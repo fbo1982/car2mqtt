@@ -361,7 +361,7 @@ select, option {
 
       <div id="editEvccVehicleSection" class="info-box dialog-narrow" style="margin-top:18px">
         <div class="eyebrow">EVCC / MQTT Fahrzeugkonfiguration</div>
-        <div id="evccRemoteConfigHint" class="muted hidden" style="margin-top:10px">Remote-Fahrzeug: Nur die EVCC ID / Ref wird lokal auf dieser car2mqtt-Instanz gespeichert. Name, Titel, Akkukapazität, Phasen, Identifiers und onIdentify kommen vom Host per MQTT.</div>
+        <div id="evccRemoteConfigHint" class="muted hidden" style="margin-top:10px">Remote-Fahrzeug: EVCC ID / Ref und onIdentify-Modus werden lokal auf dieser car2mqtt-Instanz gespeichert. Name, Titel, Akkukapazität, Phasen und Identifiers kommen vom Host per MQTT.</div>
         <div class="grid two" style="margin-top:14px">
           <div class="field"><label>EVCC ID / Ref</label><input id="editEvccRef" placeholder="z. B. db:19" /></div>
           <div class="field"><label>EVCC Name</label><input id="editEvccName" placeholder="optional" /></div>
@@ -372,7 +372,7 @@ select, option {
         </div>
         <div class="field" style="margin-top:14px"><label>onIdentify Modus</label><select id="editEvccOnIdentifyMode"><option value="off">Aus (off)</option><option value="pv">PV (pv)</option><option value="minpv">Min+PV (minpv)</option><option value="now">Schnell (now)</option></select></div>
         <div class="log-actions" style="margin-top:14px"><button id="saveEvccVehicleConfigBtn" type="button" class="ghost-btn">EVCC/MQTT-Konfiguration speichern</button></div>
-        <div class="muted" style="margin-top:10px">Die EVCC ID / Ref wird nur lokal gespeichert und nie per MQTT veröffentlicht. Name, Titel, Akkukapazität, Phasen, Identifiers und onIdentify werden bei Host-Fahrzeugen per MQTT veröffentlicht; Remote-Fahrzeuge lesen diese Werte vom Host und können nur ihre eigene EVCC ID setzen.</div>
+        <div class="muted" style="margin-top:10px">Die EVCC ID / Ref und der onIdentify-Modus werden nur lokal gespeichert und nie per MQTT veröffentlicht. Name, Titel, Akkukapazität, Phasen und Identifiers werden bei Host-Fahrzeugen per MQTT veröffentlicht; Remote-Fahrzeuge lesen diese Werte vom Host.</div>
       </div>
 
       <div class="info-box dialog-narrow" style="margin-top:18px">
@@ -626,7 +626,7 @@ function normalizeEvccOnIdentifyMode(value){
   if(mode === 'pv') return 'pv';
   if(mode === 'min+pv' || mode === 'minpv' || mode === 'min_pv' || mode === 'min-pv') return 'minpv';
   if(mode === 'schnell' || mode === 'now') return 'now';
-  return 'pv';
+  return 'off';
 }
 function evccCfgFromCardOrVehicle(obj){
   const cfg = (obj && obj.evcc_config) || (obj && obj.provider_config) || {};
@@ -640,7 +640,7 @@ function evccCfgFromCardOrVehicle(obj){
     evcc_capacity_kwh: cap || '',
     evcc_phases: cfg.evcc_phases || '',
     evcc_identifiers: Array.isArray(cfg.evcc_identifiers) ? cfg.evcc_identifiers.join(', ') : (cfg.evcc_identifiers || ''),
-    evcc_onidentify_mode: normalizeEvccOnIdentifyMode(cfg.evcc_onidentify_mode || cfg.evcc_onidentify_pv || cfg.evcc_onidentify_connected || 'pv'),
+    evcc_onidentify_mode: normalizeEvccOnIdentifyMode(cfg.evcc_onidentify_mode || cfg.evcc_onidentify_pv || cfg.evcc_onidentify_connected || 'off'),
   };
 }
 function fillEvccVehicleConfigFields(obj){
@@ -652,15 +652,15 @@ function fillEvccVehicleConfigFields(obj){
   field('editEvccCapacity').value = cfg.evcc_capacity_kwh || '';
   field('editEvccPhases').value = cfg.evcc_phases || '';
   field('editEvccIdentifiers').value = cfg.evcc_identifiers || '';
-  field('editEvccOnIdentifyMode').value = normalizeEvccOnIdentifyMode(cfg.evcc_onidentify_mode || 'pv');
+  field('editEvccOnIdentifyMode').value = normalizeEvccOnIdentifyMode(cfg.evcc_onidentify_mode || 'off');
   setEvccRemoteFieldMode(isRemote);
 }
 function setEvccRemoteFieldMode(isRemote){
-  const editableOnlyOnHost = ['editEvccName','editEvccTitle','editEvccCapacity','editEvccPhases','editEvccIdentifiers','editEvccOnIdentifyMode'];
+  const editableOnlyOnHost = ['editEvccName','editEvccTitle','editEvccCapacity','editEvccPhases','editEvccIdentifiers'];
   editableOnlyOnHost.forEach(id => { const el = field(id); if(el) el.disabled = !!isRemote; });
   if(field('editEvccRef')) field('editEvccRef').disabled = false;
   field('evccRemoteConfigHint')?.classList.toggle('hidden', !isRemote);
-  if(field('saveEvccVehicleConfigBtn')) field('saveEvccVehicleConfigBtn').textContent = isRemote ? 'EVCC-ID speichern' : 'EVCC/MQTT-Konfiguration speichern';
+  if(field('saveEvccVehicleConfigBtn')) field('saveEvccVehicleConfigBtn').textContent = isRemote ? 'Lokale EVCC-Zuordnung speichern' : 'EVCC/MQTT-Konfiguration speichern';
 }
 function collectEvccVehicleConfigPayload(){
   return {
@@ -672,7 +672,7 @@ function collectEvccVehicleConfigPayload(){
     evcc_capacity_kwh: field('editEvccCapacity')?.value?.trim() || '',
     evcc_phases: field('editEvccPhases')?.value || '',
     evcc_identifiers: field('editEvccIdentifiers')?.value?.trim() || '',
-    evcc_onidentify_mode: normalizeEvccOnIdentifyMode(field('editEvccOnIdentifyMode')?.value || 'pv'),
+    evcc_onidentify_mode: normalizeEvccOnIdentifyMode(field('editEvccOnIdentifyMode')?.value || 'off'),
   };
 }
 function setEditRemoteMode(enabled, card=null){
@@ -730,7 +730,7 @@ function getCopyConfigContext(){
   const entityBase = `car_${manufacturerPrefix}_${id.toLowerCase()}`;
   const varPrefix = `${id.toLowerCase()}_`;
   const evccCfg = evccCfgFromCardOrVehicle(current || {});
-  const onIdentifyMode = normalizeEvccOnIdentifyMode(field('editEvccOnIdentifyMode')?.value || evccCfg.evcc_onidentify_mode || 'pv');
+  const onIdentifyMode = normalizeEvccOnIdentifyMode(field('editEvccOnIdentifyMode')?.value || evccCfg.evcc_onidentify_mode || 'off');
   return { manufacturer, manufacturerPrefix, id, rawPlate, title, current, capacity, topicBase, entityBase, varPrefix, onIdentifyMode };
 }
 function getHelperCards(){

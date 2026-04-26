@@ -118,7 +118,7 @@ class EvccVehicleConfigPayload(BaseModel):
     evcc_onidentify_pv: str = ""
     evcc_onidentify_minpv: str = ""
     evcc_onidentify_now: str = ""
-    evcc_onidentify_mode: str = "pv"
+    evcc_onidentify_mode: str = "off"
 
 
 EVCC_PROVIDER_CONFIG_KEYS = {
@@ -144,7 +144,7 @@ def _normalize_evcc_identifier_list(value: Any) -> list[str]:
     return result
 
 
-def _normalize_evcc_onidentify_mode(value: Any, fallback: str = "pv") -> str:
+def _normalize_evcc_onidentify_mode(value: Any, fallback: str = "off") -> str:
     mode = str(value or "").strip().lower()
     aliases = {
         "aus": "off", "off": "off",
@@ -154,7 +154,7 @@ def _normalize_evcc_onidentify_mode(value: Any, fallback: str = "pv") -> str:
     }
     if mode in aliases:
         return aliases[mode]
-    return fallback if fallback in {"off", "pv", "minpv", "now"} else "pv"
+    return fallback if fallback in {"off", "pv", "minpv", "now"} else "off"
 
 
 def _evcc_cfg_from_payload(payload: EvccVehicleConfigPayload) -> dict[str, Any]:
@@ -168,7 +168,7 @@ def _evcc_cfg_from_payload(payload: EvccVehicleConfigPayload) -> dict[str, Any]:
         "capacity_kwh": str(payload.evcc_capacity_kwh or "").strip(),
         "evcc_phases": str(payload.evcc_phases or "").strip(),
         "evcc_identifiers": ", ".join(_normalize_evcc_identifier_list(payload.evcc_identifiers)),
-        "evcc_onidentify_mode": _normalize_evcc_onidentify_mode(payload.evcc_onidentify_mode or payload.evcc_onidentify_pv or "pv"),
+        "evcc_onidentify_mode": _normalize_evcc_onidentify_mode(payload.evcc_onidentify_mode or payload.evcc_onidentify_pv or "off"),
         "evcc_onidentify_off": "off",
         "evcc_onidentify_pv": "pv",
         "evcc_onidentify_minpv": "minpv",
@@ -190,7 +190,7 @@ def _evcc_cfg_from_provider(provider_config: dict[str, Any] | None) -> dict[str,
         "capacity_kwh": str(cap or "").strip(),
         "evcc_phases": str(cfg.get("evcc_phases") or "").strip(),
         "evcc_identifiers": ", ".join(_normalize_evcc_identifier_list(cfg.get("evcc_identifiers") or "")),
-        "evcc_onidentify_mode": _normalize_evcc_onidentify_mode(cfg.get("evcc_onidentify_mode") or cfg.get("evcc_onidentify_pv") or cfg.get("evcc_onidentify_connected") or "pv"),
+        "evcc_onidentify_mode": _normalize_evcc_onidentify_mode(cfg.get("evcc_onidentify_mode") or cfg.get("evcc_onidentify_pv") or cfg.get("evcc_onidentify_connected") or "off"),
         "evcc_onidentify_off": "off",
         "evcc_onidentify_pv": "pv",
         "evcc_onidentify_minpv": "minpv",
@@ -577,8 +577,6 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
                     entry['evcc']['evcc_phases'] = str(parsed or '')
                 elif evcc_key in {'identifiers', 'identifiers_csv'}:
                     entry['evcc']['evcc_identifiers'] = parsed
-                elif evcc_key in {'onIdentify/mode', 'onidentify/mode'}:
-                    entry['evcc']['evcc_onidentify_mode'] = str(parsed or '')
             elif '/' not in key:
                 entry['metrics'][key] = parsed
 
@@ -702,7 +700,6 @@ def _evcc_mqtt_values(provider_config: dict[str, Any] | None) -> dict[str, Any]:
         "evcc/phases": cfg.get("evcc_phases") or "",
         "evcc/identifiers": identifiers,
         "evcc/identifiers_csv": ",".join(identifiers),
-        "evcc/onIdentify/mode": cfg.get("evcc_onidentify_mode") or "pv",
     }
 
 
@@ -941,7 +938,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.97",
+                "version": "1.1.99",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -1194,17 +1191,16 @@ def create_app() -> FastAPI:
             remote_card = _find_remote_card(vehicle_id)
             if not remote_card:
                 raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
-            link_cfg = _remote_link_cfg(vehicle_id)
-            # Bei Remote-Fahrzeugen darf nur die lokale EVCC-ID gepflegt werden.
-            # Die fachliche EVCC/MQTT-Konfiguration wird ausschließlich am Host editiert
-            # und von Remote-Instanzen über MQTT gelesen.
+            # Bei Remote-Fahrzeugen werden EVCC-ID und onIdentify-Modus lokal gepflegt.
+            # Name/Titel/Kapazität/Phasen/Identifiers kommen vom Host per MQTT.
             link_cfg = {
                 "evcc_ref": str(cfg_values.get("evcc_ref") or link_cfg.get("evcc_ref") or "").strip(),
                 "evcc_managed": bool(cfg_values.get("evcc_managed", link_cfg.get("evcc_managed", True))),
                 "evcc_auto_sync": bool(cfg_values.get("evcc_auto_sync", link_cfg.get("evcc_auto_sync", True))),
+                "evcc_onidentify_mode": _normalize_evcc_onidentify_mode(cfg_values.get("evcc_onidentify_mode") or link_cfg.get("evcc_onidentify_mode") or "off"),
             }
+            log_store.append(vehicle_id, "Lokale EVCC Remote-Zuordnung gespeichert. Fahrzeugwerte werden vom Host per MQTT gelesen.")
             _save_remote_link_cfg(vehicle_id, link_cfg)
-            log_store.append(vehicle_id, "EVCC Remote-ID gespeichert. Fahrzeugwerte werden vom Host per MQTT gelesen.")
             return {"status": "ok", "vehicle_id": vehicle_id, "provider_config": link_cfg, "published": 0, "remote": True}
         vehicle.provider_config.update(cfg_values)
         store.upsert_vehicle(vehicle)
