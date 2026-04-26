@@ -40,7 +40,7 @@ from app.providers.gwm_config import (
 )
 from app.services.worker_manager import WorkerManager
 from app.services.ha_discovery import publish_all_discovery, publish_vehicle_discovery, clear_vehicle_discovery
-from app.services.evcc_integration import EvccClient, build_evcc_custom_vehicle_payload
+from app.services.evcc_integration import EvccClient, build_evcc_custom_vehicle_payload, build_evcc_custom_vehicle_payload_from_card
 
 logger = logging.getLogger("car2mqtt.server")
 
@@ -776,7 +776,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.90",
+                "version": "1.1.91",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -919,9 +919,38 @@ def create_app() -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+    def _find_remote_card(vehicle_id: str):
+        cards, _ = build_cards()
+        return next((c for c in cards if str(c.get("id")) == str(vehicle_id) and c.get("remote")), None)
+
+    def _remote_link_cfg(vehicle_id: str) -> dict:
+        cfg = store.load()
+        links = getattr(cfg.ui_settings, "evcc_vehicle_links", {}) or {}
+        return dict(links.get(str(vehicle_id), {}) or {})
+
+    def _save_remote_link_cfg(vehicle_id: str, link_cfg: dict) -> None:
+        cfg = store.load()
+        links = dict(getattr(cfg.ui_settings, "evcc_vehicle_links", {}) or {})
+        links[str(vehicle_id)] = dict(link_cfg or {})
+        cfg.ui_settings.evcc_vehicle_links = links
+        store.save(cfg)
+
     @app.post("/api/vehicles/{vehicle_id}/ha-discovery/publish")
     async def publish_ha_discovery_vehicle(vehicle_id: str):
         vehicle = store.get_vehicle(vehicle_id)
+        remote_card = None
+        if not vehicle:
+            remote_card = _find_remote_card(vehicle_id)
+            if remote_card:
+                vehicle = VehicleConfig(
+                    id=str(remote_card.get("id") or vehicle_id),
+                    label=str(remote_card.get("label") or remote_card.get("license_plate") or "Remote Fahrzeug"),
+                    manufacturer=str(remote_card.get("manufacturer") or "").lower(),
+                    license_plate=str(remote_card.get("license_plate") or ""),
+                    enabled=True,
+                    provider_config={"model": "Remote Vehicle"},
+                    device_tracker_enabled=bool(remote_card.get("device_tracker_enabled", False)),
+                )
         if not vehicle:
             raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
         cfg = store.load()
@@ -964,7 +993,22 @@ def create_app() -> FastAPI:
     async def evcc_link_vehicle(vehicle_id: str, payload: EvccLinkPayload):
         vehicle = store.get_vehicle(vehicle_id)
         if not vehicle:
-            raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+            remote_card = _find_remote_card(vehicle_id)
+            if not remote_card:
+                raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+            link_cfg = _remote_link_cfg(vehicle_id)
+            link_cfg["evcc_ref"] = str(payload.evcc_ref or "").strip()
+            link_cfg["evcc_managed"] = bool(payload.evcc_managed)
+            link_cfg["evcc_auto_sync"] = bool(payload.evcc_auto_sync)
+            if payload.evcc_name:
+                link_cfg["evcc_name"] = str(payload.evcc_name).strip()
+            if payload.evcc_title:
+                link_cfg["evcc_title"] = str(payload.evcc_title).strip()
+            if payload.evcc_capacity_kwh:
+                link_cfg["capacity_kwh"] = str(payload.evcc_capacity_kwh).strip()
+            _save_remote_link_cfg(vehicle_id, link_cfg)
+            log_store.append(vehicle_id, f"EVCC Remote-Verknüpfung gespeichert: {link_cfg.get('evcc_ref') or 'neu'}")
+            return {"status": "ok", "vehicle_id": vehicle_id, "provider_config": link_cfg, "remote": True}
         vehicle.provider_config["evcc_ref"] = str(payload.evcc_ref or "").strip()
         vehicle.provider_config["evcc_managed"] = bool(payload.evcc_managed)
         vehicle.provider_config["evcc_auto_sync"] = bool(payload.evcc_auto_sync)
@@ -981,10 +1025,26 @@ def create_app() -> FastAPI:
     @app.post("/api/vehicles/{vehicle_id}/evcc/sync")
     async def evcc_sync_vehicle(vehicle_id: str):
         vehicle = store.get_vehicle(vehicle_id)
+        remote_card = None
+        link_cfg = {}
         if not vehicle:
-            raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+            remote_card = _find_remote_card(vehicle_id)
+            if not remote_card:
+                raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+            link_cfg = _remote_link_cfg(vehicle_id)
         try:
             client = _evcc_client_from_settings()
+            if remote_card:
+                payload = build_evcc_custom_vehicle_payload_from_card(remote_card, load_runtime_mqtt_settings(), link_cfg)
+                result = client.upsert_vehicle(payload, str(link_cfg.get("evcc_ref") or ""))
+                ref = str(result.get("ref") or link_cfg.get("evcc_ref") or payload.get("name") or "")
+                if ref:
+                    link_cfg["evcc_ref"] = ref
+                link_cfg["evcc_managed"] = True
+                link_cfg["evcc_auto_sync"] = True
+                _save_remote_link_cfg(vehicle_id, link_cfg)
+                log_store.append(vehicle_id, f"EVCC Remote-Sync erfolgreich: {result.get('action')} {ref}")
+                return {"status": "ok", "result": result, "payload": payload, "remote": True}
             payload = build_evcc_custom_vehicle_payload(vehicle, load_runtime_mqtt_settings())
             result = client.upsert_vehicle(payload, str(vehicle.provider_config.get("evcc_ref") or ""))
             ref = str(result.get("ref") or vehicle.provider_config.get("evcc_ref") or payload.get("name") or "")
@@ -1002,10 +1062,22 @@ def create_app() -> FastAPI:
     @app.delete("/api/vehicles/{vehicle_id}/evcc")
     async def evcc_delete_vehicle(vehicle_id: str):
         vehicle = store.get_vehicle(vehicle_id)
+        remote_card = None
+        link_cfg = {}
         if not vehicle:
-            raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+            remote_card = _find_remote_card(vehicle_id)
+            if not remote_card:
+                raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+            link_cfg = _remote_link_cfg(vehicle_id)
         try:
             client = _evcc_client_from_settings()
+            if remote_card:
+                result = client.delete_vehicle(str(link_cfg.get("evcc_ref") or ""))
+                link_cfg.pop("evcc_ref", None)
+                link_cfg["evcc_managed"] = False
+                _save_remote_link_cfg(vehicle_id, link_cfg)
+                log_store.append(vehicle_id, f"EVCC Remote-Fahrzeug entfernt: {result}")
+                return {"status": "ok", "result": result, "remote": True}
             result = client.delete_vehicle(str(vehicle.provider_config.get("evcc_ref") or ""))
             vehicle.provider_config.pop("evcc_ref", None)
             vehicle.provider_config["evcc_managed"] = False

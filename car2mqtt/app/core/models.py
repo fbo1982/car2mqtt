@@ -58,6 +58,7 @@ class UiSettings(BaseModel):
     evcc_auto_create: bool = False
     evcc_auto_update: bool = True
     evcc_auto_delete: bool = False
+    evcc_vehicle_links: Dict[str, Any] = Field(default_factory=dict)
 
 
 class MqttForwardClientConfig(BaseModel):

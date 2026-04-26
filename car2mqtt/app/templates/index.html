@@ -1363,7 +1363,19 @@ function toggleEditGwmOptions(){
 function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity','gwmVerificationCode','acconiaAccount','acconiaPassword','acconiaApiKey','acconiaCapacity','vagAccount','vagPassword','vagPin','vagCapacity'].forEach(id=>field(id).value=''); field('gwmSourceTopicBase').value='GWM'; field('acconiaBatteryCount').value='2'; field('acconiaPollInterval').value='60'; field('vagApiMode').value='brand_app'; field('vagCountry').value='DE'; field('vagPowertrain').value='unknown'; field('vagPollInterval').value='60'; field('bmwRegion').value='EU'; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('gwmPollingEnabled').checked=true; field('gwmAutoReconnect').checked=true; field('gwmDelayedRetryEnabled').checked=true; field('gwmRetryDelayMinutes').value='55'; field('gwmFallbackOnSilence').checked=true; field('createDeviceTrackerEnabled').checked=false; toggleCreateGwmOptions(); field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; setCreateManufacturerLayout(null); }
 function openWizard(){ resetCreate(); field('wizardDialog').showModal(); }
 async function loadDashboard(){ const res = await fetch('./api/dashboard'); const data = await res.json(); cards = data.vehicles || []; renderCards(); }
-async function postJson(url,payload,method='POST'){ const res = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})}); const text = await res.text(); let data={}; try{ data = text ? JSON.parse(text) : {}; }catch{ data = { detail: text }; } if(!res.ok) throw new Error(data.detail || 'Unbekannter Fehler'); return data; }
+function errorTextFromResponsePayload(data){
+  const detail = data && Object.prototype.hasOwnProperty.call(data, 'detail') ? data.detail : data;
+  if(typeof detail === 'string') return detail;
+  if(Array.isArray(detail)) return detail.map(x => (typeof x === 'string' ? x : (x && x.msg) ? x.msg : JSON.stringify(x))).join('
+');
+  if(detail && typeof detail === 'object'){
+    if(detail.message) return String(detail.message);
+    if(detail.error) return String(detail.error);
+    try{ return JSON.stringify(detail, null, 2); }catch{ return String(detail); }
+  }
+  return 'Unbekannter Fehler';
+}
+async function postJson(url,payload,method='POST'){ const res = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})}); const text = await res.text(); let data={}; try{ data = text ? JSON.parse(text) : {}; }catch{ data = { detail: text }; } if(!res.ok) throw new Error(errorTextFromResponsePayload(data)); return data; }
 async function fetchText(url){ const res = await fetch(url); const text = await res.text(); if(!res.ok) throw new Error(text || 'Unbekannter Fehler'); return text; }
 
 field('closeWizardBtn').onclick = field('cancelWizardBtn').onclick = () => field('wizardDialog').close();
@@ -1446,7 +1458,7 @@ async function testEvccConnection(){
 }
 async function loadEvccVehiclesStatus(){
   try{
-    const res = await fetch('./api/evcc/vehicles'); const data = await res.json(); if(!res.ok) throw new Error(data.detail || JSON.stringify(data));
+    const res = await fetch('./api/evcc/vehicles'); const data = await res.json(); if(!res.ok) throw new Error(errorTextFromResponsePayload(data));
     const names = (data.vehicles || []).map(v => `${v.title || v.name || v.ref} (${v.ref || v.name || '-'})`).join(', ');
     const el = field('settingsEvccStatus'); if(el) el.textContent = names ? `EVCC Fahrzeuge: ${names}` : 'Keine EVCC Fahrzeuge gefunden.';
   }catch(err){ const el = field('settingsEvccStatus'); if(el) el.textContent = err.message || 'EVCC Fahrzeuge konnten nicht geladen werden.'; }
@@ -1470,7 +1482,7 @@ async function linkCurrentVehicleToEvcc(){
   if(!editState.vehicleId) return;
   let options = [];
   try{ const res = await fetch('./api/evcc/vehicles'); const data = await res.json(); if(res.ok) options = data.vehicles || []; }catch(err){}
-  const hint = options.length ? '\n\nGefundene EVCC Fahrzeuge:\n' + options.map(v => `${v.ref || v.name || '-'} = ${v.title || v.name || ''}`).join('\n') : '';
+  const hint = options.length ? '\n\nGefundene EVCC Fahrzeuge:\n' + options.map(v => `${v.ref || v.name || '-'} = ${v.title || v.name || ''}`).join('\n') : '\n\nKeine bestehenden EVCC-Fahrzeuge per API gefunden. Du kannst trotzdem leer lassen, um beim Sync neu anzulegen.';
   const ref = prompt('EVCC Fahrzeug-ID/Ref eintragen, z. B. db:1 oder bestehender name. Leer = neues car2mqtt-Fahrzeug beim Sync anlegen.' + hint, '');
   if(ref === null) return;
   const card = getCurrentEditCard();
@@ -1707,7 +1719,7 @@ async function runOraTestMap(){
   try{
     const res = await fetch(`./api/vehicles/${editState.vehicleId}/gwm/test-map`, {method:'POST'});
     const data = await res.json();
-    if(!res.ok) throw new Error(data.detail || JSON.stringify(data));
+    if(!res.ok) throw new Error(errorTextFromResponsePayload(data));
     await loadDashboard();
     await refreshVehicleLogs();
     alert(`Test-Mapping abgeschlossen. Verarbeitete Nachrichten: ${data.processed}`);
