@@ -7,6 +7,7 @@ from app.providers.acconia_provider import AcconiaProvider
 from app.providers.vag_provider import VagProvider, VagBrandProvider
 from app.providers.hyundai_provider import HyundaiProvider
 from app.providers.mg_provider import MgProvider
+from app.providers.generic_brand_provider import GenericBrandProvider
 
 
 class ProviderRegistry:
@@ -17,12 +18,20 @@ class ProviderRegistry:
             "acconia": AcconiaProvider(),
             "audi": VagBrandProvider("audi"),
             "bmw": BmwProvider(),
+            "citroen": GenericBrandProvider("citroen"),
             "cupra": VagBrandProvider("cupra"),
             "gwm": GwmProvider(),
             "hyundai": HyundaiProvider(),
+            "kia": GenericBrandProvider("kia"),
+            "mercedes": GenericBrandProvider("mercedes"),
             "mg": MgProvider(),
+            "nissan": GenericBrandProvider("nissan"),
+            "opel": GenericBrandProvider("opel"),
+            "peugeot": GenericBrandProvider("peugeot"),
+            "renault": GenericBrandProvider("renault"),
             "seat": VagBrandProvider("seat"),
             "skoda": VagBrandProvider("skoda"),
+            "toyota": GenericBrandProvider("toyota"),
             "vw": VagBrandProvider("vw"),
             "vwcv": VagBrandProvider("vwcv"),
             # Kompatibilität für Fahrzeuge aus v1.1.82; wird nicht mehr in der UI angeboten.

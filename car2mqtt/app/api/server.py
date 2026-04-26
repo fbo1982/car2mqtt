@@ -443,7 +443,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
         plate = ''.join(ch for ch in parts[2].upper().strip() if ch.isalnum())
         section = parts[3]
         key = '/'.join(parts[4:])
-        if manufacturer not in {'bmw', 'gwm', 'acconia', 'hyundai', 'mg', 'vag', 'vw', 'vwcv', 'audi', 'skoda', 'seat', 'cupra'} or not plate:
+        if manufacturer not in {'bmw', 'gwm', 'acconia', 'hyundai', 'mg', 'citroen', 'kia', 'mercedes', 'nissan', 'opel', 'peugeot', 'renault', 'toyota', 'vag', 'vw', 'vwcv', 'audi', 'skoda', 'seat', 'cupra'} or not plate:
             return
         entry = grouped.setdefault((manufacturer, plate), {'manufacturer': manufacturer, 'license_plate': plate, 'meta': {}, 'metrics': {}})
         payload = msg.payload.decode('utf-8', errors='ignore')
@@ -757,7 +757,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.87",
+                "version": "1.1.88",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -1079,7 +1079,7 @@ def create_app() -> FastAPI:
             vehicle.provider_state.auth_message = "Acconia/Silence API vorbereitet"
             log_store.append(vehicle.id, "Acconia/Silence API-Konfiguration gespeichert")
 
-        if payload.manufacturer in {"hyundai", "mg"}:
+        if payload.manufacturer in {"hyundai", "mg", "citroen", "kia", "mercedes", "nissan", "opel", "peugeot", "renault", "toyota"}:
             vehicle.provider_config["license_plate"] = vehicle.license_plate
             vehicle.provider_config["vehicle_id"] = _normalize_vehicle_id(vehicle.license_plate)
             vehicle.provider_config["brand"] = payload.manufacturer
@@ -1132,7 +1132,7 @@ def create_app() -> FastAPI:
             else:
                 log_store.append(vehicle.id, "Acconia/Silence Fahrzeug gespeichert - kein automatischer Start")
                 worker_manager.publish_vehicle_saved_meta(vehicle.id)
-        if payload.manufacturer in {"hyundai", "mg"}:
+        if payload.manufacturer in {"hyundai", "mg", "citroen", "kia", "mercedes", "nissan", "opel", "peugeot", "renault", "toyota"}:
             log_store.append(vehicle.id, f"{payload.manufacturer.upper()} Fahrzeug gespeichert - noch kein Live-Login in dieser Grundversion")
             worker_manager.publish_vehicle_saved_meta(vehicle.id)
         if payload.manufacturer in {"vag", "vw", "vwcv", "audi", "skoda", "seat", "cupra"}:
