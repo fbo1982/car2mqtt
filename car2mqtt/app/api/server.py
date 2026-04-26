@@ -558,12 +558,29 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
         key = '/'.join(parts[4:])
         if manufacturer not in {'bmw', 'gwm', 'acconia', 'byd', 'citroen', 'hyundai', 'kia', 'lucid', 'mercedes', 'mg', 'nissan', 'opel', 'peugeot', 'renault', 'tesla', 'toyota', 'volvo', 'vag', 'vw', 'vwcv', 'audi', 'skoda', 'seat', 'cupra'} or not plate:
             return
-        entry = grouped.setdefault((manufacturer, plate), {'manufacturer': manufacturer, 'license_plate': plate, 'meta': {}, 'metrics': {}})
+        entry = grouped.setdefault((manufacturer, plate), {'manufacturer': manufacturer, 'license_plate': plate, 'meta': {}, 'metrics': {}, 'evcc': {}})
         payload = msg.payload.decode('utf-8', errors='ignore')
         if section == '_meta':
             entry['meta'][key] = payload
-        elif section == 'mapped' and key and '/' not in key:
-            entry['metrics'][key] = _parse_mqtt_scalar(payload)
+        elif section == 'mapped' and key:
+            parsed = _parse_mqtt_scalar(payload)
+            if key.startswith('evcc/'):
+                evcc_key = key[5:]
+                if evcc_key == 'name':
+                    entry['evcc']['evcc_name'] = str(parsed or '')
+                elif evcc_key == 'title':
+                    entry['evcc']['evcc_title'] = str(parsed or '')
+                elif evcc_key in {'capacity_kwh', 'capacityKwh'}:
+                    entry['evcc']['evcc_capacity_kwh'] = str(parsed or '')
+                    entry['evcc']['capacity_kwh'] = str(parsed or '')
+                elif evcc_key == 'phases':
+                    entry['evcc']['evcc_phases'] = str(parsed or '')
+                elif evcc_key in {'identifiers', 'identifiers_csv'}:
+                    entry['evcc']['evcc_identifiers'] = parsed
+                elif evcc_key in {'onIdentify/mode', 'onidentify/mode'}:
+                    entry['evcc']['evcc_onidentify_mode'] = str(parsed or '')
+            elif '/' not in key:
+                entry['metrics'][key] = parsed
 
     client = mqtt.Client(client_id=f"car2mqtt-remote-{int(time.time()*1000)%100000}")
     if getattr(mqtt_settings, 'username', ''):
@@ -640,7 +657,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
             'source_topic_base': '',
             'remote': True,
             'remote_server_name': server_name,
-            'evcc_config': {},
+            'evcc_config': _evcc_cfg_from_provider(payload.get('evcc') or {}),
         })
     cards.sort(key=lambda c: (str(c.get('label','')).lower(), str(c.get('license_plate','')).lower(), str(c.get('remote_server_name','')).lower()))
     return cards
@@ -675,7 +692,13 @@ def _remote_vehicle_payload_from_card(card: dict[str, Any]) -> dict[str, Any]:
 def _evcc_mqtt_values(provider_config: dict[str, Any] | None) -> dict[str, Any]:
     cfg = _evcc_cfg_from_provider(provider_config or {})
     identifiers = _normalize_evcc_identifier_list(cfg.get("evcc_identifiers") or "")
+    # Wichtig: evcc_ref / EVCC-ID wird absichtlich NICHT per MQTT veröffentlicht.
+    # Die EVCC-ID ist eine lokale Zuordnung je car2mqtt-Instanz. Remote-Instanzen
+    # lesen nur die fachliche Fahrzeugkonfiguration über MQTT und pflegen ihre eigene EVCC-ID.
     return {
+        "evcc/name": cfg.get("evcc_name") or "",
+        "evcc/title": cfg.get("evcc_title") or "",
+        "evcc/capacity_kwh": cfg.get("evcc_capacity_kwh") or cfg.get("capacity_kwh") or "",
         "evcc/phases": cfg.get("evcc_phases") or "",
         "evcc/identifiers": identifiers,
         "evcc/identifiers_csv": ",".join(identifiers),
@@ -879,7 +902,14 @@ def create_app() -> FastAPI:
         for card in cards:
             card['device_tracker_enabled'] = _card_device_tracker_enabled(card, config)
             if card.get('remote'):
-                card['evcc_config'] = _evcc_cfg_from_provider(remote_links.get(str(card.get('id') or ''), {}) or {})
+                mqtt_evcc_cfg = _evcc_cfg_from_provider(card.get('evcc_config') or {})
+                local_link_cfg = _evcc_cfg_from_provider(remote_links.get(str(card.get('id') or ''), {}) or {})
+                # Die EVCC-ID/Ref ist eine lokale Zuordnung je car2mqtt-Instanz und wird nicht per MQTT geteilt.
+                # Alle fachlichen EVCC-Fahrzeugwerte kommen bei Remote-Fahrzeugen vom Host über MQTT.
+                mqtt_evcc_cfg['evcc_ref'] = local_link_cfg.get('evcc_ref') or ''
+                mqtt_evcc_cfg['evcc_managed'] = local_link_cfg.get('evcc_managed', True)
+                mqtt_evcc_cfg['evcc_auto_sync'] = local_link_cfg.get('evcc_auto_sync', True)
+                card['evcc_config'] = mqtt_evcc_cfg
         cards.sort(key=lambda c: (str(c.get('label','')).lower(), str(c.get('license_plate','')).lower(), 1 if c.get('remote') else 0))
         return cards, mqtt_settings.model_dump(mode="json")
 
@@ -1132,15 +1162,13 @@ def create_app() -> FastAPI:
             if not remote_card:
                 raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
             link_cfg = _remote_link_cfg(vehicle_id)
-            link_cfg["evcc_ref"] = str(payload.evcc_ref or "").strip()
-            link_cfg["evcc_managed"] = bool(payload.evcc_managed)
-            link_cfg["evcc_auto_sync"] = bool(payload.evcc_auto_sync)
-            if payload.evcc_name:
-                link_cfg["evcc_name"] = str(payload.evcc_name).strip()
-            if payload.evcc_title:
-                link_cfg["evcc_title"] = str(payload.evcc_title).strip()
-            if payload.evcc_capacity_kwh:
-                link_cfg["capacity_kwh"] = str(payload.evcc_capacity_kwh).strip()
+            # Remote-Fahrzeuge speichern lokal nur ihre eigene EVCC-ID/Ref.
+            # Name/Titel/Kapazität/Phasen/Identifiers/onIdentify kommen vom Host per MQTT.
+            link_cfg = {
+                "evcc_ref": str(payload.evcc_ref or "").strip(),
+                "evcc_managed": bool(payload.evcc_managed),
+                "evcc_auto_sync": bool(payload.evcc_auto_sync),
+            }
             _save_remote_link_cfg(vehicle_id, link_cfg)
             log_store.append(vehicle_id, f"EVCC Remote-Verknüpfung gespeichert: {link_cfg.get('evcc_ref') or 'neu'}")
             return {"status": "ok", "vehicle_id": vehicle_id, "provider_config": link_cfg, "remote": True}
@@ -1167,11 +1195,17 @@ def create_app() -> FastAPI:
             if not remote_card:
                 raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
             link_cfg = _remote_link_cfg(vehicle_id)
-            link_cfg.update(cfg_values)
+            # Bei Remote-Fahrzeugen darf nur die lokale EVCC-ID gepflegt werden.
+            # Die fachliche EVCC/MQTT-Konfiguration wird ausschließlich am Host editiert
+            # und von Remote-Instanzen über MQTT gelesen.
+            link_cfg = {
+                "evcc_ref": str(cfg_values.get("evcc_ref") or link_cfg.get("evcc_ref") or "").strip(),
+                "evcc_managed": bool(cfg_values.get("evcc_managed", link_cfg.get("evcc_managed", True))),
+                "evcc_auto_sync": bool(cfg_values.get("evcc_auto_sync", link_cfg.get("evcc_auto_sync", True))),
+            }
             _save_remote_link_cfg(vehicle_id, link_cfg)
-            published = _publish_evcc_vehicle_config_to_mqtt(remote_card, load_runtime_mqtt_settings(), link_cfg)
-            log_store.append(vehicle_id, f"EVCC Remote-Konfiguration gespeichert und MQTT veröffentlicht: {published} Topics")
-            return {"status": "ok", "vehicle_id": vehicle_id, "provider_config": link_cfg, "published": published, "remote": True}
+            log_store.append(vehicle_id, "EVCC Remote-ID gespeichert. Fahrzeugwerte werden vom Host per MQTT gelesen.")
+            return {"status": "ok", "vehicle_id": vehicle_id, "provider_config": link_cfg, "published": 0, "remote": True}
         vehicle.provider_config.update(cfg_values)
         store.upsert_vehicle(vehicle)
         published = _publish_evcc_vehicle_config_to_mqtt(vehicle, load_runtime_mqtt_settings())

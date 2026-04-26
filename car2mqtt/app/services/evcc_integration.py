@@ -96,6 +96,17 @@ def build_evcc_custom_vehicle_payload(vehicle: VehicleConfig, mqtt_settings: Run
         "limitsoc": {"source": "mqtt", "topic": f"{root}/limitSoc"},
         "onIdentify": {"mode": _evcc_onidentify_mode(cfg)},
     }
+    phases = str(cfg.get("evcc_phases") or cfg.get("phases") or "").strip()
+    if phases:
+        try:
+            payload["phases"] = int(phases)
+        except Exception:
+            payload["phases"] = phases
+    identifiers_raw = cfg.get("evcc_identifiers") or cfg.get("identifiers") or ""
+    identifiers = identifiers_raw if isinstance(identifiers_raw, list) else re.split(r"[\n,;]+", str(identifiers_raw or ""))
+    identifiers = [str(x).strip() for x in identifiers if str(x).strip()]
+    if identifiers:
+        payload["identifiers"] = identifiers
     return payload
 
 

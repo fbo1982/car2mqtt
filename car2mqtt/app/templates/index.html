@@ -361,6 +361,7 @@ select, option {
 
       <div id="editEvccVehicleSection" class="info-box dialog-narrow" style="margin-top:18px">
         <div class="eyebrow">EVCC / MQTT Fahrzeugkonfiguration</div>
+        <div id="evccRemoteConfigHint" class="muted hidden" style="margin-top:10px">Remote-Fahrzeug: Nur die EVCC ID / Ref wird lokal auf dieser car2mqtt-Instanz gespeichert. Name, Titel, Akkukapazität, Phasen, Identifiers und onIdentify kommen vom Host per MQTT.</div>
         <div class="grid two" style="margin-top:14px">
           <div class="field"><label>EVCC ID / Ref</label><input id="editEvccRef" placeholder="z. B. db:19" /></div>
           <div class="field"><label>EVCC Name</label><input id="editEvccName" placeholder="optional" /></div>
@@ -371,7 +372,7 @@ select, option {
         </div>
         <div class="field" style="margin-top:14px"><label>onIdentify Modus</label><select id="editEvccOnIdentifyMode"><option value="off">Aus (off)</option><option value="pv">PV (pv)</option><option value="minpv">Min+PV (minpv)</option><option value="now">Schnell (now)</option></select></div>
         <div class="log-actions" style="margin-top:14px"><button id="saveEvccVehicleConfigBtn" type="button" class="ghost-btn">EVCC/MQTT-Konfiguration speichern</button></div>
-        <div class="muted" style="margin-top:10px">Pro Fahrzeug darf genau ein EVCC-onIdentify-Lademodus aktiv sein. Der gewählte Modus wird unter <code>.../mapped/evcc/onIdentify/mode</code> per MQTT veröffentlicht und beim EVCC-Sync als <code>onIdentify.mode</code> gesetzt. Beim EVCC-Sync wird bei fehlgeschlagenem Update kein Ersatzfahrzeug mehr angelegt.</div>
+        <div class="muted" style="margin-top:10px">Die EVCC ID / Ref wird nur lokal gespeichert und nie per MQTT veröffentlicht. Name, Titel, Akkukapazität, Phasen, Identifiers und onIdentify werden bei Host-Fahrzeugen per MQTT veröffentlicht; Remote-Fahrzeuge lesen diese Werte vom Host und können nur ihre eigene EVCC ID setzen.</div>
       </div>
 
       <div class="info-box dialog-narrow" style="margin-top:18px">
@@ -644,6 +645,7 @@ function evccCfgFromCardOrVehicle(obj){
 }
 function fillEvccVehicleConfigFields(obj){
   const cfg = evccCfgFromCardOrVehicle(obj || {});
+  const isRemote = !!(obj && obj.remote);
   field('editEvccRef').value = cfg.evcc_ref || '';
   field('editEvccName').value = cfg.evcc_name || '';
   field('editEvccTitle').value = cfg.evcc_title || '';
@@ -651,6 +653,14 @@ function fillEvccVehicleConfigFields(obj){
   field('editEvccPhases').value = cfg.evcc_phases || '';
   field('editEvccIdentifiers').value = cfg.evcc_identifiers || '';
   field('editEvccOnIdentifyMode').value = normalizeEvccOnIdentifyMode(cfg.evcc_onidentify_mode || 'pv');
+  setEvccRemoteFieldMode(isRemote);
+}
+function setEvccRemoteFieldMode(isRemote){
+  const editableOnlyOnHost = ['editEvccName','editEvccTitle','editEvccCapacity','editEvccPhases','editEvccIdentifiers','editEvccOnIdentifyMode'];
+  editableOnlyOnHost.forEach(id => { const el = field(id); if(el) el.disabled = !!isRemote; });
+  if(field('editEvccRef')) field('editEvccRef').disabled = false;
+  field('evccRemoteConfigHint')?.classList.toggle('hidden', !isRemote);
+  if(field('saveEvccVehicleConfigBtn')) field('saveEvccVehicleConfigBtn').textContent = isRemote ? 'EVCC-ID speichern' : 'EVCC/MQTT-Konfiguration speichern';
 }
 function collectEvccVehicleConfigPayload(){
   return {
@@ -1541,7 +1551,11 @@ async function saveCurrentEvccVehicleConfig(){
   if(!editState.vehicleId) return;
   try{
     const data = await postJson(`./api/vehicles/${editState.vehicleId}/evcc/config`, collectEvccVehicleConfigPayload());
-    alert(`EVCC/MQTT-Konfiguration gespeichert. MQTT Topics veröffentlicht: ${data.published || 0}`);
+    if(data.remote){
+      alert('EVCC-ID gespeichert. Die restliche EVCC/MQTT-Konfiguration wird vom Host per MQTT gelesen.');
+    }else{
+      alert(`EVCC/MQTT-Konfiguration gespeichert. MQTT Topics veröffentlicht: ${data.published || 0}`);
+    }
     await loadDashboard();
     await refreshVehicleLogs();
   }catch(err){ alert(err.message || 'EVCC/MQTT-Konfiguration konnte nicht gespeichert werden.'); }
@@ -1557,7 +1571,12 @@ async function linkCurrentVehicleToEvcc(){
   const card = getCurrentEditCard();
   try{
     field('editEvccRef').value = ref.trim();
-    await postJson(`./api/vehicles/${editState.vehicleId}/evcc/link`, { evcc_ref: ref.trim(), evcc_managed: true, evcc_auto_sync: true, evcc_title: card?.label || '', evcc_capacity_kwh: card?.metrics?.capacityKwh || '' });
+    const linkPayload = { evcc_ref: ref.trim(), evcc_managed: true, evcc_auto_sync: true };
+    if(!(card && card.remote)){
+      linkPayload.evcc_title = card?.label || '';
+      linkPayload.evcc_capacity_kwh = card?.metrics?.capacityKwh || '';
+    }
+    await postJson(`./api/vehicles/${editState.vehicleId}/evcc/link`, linkPayload);
     alert('EVCC Zuordnung gespeichert. Danach kann EVCC Sync ausgeführt werden.');
     await refreshVehicleLogs();
   }catch(err){ alert(err.message || 'EVCC Zuordnung konnte nicht gespeichert werden.'); }
