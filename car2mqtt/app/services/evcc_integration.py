@@ -69,26 +69,21 @@ def build_evcc_custom_vehicle_payload(vehicle: VehicleConfig, mqtt_settings: Run
     except Exception:
         cap = 0
 
+    # Keep this intentionally close to evcc's documented YAML syntax for
+    # custom MQTT vehicles. The Config API validates unknown fields strictly,
+    # therefore do not add car2mqtt metadata, identifiers, phases or camelCase
+    # aliases here. evcc expects `limitsoc` (all lower case).
     payload: dict[str, Any] = {
         "name": str(cfg.get("evcc_name") or build_evcc_vehicle_name(vehicle)),
         "title": str(cfg.get("evcc_title") or vehicle.label or vehicle.license_plate),
         "type": "custom",
         "icon": str(cfg.get("evcc_icon") or "car"),
         "capacity": cap,
-        "phases": int(cfg.get("evcc_phases") or 3),
-        "identifiers": [normalize_plate(vehicle.license_plate) or vehicle.id],
-        "soc": {"source": "mqtt", "topic": f"{root}/soc", "timeout": "24h"},
-        "range": {"source": "mqtt", "topic": f"{root}/range", "timeout": "24h"},
-        "odometer": {"source": "mqtt", "topic": f"{root}/odometer", "timeout": "24h"},
-        "limitsoc": {"source": "mqtt", "topic": f"{root}/limitSoc", "timeout": "24h"},
-        "status": {
-            "source": "combined",
-            "plugged": {"source": "mqtt", "topic": f"{root}/plugged", "timeout": "24h"},
-            "charging": {"source": "mqtt", "topic": f"{root}/charging", "timeout": "24h"},
-        },
+        "soc": {"source": "mqtt", "topic": f"{root}/soc"},
+        "range": {"source": "mqtt", "topic": f"{root}/range"},
+        "odometer": {"source": "mqtt", "topic": f"{root}/odometer"},
+        "limitsoc": {"source": "mqtt", "topic": f"{root}/limitSoc"},
         "onIdentify": {"mode": "pv"},
-        "source": "car2mqtt",
-        "car2mqttVehicleId": vehicle.id,
     }
     return payload
 
@@ -96,17 +91,13 @@ def build_evcc_custom_vehicle_payload(vehicle: VehicleConfig, mqtt_settings: Run
 def build_evcc_config_device_payload(custom_payload: dict[str, Any]) -> dict[str, Any]:
     """Convert car2mqtt's YAML-style custom vehicle into evcc Config UI device JSON.
 
-    evcc's UI/DB endpoints are /api/config/devices/<class> and use the shape
-    {"type": "custom", "config": {...}}. Older experiments accepted a flat
-    YAML-like object in some cases, but current evcc requires the wrapped shape.
+    Note: evcc 0.30x accepts native `type: custom` vehicles in YAML-like form
+    for the vehicle factory, but the guided Config UI endpoints primarily work
+    with template devices. We keep this helper for template-compatible fallback
+    attempts, while custom MQTT vehicles are sent flat first.
     """
     cfg = dict(custom_payload or {})
     device_type = str(cfg.pop("type", "custom") or "custom")
-
-    # UI/DB devices are addressed by id (db:xx). The generated YAML name is kept
-    # as metadata where it is harmless, but the DB id stays the stable reference.
-    # evcc will ignore unknown config fields that are not used by the template in
-    # some versions; in stricter versions the fallback below will report the error.
     return {"type": device_type, "config": cfg}
 
 
@@ -272,43 +263,53 @@ class EvccClient:
         wrapped = build_evcc_config_device_payload(payload)
         errors: list[str] = []
 
-        # Existing DB/UI device: evcc config endpoints require the numeric id, not db:xx.
-        if path_id:
-            try:
-                return {"action": "updated", "ref": f"db:{path_id}", "response": self.request("PUT", f"/config/devices/vehicle/{quote(path_id, safe='')}", wrapped, auth=True)}
-            except Exception as exc:
-                errors.append(str(exc))
-                # Fallback for older/experimental versions that accepted the YAML-like flat payload.
-                try:
-                    return {"action": "updated", "ref": f"db:{path_id}", "response": self.request("PUT", f"/config/devices/vehicle/{quote(path_id, safe='')}", payload, auth=True)}
-                except Exception as exc2:
-                    errors.append(str(exc2))
+        # Custom MQTT vehicles are native evcc vehicles, not guided templates.
+        # Therefore the flat YAML-like form must be tried before the wrapped
+        # Config-UI template form. The wrapped form caused "config template not
+        # found" for type=custom on evcc 0.305.x.
+        update_candidates = (payload, wrapped)
+        create_candidates = (payload, wrapped)
 
-        # New DB/UI device. evcc returns an object containing id/name on successful create.
-        for candidate in (wrapped, payload):
+        if path_id:
+            for candidate in update_candidates:
+                try:
+                    return {"action": "updated", "ref": f"db:{path_id}", "response": self.request("PUT", f"/config/devices/vehicle/{quote(path_id, safe='')}", candidate, auth=True)}
+                except Exception as exc:
+                    errors.append(str(exc))
+
+            # Sicherheitsregel: Wenn ein bestehendes EVCC-Fahrzeug verknüpft ist,
+            # darf car2mqtt bei fehlgeschlagenem Update NICHT heimlich ein Ersatz-
+            # fahrzeug anlegen. Die Zuordnung bleibt erhalten und der Nutzer sieht
+            # den konkreten EVCC-Fehler.
+            raise RuntimeError("EVCC Fahrzeug konnte nicht aktualisiert werden. Es wurde kein neues Fahrzeug angelegt. " + " | ".join(errors[-4:]))
+
+        for candidate in create_candidates:
             try:
                 res = self.request("POST", "/config/devices/vehicle", candidate, auth=True)
-                new_id = ""
-                if isinstance(res, dict):
-                    new_id = str(res.get("name") or (f"db:{res.get('id')}" if res.get("id") not in (None, "") else "") or res.get("instance") or "")
-                if not new_id:
-                    # Try reading the list and match by title/name after creation.
-                    title = str(payload.get("title") or "")
-                    name = str(payload.get("name") or "")
-                    for item in self.list_vehicles():
-                        raw = item.get("raw") if isinstance(item.get("raw"), dict) else {}
-                        cfg = raw.get("config") if isinstance(raw.get("config"), dict) else {}
-                        if title and (item.get("title") == title or cfg.get("title") == title):
-                            new_id = str(item.get("ref") or "")
-                            break
-                        if name and (cfg.get("name") == name or item.get("name") == name):
-                            new_id = str(item.get("ref") or "")
-                            break
+                new_id = self._extract_created_vehicle_ref(res, payload)
                 return {"action": "created", "ref": new_id or ref or str(payload.get("name") or ""), "response": res}
             except Exception as exc:
                 errors.append(str(exc))
 
         raise RuntimeError("EVCC Fahrzeug konnte nicht angelegt/aktualisiert werden. " + " | ".join(errors[-4:]))
+
+    def _extract_created_vehicle_ref(self, res: Any, payload: dict[str, Any]) -> str:
+        new_id = ""
+        if isinstance(res, dict):
+            new_id = str(res.get("name") or (f"db:{res.get('id')}" if res.get("id") not in (None, "") else "") or res.get("instance") or "")
+        if not new_id:
+            title = str(payload.get("title") or "")
+            name = str(payload.get("name") or "")
+            for item in self.list_vehicles():
+                raw = item.get("raw") if isinstance(item.get("raw"), dict) else {}
+                cfg = raw.get("config") if isinstance(raw.get("config"), dict) else {}
+                if title and (item.get("title") == title or cfg.get("title") == title):
+                    new_id = str(item.get("ref") or "")
+                    break
+                if name and (cfg.get("name") == name or item.get("name") == name):
+                    new_id = str(item.get("ref") or "")
+                    break
+        return new_id
 
     def delete_vehicle(self, evcc_ref: str) -> dict[str, Any]:
         path_id = _evcc_id_from_ref(evcc_ref)

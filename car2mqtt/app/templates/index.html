@@ -359,6 +359,26 @@ select, option {
       </div>
 
 
+      <div id="editEvccVehicleSection" class="info-box dialog-narrow" style="margin-top:18px">
+        <div class="eyebrow">EVCC / MQTT Fahrzeugkonfiguration</div>
+        <div class="grid two" style="margin-top:14px">
+          <div class="field"><label>EVCC ID / Ref</label><input id="editEvccRef" placeholder="z. B. db:19" /></div>
+          <div class="field"><label>EVCC Name</label><input id="editEvccName" placeholder="optional" /></div>
+          <div class="field"><label>EVCC Titel</label><input id="editEvccTitle" placeholder="optional" /></div>
+          <div class="field"><label>Akkukapazität (kWh)</label><input id="editEvccCapacity" type="number" step="0.1" /></div>
+          <div class="field"><label>Phases</label><select id="editEvccPhases"><option value="">Nicht setzen</option><option value="1">1 Phase</option><option value="3">3 Phasen</option></select></div>
+          <div class="field"><label>Identifiers</label><input id="editEvccIdentifiers" placeholder="z. B. RFID1, RFID2" /></div>
+        </div>
+        <div class="grid two" style="margin-top:14px">
+          <div class="field"><label>onIdentify Modus: Aus</label><input id="editEvccOnIdentifyOff" placeholder="off" /></div>
+          <div class="field"><label>onIdentify Modus: PV</label><input id="editEvccOnIdentifyPv" placeholder="pv" /></div>
+          <div class="field"><label>onIdentify Modus: Min+PV</label><input id="editEvccOnIdentifyMinpv" placeholder="minpv" /></div>
+          <div class="field"><label>onIdentify Modus: Schnell</label><input id="editEvccOnIdentifyNow" placeholder="now" /></div>
+        </div>
+        <div class="log-actions" style="margin-top:14px"><button id="saveEvccVehicleConfigBtn" type="button" class="ghost-btn">EVCC/MQTT-Konfiguration speichern</button></div>
+        <div class="muted" style="margin-top:10px">Diese Werte werden pro lokalem Fahrzeug und pro Remote-Fahrzeug separat gespeichert und unter <code>.../mapped/evcc/...</code> per MQTT veröffentlicht. Die onIdentify-Modi entsprechen EVCC: <code>off</code> = Aus, <code>pv</code> = PV, <code>minpv</code> = Min+PV, <code>now</code> = Schnell. Beim EVCC-Sync wird bei fehlgeschlagenem Update kein Ersatzfahrzeug mehr angelegt.</div>
+      </div>
+
       <div class="info-box dialog-narrow" style="margin-top:18px">
         <div class="eyebrow">MQTT Clients</div>
         <div id="editMqttClientsAssign" class="grid" style="margin-top:14px"></div>
@@ -603,6 +623,53 @@ function manufacturerTopicPrefix(manufacturer){
 }
 function getCurrentEditCard(){
   return cards.find(card => card.id === editState.vehicleId) || null;
+}
+function evccCfgFromCardOrVehicle(obj){
+  const cfg = (obj && obj.evcc_config) || (obj && obj.provider_config) || {};
+  const cap = cfg.evcc_capacity_kwh ?? cfg.capacity_kwh ?? '';
+  return {
+    evcc_ref: cfg.evcc_ref || '',
+    evcc_managed: cfg.evcc_managed !== false,
+    evcc_auto_sync: cfg.evcc_auto_sync !== false,
+    evcc_name: cfg.evcc_name || '',
+    evcc_title: cfg.evcc_title || '',
+    evcc_capacity_kwh: cap || '',
+    evcc_phases: cfg.evcc_phases || '',
+    evcc_identifiers: Array.isArray(cfg.evcc_identifiers) ? cfg.evcc_identifiers.join(', ') : (cfg.evcc_identifiers || ''),
+    evcc_onidentify_off: cfg.evcc_onidentify_off || cfg.evcc_onidentify_disconnected || 'off',
+    evcc_onidentify_pv: cfg.evcc_onidentify_pv || cfg.evcc_onidentify_connected || 'pv',
+    evcc_onidentify_minpv: cfg.evcc_onidentify_minpv || 'minpv',
+    evcc_onidentify_now: cfg.evcc_onidentify_now || cfg.evcc_onidentify_charging || 'now',
+  };
+}
+function fillEvccVehicleConfigFields(obj){
+  const cfg = evccCfgFromCardOrVehicle(obj || {});
+  field('editEvccRef').value = cfg.evcc_ref || '';
+  field('editEvccName').value = cfg.evcc_name || '';
+  field('editEvccTitle').value = cfg.evcc_title || '';
+  field('editEvccCapacity').value = cfg.evcc_capacity_kwh || '';
+  field('editEvccPhases').value = cfg.evcc_phases || '';
+  field('editEvccIdentifiers').value = cfg.evcc_identifiers || '';
+  field('editEvccOnIdentifyOff').value = cfg.evcc_onidentify_off || 'off';
+  field('editEvccOnIdentifyPv').value = cfg.evcc_onidentify_pv || 'pv';
+  field('editEvccOnIdentifyMinpv').value = cfg.evcc_onidentify_minpv || 'minpv';
+  field('editEvccOnIdentifyNow').value = cfg.evcc_onidentify_now || 'now';
+}
+function collectEvccVehicleConfigPayload(){
+  return {
+    evcc_ref: field('editEvccRef')?.value?.trim() || '',
+    evcc_managed: true,
+    evcc_auto_sync: true,
+    evcc_name: field('editEvccName')?.value?.trim() || '',
+    evcc_title: field('editEvccTitle')?.value?.trim() || '',
+    evcc_capacity_kwh: field('editEvccCapacity')?.value?.trim() || '',
+    evcc_phases: field('editEvccPhases')?.value || '',
+    evcc_identifiers: field('editEvccIdentifiers')?.value?.trim() || '',
+    evcc_onidentify_off: field('editEvccOnIdentifyOff')?.value?.trim() || 'off',
+    evcc_onidentify_pv: field('editEvccOnIdentifyPv')?.value?.trim() || 'pv',
+    evcc_onidentify_minpv: field('editEvccOnIdentifyMinpv')?.value?.trim() || 'minpv',
+    evcc_onidentify_now: field('editEvccOnIdentifyNow')?.value?.trim() || 'now',
+  };
 }
 function setEditRemoteMode(enabled, card=null){
   field('editRemoteSection')?.classList.toggle('hidden', !enabled);
@@ -1085,11 +1152,11 @@ soc:
   topic: ${topicBase}/soc
   timeout: 24h
 
-onIdentify: #<- es darf nur eine Lademodus aktiv sein.
-  mode: pv # PV Only
-  #mode: now # Schnell
-  #mode: minpv # Minimum + PV
+onIdentify: #<- es darf nur ein Lademodus aktiv sein.
   #mode: off # Aus
+  mode: pv # PV
+  #mode: minpv # Min+PV
+  #mode: now # Schnell
 
 range:
   source: mqtt
@@ -1477,15 +1544,26 @@ async function publishCurrentVehicleDiscovery(){
     alert(`Home Assistant Discovery veröffentlicht: ${data.published || 0} Entitäten.`);
   }catch(err){ alert(err.message || 'Discovery fehlgeschlagen.'); }
 }
+async function saveCurrentEvccVehicleConfig(){
+  if(!editState.vehicleId) return;
+  try{
+    const data = await postJson(`./api/vehicles/${editState.vehicleId}/evcc/config`, collectEvccVehicleConfigPayload());
+    alert(`EVCC/MQTT-Konfiguration gespeichert. MQTT Topics veröffentlicht: ${data.published || 0}`);
+    await loadDashboard();
+    await refreshVehicleLogs();
+  }catch(err){ alert(err.message || 'EVCC/MQTT-Konfiguration konnte nicht gespeichert werden.'); }
+}
 async function linkCurrentVehicleToEvcc(){
   if(!editState.vehicleId) return;
   let options = [];
   try{ const res = await fetch('./api/evcc/vehicles'); const data = await res.json(); if(res.ok) options = data.vehicles || []; }catch(err){}
-  const hint = options.length ? '\n\nGefundene EVCC Fahrzeuge:\n' + options.map(v => `${v.ref || v.name || '-'} = ${v.title || v.name || ''}`).join('\n') : '\n\nKeine bestehenden EVCC-Fahrzeuge per API gefunden. Du kannst trotzdem leer lassen, um beim Sync neu anzulegen.';
-  const ref = prompt('EVCC Fahrzeug-ID/Ref eintragen, z. B. db:1 oder bestehender name. Leer = neues car2mqtt-Fahrzeug beim Sync anlegen.' + hint, '');
+  const hint = options.length ? '\n\nGefundene EVCC Fahrzeuge:\n' + options.map(v => `${v.ref || v.name || '-'} = ${v.title || v.name || ''}`).join('\n') : '\n\nKeine bestehenden EVCC-Fahrzeuge per API gefunden.';
+  const ref = prompt('EVCC Fahrzeug-ID/Ref eintragen, z. B. db:19. Leer lassen bedeutet: keine ID-Zuordnung ändern.' + hint, field('editEvccRef')?.value || '');
   if(ref === null) return;
+  if(!ref.trim()){ return; }
   const card = getCurrentEditCard();
   try{
+    field('editEvccRef').value = ref.trim();
     await postJson(`./api/vehicles/${editState.vehicleId}/evcc/link`, { evcc_ref: ref.trim(), evcc_managed: true, evcc_auto_sync: true, evcc_title: card?.label || '', evcc_capacity_kwh: card?.metrics?.capacityKwh || '' });
     alert('EVCC Zuordnung gespeichert. Danach kann EVCC Sync ausgeführt werden.');
     await refreshVehicleLogs();
@@ -1503,6 +1581,8 @@ const publishVehicleDiscoveryBtn = field('publishVehicleDiscoveryBtn');
 if(publishVehicleDiscoveryBtn) publishVehicleDiscoveryBtn.onclick = (ev)=>{ ev.preventDefault(); publishCurrentVehicleDiscovery(); };
 const evccLinkBtn = field('evccLinkBtn');
 if(evccLinkBtn) evccLinkBtn.onclick = (ev)=>{ ev.preventDefault(); linkCurrentVehicleToEvcc(); };
+const saveEvccVehicleConfigBtn = field('saveEvccVehicleConfigBtn');
+if(saveEvccVehicleConfigBtn) saveEvccVehicleConfigBtn.onclick = (ev)=>{ ev.preventDefault(); saveCurrentEvccVehicleConfig(); };
 const helperConfigBtn = field('copyHelperBtn');
 if(helperConfigBtn) helperConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openHelperConfigDialog(); };
 const closeHelperConfigBtn = field('closeHelperConfigBtn');
@@ -1652,13 +1732,14 @@ async function editVehicle(vehicleId){
   setEditRemoteMode(!!vehicle.remote, currentCard);
   if(vehicle.remote){
     setEditManufacturerLayout('');
+    fillEvccVehicleConfigFields(currentCard || vehicle);
     field('editDialog').showModal();
     return;
   }
   field('editBmwClientId').value = vehicle.provider_config.client_id || ''; field('editBmwMqttUsername').value = vehicle.provider_config.client_id || vehicle.provider_config.mqtt_username || ''; field('editBmwVin').value = vehicle.provider_config.vin || ''; field('editBmwRegion').value = vehicle.provider_config.region || 'EU'; field('editBmwAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editBmwManualReconnectMinutes').value = vehicle.provider_config.manual_reconnect_minutes || 15; toggleBmwReconnectMode();
   field('editGwmAccount').value = vehicle.provider_config.account || ''; field('editGwmPassword').value = vehicle.provider_config.password || ''; field('editGwmCountry').value = vehicle.provider_config.country || 'DE'; field('editGwmLanguage').value = vehicle.provider_config.language || 'de'; field('editGwmPollInterval').value = vehicle.provider_config.poll_interval || 60; field('editGwmVehicleId').value = vehicle.provider_config.vehicle_id || vehicle.id; field('editGwmCapacity').value = vehicle.provider_config.capacity_kwh || ''; const gwmSourceBase = vehicle.provider_config.source_topic_base || 'GWM';
   field('editGwmSourceTopicBase').value = (String(gwmSourceBase).startsWith('GWM/')) ? 'GWM' : gwmSourceBase;
-  field("editAcconiaAccount").value = vehicle.provider_config.account || ""; field("editAcconiaPassword").value = vehicle.provider_config.password || ""; field("editAcconiaApiKey").value = vehicle.provider_config.api_key || ""; field("editAcconiaBatteryCount").value = String(vehicle.provider_config.battery_count || 2); field("editAcconiaPollInterval").value = String(vehicle.provider_config.poll_interval || 60); field("editAcconiaCapacity").value = vehicle.provider_config.capacity_kwh || ""; field("editVagApiMode").value = vehicle.provider_config.api_mode || "brand_app"; field("editVagAccount").value = vehicle.provider_config.account || ""; field("editVagPassword").value = vehicle.provider_config.password || ""; field("editVagPin").value = vehicle.provider_config.pin || ""; field("editVagCountry").value = vehicle.provider_config.country || "DE"; field("editVagPowertrain").value = vehicle.provider_config.powertrain || "unknown"; field("editVagPollInterval").value = String(vehicle.provider_config.poll_interval || 60); field("editVagCapacity").value = vehicle.provider_config.capacity_kwh || ""; field("editGwmVerificationCode").value = ""; field("editGwmPollingEnabled").checked = vehicle.provider_config.polling_enabled !== false; field("editGwmAutoReconnect").checked = vehicle.provider_config.auto_reconnect !== false; field("editGwmDelayedRetryEnabled").checked = vehicle.provider_config.delayed_retry_enabled !== false; field("editGwmRetryDelayMinutes").value = String(vehicle.provider_config.retry_delay_minutes || 55); field("editGwmFallbackOnSilence").checked = vehicle.provider_config.fallback_on_silence !== false; toggleEditGwmOptions();
+  field("editAcconiaAccount").value = vehicle.provider_config.account || ""; field("editAcconiaPassword").value = vehicle.provider_config.password || ""; field("editAcconiaApiKey").value = vehicle.provider_config.api_key || ""; field("editAcconiaBatteryCount").value = String(vehicle.provider_config.battery_count || 2); field("editAcconiaPollInterval").value = String(vehicle.provider_config.poll_interval || 60); field("editAcconiaCapacity").value = vehicle.provider_config.capacity_kwh || ""; field("editVagApiMode").value = vehicle.provider_config.api_mode || "brand_app"; field("editVagAccount").value = vehicle.provider_config.account || ""; field("editVagPassword").value = vehicle.provider_config.password || ""; field("editVagPin").value = vehicle.provider_config.pin || ""; field("editVagCountry").value = vehicle.provider_config.country || "DE"; field("editVagPowertrain").value = vehicle.provider_config.powertrain || "unknown"; field("editVagPollInterval").value = String(vehicle.provider_config.poll_interval || 60); field("editVagCapacity").value = vehicle.provider_config.capacity_kwh || ""; field("editGwmVerificationCode").value = ""; field("editGwmPollingEnabled").checked = vehicle.provider_config.polling_enabled !== false; field("editGwmAutoReconnect").checked = vehicle.provider_config.auto_reconnect !== false; field("editGwmDelayedRetryEnabled").checked = vehicle.provider_config.delayed_retry_enabled !== false; field("editGwmRetryDelayMinutes").value = String(vehicle.provider_config.retry_delay_minutes || 55); field("editGwmFallbackOnSilence").checked = vehicle.provider_config.fallback_on_silence !== false; fillEvccVehicleConfigFields(vehicle); toggleEditGwmOptions();
   const gwmNeedsReauth = vehicle.manufacturer === 'gwm' && (/refresh token abgelaufen|reauth erforderlich/i.test(vehicle.status || '') || /refresh token abgelaufen|reauth erforderlich/i.test(vehicle.status_detail || '') || /refresh token/i.test(vehicle.provider_state?.last_error || '') || /reauth erforderlich/i.test(vehicle.provider_state?.auth_message || ''));
   field('editReauthTitle').textContent = vehicle.manufacturer === 'gwm' ? 'ORA ReAuth' : 'BMW Re-Auth';
   field('editAuthState').textContent = vehicle.enabled === false ? 'Fahrzeug ist inaktiv.' : (vehicle.manufacturer === 'gwm' ? (gwmNeedsReauth ? 'ReAuth erforderlich - gespeicherte Anmeldung ist abgelaufen.' : (vehicle.status === 'waiting_for_code' ? 'Verifikationscode erforderlich.' : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'Anmeldung prüfen.'))) : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'Anmeldung prüfen.'));
@@ -1759,6 +1840,7 @@ async function saveEdit(closeAfter){ try{ const manufacturer = field('editManufa
   if(manufacturer === 'acconia'){ payload.provider_config = { account: field("editAcconiaAccount").value.trim(), password: field("editAcconiaPassword").value, api_key: field("editAcconiaApiKey").value.trim(), vehicle_id: derivedId, battery_count: field("editAcconiaBatteryCount").value, poll_interval: field("editAcconiaPollInterval").value.trim() || "60", capacity_kwh: field("editAcconiaCapacity").value.trim() }; if(!payload.provider_config.account || !payload.provider_config.password || !payload.provider_config.api_key) throw new Error("Bitte Acconia/Silence Benutzerkonto, Passwort und Firebase API-Key eintragen."); }
   if(isVagManufacturer(manufacturer)){ payload.provider_config = { brand: manufacturer, api_mode: field('editVagApiMode').value, account: field('editVagAccount').value.trim(), password: field('editVagPassword').value, country: field('editVagCountry').value.trim() || 'DE', pin: field('editVagPin')?.value || '', powertrain: field('editVagPowertrain').value, poll_interval: field('editVagPollInterval').value.trim() || '60', capacity_kwh: field('editVagCapacity').value.trim(), vehicle_id: derivedId }; }
   if(manufacturer === 'gwm'){ payload.provider_config = { account: field('editGwmAccount').value.trim(), password: field('editGwmPassword').value.trim(), country: field('editGwmCountry').value.trim(), language: field('editGwmLanguage').value.trim(), polling_enabled: field('editGwmPollingEnabled').checked, poll_interval: field('editGwmPollInterval').value.trim(), vehicle_id: field('editGwmVehicleId').value.trim() || derivedId, capacity_kwh: field('editGwmCapacity').value.trim(), source_topic_base: field('editGwmSourceTopicBase').value.trim(), auto_reconnect: field('editGwmAutoReconnect').checked, delayed_retry_enabled: field('editGwmDelayedRetryEnabled').checked, retry_delay_minutes: field('editGwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('editGwmFallbackOnSilence').checked }; if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.'); }
+  Object.assign(payload.provider_config, collectEvccVehicleConfigPayload());
   await postJson(`./api/vehicles/${editState.vehicleId}`, payload, 'PUT'); await loadDashboard(); if(closeAfter){ field('editDialog').close(); } } catch(err){ showNotice('editError', err.message); } }
 field('saveEditKeepOpenBtn').onclick = ()=>saveEdit(false);
 field('saveEditBtn').onclick = ()=>saveEdit(true);

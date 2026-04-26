@@ -105,6 +105,83 @@ class EvccLinkPayload(BaseModel):
     evcc_capacity_kwh: str = ""
 
 
+class EvccVehicleConfigPayload(BaseModel):
+    evcc_ref: str = ""
+    evcc_managed: bool = True
+    evcc_auto_sync: bool = True
+    evcc_name: str = ""
+    evcc_title: str = ""
+    evcc_capacity_kwh: str = ""
+    evcc_phases: str = ""
+    evcc_identifiers: str = ""
+    evcc_onidentify_off: str = ""
+    evcc_onidentify_pv: str = ""
+    evcc_onidentify_minpv: str = ""
+    evcc_onidentify_now: str = ""
+
+
+EVCC_PROVIDER_CONFIG_KEYS = {
+    "evcc_ref", "evcc_managed", "evcc_auto_sync", "evcc_name", "evcc_title",
+    "capacity_kwh", "evcc_capacity_kwh", "evcc_phases", "evcc_identifiers",
+    "evcc_onidentify_off", "evcc_onidentify_pv",
+    "evcc_onidentify_minpv", "evcc_onidentify_now",
+    "evcc_onidentify_unknown", "evcc_onidentify_disconnected",
+    "evcc_onidentify_connected", "evcc_onidentify_charging",
+}
+
+
+def _normalize_evcc_identifier_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        raw = value
+    else:
+        raw = re.split(r"[\n,;]+", str(value or ""))
+    result = []
+    for item in raw:
+        text = str(item or "").strip()
+        if text and text not in result:
+            result.append(text)
+    return result
+
+
+def _evcc_cfg_from_payload(payload: EvccVehicleConfigPayload) -> dict[str, Any]:
+    cfg = {
+        "evcc_ref": str(payload.evcc_ref or "").strip(),
+        "evcc_managed": bool(payload.evcc_managed),
+        "evcc_auto_sync": bool(payload.evcc_auto_sync),
+        "evcc_name": str(payload.evcc_name or "").strip(),
+        "evcc_title": str(payload.evcc_title or "").strip(),
+        "evcc_capacity_kwh": str(payload.evcc_capacity_kwh or "").strip(),
+        "capacity_kwh": str(payload.evcc_capacity_kwh or "").strip(),
+        "evcc_phases": str(payload.evcc_phases or "").strip(),
+        "evcc_identifiers": ", ".join(_normalize_evcc_identifier_list(payload.evcc_identifiers)),
+        "evcc_onidentify_off": str(payload.evcc_onidentify_off or "off").strip() or "off",
+        "evcc_onidentify_pv": str(payload.evcc_onidentify_pv or "pv").strip() or "pv",
+        "evcc_onidentify_minpv": str(payload.evcc_onidentify_minpv or "minpv").strip() or "minpv",
+        "evcc_onidentify_now": str(payload.evcc_onidentify_now or "now").strip() or "now",
+    }
+    return cfg
+
+
+def _evcc_cfg_from_provider(provider_config: dict[str, Any] | None) -> dict[str, Any]:
+    cfg = dict(provider_config or {})
+    cap = cfg.get("evcc_capacity_kwh") if cfg.get("evcc_capacity_kwh") not in (None, "") else cfg.get("capacity_kwh", "")
+    return {
+        "evcc_ref": str(cfg.get("evcc_ref") or "").strip(),
+        "evcc_managed": bool(cfg.get("evcc_managed", True)),
+        "evcc_auto_sync": bool(cfg.get("evcc_auto_sync", True)),
+        "evcc_name": str(cfg.get("evcc_name") or "").strip(),
+        "evcc_title": str(cfg.get("evcc_title") or "").strip(),
+        "evcc_capacity_kwh": str(cap or "").strip(),
+        "capacity_kwh": str(cap or "").strip(),
+        "evcc_phases": str(cfg.get("evcc_phases") or "").strip(),
+        "evcc_identifiers": ", ".join(_normalize_evcc_identifier_list(cfg.get("evcc_identifiers") or "")),
+        "evcc_onidentify_off": str(cfg.get("evcc_onidentify_off") or cfg.get("evcc_onidentify_disconnected") or "off").strip() or "off",
+        "evcc_onidentify_pv": str(cfg.get("evcc_onidentify_pv") or cfg.get("evcc_onidentify_connected") or "pv").strip() or "pv",
+        "evcc_onidentify_minpv": str(cfg.get("evcc_onidentify_minpv") or "minpv").strip() or "minpv",
+        "evcc_onidentify_now": str(cfg.get("evcc_onidentify_now") or cfg.get("evcc_onidentify_charging") or "now").strip() or "now",
+    }
+
+
 def _normalize_vehicle_id(license_plate: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9]", "", (license_plate or "").upper())
     return cleaned
@@ -417,6 +494,7 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         "manufacturer_note": "ORA Runner vorbereitet" if vehicle.manufacturer == "gwm" else ("Acconia/Silence API vorbereitet" if vehicle.manufacturer == "acconia" else ""),
         "source_topic_base": vehicle.provider_config.get("source_topic_base", "") if vehicle.manufacturer in {"gwm"} else "",
         "device_tracker_enabled": bool(getattr(vehicle, 'device_tracker_enabled', False)),
+        "evcc_config": _evcc_cfg_from_provider(vehicle.provider_config),
     }
 
 
@@ -546,6 +624,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
             'source_topic_base': '',
             'remote': True,
             'remote_server_name': server_name,
+            'evcc_config': {},
         })
     cards.sort(key=lambda c: (str(c.get('label','')).lower(), str(c.get('license_plate','')).lower(), str(c.get('remote_server_name','')).lower()))
     return cards
@@ -575,6 +654,46 @@ def _remote_vehicle_payload_from_card(card: dict[str, Any]) -> dict[str, Any]:
         'remote_server_name': card.get('remote_server_name',''),
     }
 
+
+
+def _evcc_mqtt_values(provider_config: dict[str, Any] | None) -> dict[str, Any]:
+    cfg = _evcc_cfg_from_provider(provider_config or {})
+    identifiers = _normalize_evcc_identifier_list(cfg.get("evcc_identifiers") or "")
+    return {
+        "evcc/phases": cfg.get("evcc_phases") or "",
+        "evcc/identifiers": identifiers,
+        "evcc/identifiers_csv": ",".join(identifiers),
+        "evcc/onIdentify/off": cfg.get("evcc_onidentify_off") or "off",
+        "evcc/onIdentify/pv": cfg.get("evcc_onidentify_pv") or "pv",
+        "evcc/onIdentify/minpv": cfg.get("evcc_onidentify_minpv") or "minpv",
+        "evcc/onIdentify/now": cfg.get("evcc_onidentify_now") or "now",
+    }
+
+
+def _publish_evcc_vehicle_config_to_mqtt(card_or_vehicle: Any, mqtt_settings, provider_config: dict[str, Any] | None = None) -> int:
+    if not getattr(mqtt_settings, 'host', ''):
+        return 0
+    if isinstance(card_or_vehicle, VehicleConfig):
+        manufacturer = str(card_or_vehicle.manufacturer or '').lower()
+        plate = str(card_or_vehicle.license_plate or '')
+        root = mapped_topic(mqtt_settings.base_topic, manufacturer, plate)
+        cfg = provider_config if provider_config is not None else (card_or_vehicle.provider_config or {})
+    else:
+        card = dict(card_or_vehicle or {})
+        manufacturer = str(card.get('manufacturer') or '').lower()
+        plate = str(card.get('license_plate') or '')
+        root = str(card.get('mapped_topic') or mapped_topic(mqtt_settings.base_topic, manufacturer, plate)).rstrip('/')
+        cfg = provider_config or {}
+    client = LocalMqttClient(mqtt_settings)
+    count = 0
+    try:
+        client.connect()
+        for key, value in _evcc_mqtt_values(cfg).items():
+            client.publish(f"{root}/{key}", value)
+            count += 1
+    finally:
+        client.disconnect()
+    return count
 
 
 
@@ -743,8 +862,11 @@ def create_app() -> FastAPI:
         cards = [_vehicle_card(vehicle, runtime_states.get(vehicle.id), mqtt_settings.base_topic) for vehicle in config.vehicles]
         remote_cards = _discover_remote_vehicle_snapshots(mqtt_settings, worker_manager._resolve_server_name(), config.vehicles)
         cards.extend(remote_cards)
+        remote_links = getattr(config.ui_settings, "evcc_vehicle_links", {}) or {}
         for card in cards:
             card['device_tracker_enabled'] = _card_device_tracker_enabled(card, config)
+            if card.get('remote'):
+                card['evcc_config'] = _evcc_cfg_from_provider(remote_links.get(str(card.get('id') or ''), {}) or {})
         cards.sort(key=lambda c: (str(c.get('label','')).lower(), str(c.get('license_plate','')).lower(), 1 if c.get('remote') else 0))
         return cards, mqtt_settings.model_dump(mode="json")
 
@@ -776,7 +898,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.92",
+                "version": "1.1.96",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -1022,6 +1144,27 @@ def create_app() -> FastAPI:
         log_store.append(vehicle_id, f"EVCC Verknüpfung gespeichert: {vehicle.provider_config.get('evcc_ref') or 'neu'}")
         return {"status": "ok", "vehicle_id": vehicle_id, "provider_config": vehicle.provider_config}
 
+    @app.post("/api/vehicles/{vehicle_id}/evcc/config")
+    async def evcc_save_vehicle_config(vehicle_id: str, payload: EvccVehicleConfigPayload):
+        cfg_values = _evcc_cfg_from_payload(payload)
+        vehicle = store.get_vehicle(vehicle_id)
+        remote_card = None
+        if not vehicle:
+            remote_card = _find_remote_card(vehicle_id)
+            if not remote_card:
+                raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+            link_cfg = _remote_link_cfg(vehicle_id)
+            link_cfg.update(cfg_values)
+            _save_remote_link_cfg(vehicle_id, link_cfg)
+            published = _publish_evcc_vehicle_config_to_mqtt(remote_card, load_runtime_mqtt_settings(), link_cfg)
+            log_store.append(vehicle_id, f"EVCC Remote-Konfiguration gespeichert und MQTT veröffentlicht: {published} Topics")
+            return {"status": "ok", "vehicle_id": vehicle_id, "provider_config": link_cfg, "published": published, "remote": True}
+        vehicle.provider_config.update(cfg_values)
+        store.upsert_vehicle(vehicle)
+        published = _publish_evcc_vehicle_config_to_mqtt(vehicle, load_runtime_mqtt_settings())
+        log_store.append(vehicle_id, f"EVCC Konfiguration gespeichert und MQTT veröffentlicht: {published} Topics")
+        return {"status": "ok", "vehicle_id": vehicle_id, "provider_config": vehicle.provider_config, "published": published}
+
     @app.post("/api/vehicles/{vehicle_id}/evcc/sync")
     async def evcc_sync_vehicle(vehicle_id: str):
         vehicle = store.get_vehicle(vehicle_id)
@@ -1221,6 +1364,16 @@ def create_app() -> FastAPI:
         existing = store.get_vehicle(vehicle_id_to_replace or payload.id)
         if existing:
             vehicle.provider_state = existing.provider_state
+            # Preserve EVCC/UI fields unless the edit form explicitly submitted them.
+            for key in EVCC_PROVIDER_CONFIG_KEYS:
+                if key in (payload.provider_config or {}):
+                    vehicle.provider_config[key] = payload.provider_config.get(key)
+                elif key in (existing.provider_config or {}):
+                    vehicle.provider_config[key] = existing.provider_config.get(key)
+        else:
+            for key in EVCC_PROVIDER_CONFIG_KEYS:
+                if key in (payload.provider_config or {}):
+                    vehicle.provider_config[key] = payload.provider_config.get(key)
 
         if payload.manufacturer == "bmw":
             if payload.auth_session_id:
@@ -1326,6 +1479,12 @@ def create_app() -> FastAPI:
                 log_store.append(vehicle.id, "Home Assistant MQTT Discovery automatisch veröffentlicht")
         except Exception as exc:
             log_store.append(vehicle.id, f"Home Assistant Discovery konnte nicht veröffentlicht werden: {exc}")
+        try:
+            published_evcc_cfg = _publish_evcc_vehicle_config_to_mqtt(vehicle, load_runtime_mqtt_settings())
+            if published_evcc_cfg:
+                log_store.append(vehicle.id, f"EVCC MQTT-Konfiguration veröffentlicht: {published_evcc_cfg} Topics")
+        except Exception as exc:
+            log_store.append(vehicle.id, f"EVCC MQTT-Konfiguration konnte nicht veröffentlicht werden: {exc}")
         try:
             cfg_now = store.load()
             auto_sync = bool((vehicle.provider_config or {}).get("evcc_auto_sync") or (cfg_now.ui_settings.evcc_enabled and cfg_now.ui_settings.evcc_auto_create))
