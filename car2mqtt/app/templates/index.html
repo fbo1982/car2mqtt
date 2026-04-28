@@ -690,11 +690,22 @@ function setEditRemoteMode(enabled, card=null){
   if(mqttAssign) mqttAssign.style.display = enabled ? 'none' : '';
   const logBox = field('vehicleLogViewer')?.closest('.log-box');
   if(logBox) logBox.style.display = enabled ? 'none' : '';
-  field('saveEditBtn').style.display = enabled ? 'none' : '';
-  field('saveEditKeepOpenBtn').style.display = enabled ? 'none' : '';
+  const keepOpenBtn = field('saveEditKeepOpenBtn');
+  const saveCloseBtn = field('saveEditBtn');
+  if(keepOpenBtn){
+    keepOpenBtn.style.display = '';
+    keepOpenBtn.textContent = enabled ? 'Lokale EVCC-Zuordnung speichern' : 'Speichern';
+  }
+  if(saveCloseBtn){
+    saveCloseBtn.style.display = '';
+    saveCloseBtn.textContent = enabled ? 'Speichern & schließen' : 'Speichern & schließen';
+  }
   field('editReauthQuickBtn').style.display = enabled ? 'none' : '';
   const cancelBtn = field('cancelEditBtn');
-  if(cancelBtn) cancelBtn.style.display = enabled ? 'none' : '';
+  if(cancelBtn){
+    cancelBtn.style.display = '';
+    cancelBtn.textContent = enabled ? 'Schließen' : 'Abbrechen';
+  }
   const enabledWrap = field('editEnabled')?.closest('.field');
   if(enabledWrap) enabledWrap.style.display = enabled ? 'none' : '';
   const manWrap = field('editManufacturer')?.closest('.field');
@@ -1539,6 +1550,8 @@ async function loadEvccVehiclesStatus(){
 async function syncCurrentVehicleToEvcc(){
   if(!editState.vehicleId) return;
   try{
+    await postJson(`./api/vehicles/${editState.vehicleId}/evcc/config`, collectEvccVehicleConfigPayload());
+    await loadDashboard();
     const data = await postJson(`./api/vehicles/${editState.vehicleId}/evcc/sync`, {});
     alert(`EVCC Sync erfolgreich: ${data.result?.action || 'ok'} ${data.result?.ref || ''}`);
     await loadDashboard(); await refreshVehicleLogs();
@@ -1551,8 +1564,8 @@ async function publishCurrentVehicleDiscovery(){
     alert(`Home Assistant Discovery veröffentlicht: ${data.published || 0} Entitäten.`);
   }catch(err){ alert(err.message || 'Discovery fehlgeschlagen.'); }
 }
-async function saveCurrentEvccVehicleConfig(){
-  if(!editState.vehicleId) return;
+async function saveCurrentEvccVehicleConfig(closeAfter=false){
+  if(!editState.vehicleId) return false;
   try{
     const data = await postJson(`./api/vehicles/${editState.vehicleId}/evcc/config`, collectEvccVehicleConfigPayload());
     if(data.remote){
@@ -1564,7 +1577,9 @@ async function saveCurrentEvccVehicleConfig(){
     const updated = getCurrentEditCard();
     if(updated) fillEvccVehicleConfigFields(updated);
     await refreshVehicleLogs();
-  }catch(err){ alert(err.message || 'EVCC/MQTT-Konfiguration konnte nicht gespeichert werden.'); }
+    if(closeAfter){ stopLiveLogs(); field('editDialog').close(); }
+    return true;
+  }catch(err){ alert(err.message || 'EVCC/MQTT-Konfiguration konnte nicht gespeichert werden.'); return false; }
 }
 async function linkCurrentVehicleToEvcc(){
   if(!editState.vehicleId) return;
@@ -1600,7 +1615,7 @@ if(publishVehicleDiscoveryBtn) publishVehicleDiscoveryBtn.onclick = (ev)=>{ ev.p
 const evccLinkBtn = field('evccLinkBtn');
 if(evccLinkBtn) evccLinkBtn.onclick = (ev)=>{ ev.preventDefault(); linkCurrentVehicleToEvcc(); };
 const saveEvccVehicleConfigBtn = field('saveEvccVehicleConfigBtn');
-if(saveEvccVehicleConfigBtn) saveEvccVehicleConfigBtn.onclick = (ev)=>{ ev.preventDefault(); saveCurrentEvccVehicleConfig(); };
+if(saveEvccVehicleConfigBtn) saveEvccVehicleConfigBtn.onclick = (ev)=>{ ev.preventDefault(); saveCurrentEvccVehicleConfig(false); };
 const helperConfigBtn = field('copyHelperBtn');
 if(helperConfigBtn) helperConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openHelperConfigDialog(); };
 const closeHelperConfigBtn = field('closeHelperConfigBtn');
@@ -1860,8 +1875,16 @@ async function saveEdit(closeAfter){ try{ const manufacturer = field('editManufa
   if(manufacturer === 'gwm'){ payload.provider_config = { account: field('editGwmAccount').value.trim(), password: field('editGwmPassword').value.trim(), country: field('editGwmCountry').value.trim(), language: field('editGwmLanguage').value.trim(), polling_enabled: field('editGwmPollingEnabled').checked, poll_interval: field('editGwmPollInterval').value.trim(), vehicle_id: field('editGwmVehicleId').value.trim() || derivedId, capacity_kwh: field('editGwmCapacity').value.trim(), source_topic_base: field('editGwmSourceTopicBase').value.trim(), auto_reconnect: field('editGwmAutoReconnect').checked, delayed_retry_enabled: field('editGwmDelayedRetryEnabled').checked, retry_delay_minutes: field('editGwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('editGwmFallbackOnSilence').checked }; if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.'); }
   Object.assign(payload.provider_config, collectEvccVehicleConfigPayload());
   await postJson(`./api/vehicles/${editState.vehicleId}`, payload, 'PUT'); await loadDashboard(); if(closeAfter){ field('editDialog').close(); } } catch(err){ showNotice('editError', err.message); } }
-field('saveEditKeepOpenBtn').onclick = ()=>saveEdit(false);
-field('saveEditBtn').onclick = ()=>saveEdit(true);
+field('saveEditKeepOpenBtn').onclick = ()=>{
+  const card = getCurrentEditCard();
+  if(card && card.remote) return saveCurrentEvccVehicleConfig(false);
+  return saveEdit(false);
+};
+field('saveEditBtn').onclick = ()=>{
+  const card = getCurrentEditCard();
+  if(card && card.remote) return saveCurrentEvccVehicleConfig(true);
+  return saveEdit(true);
+};
 
 async function deleteVehicle(vehicleId){ if(!confirm('Fahrzeug wirklich löschen?')) return; await fetch(`./api/vehicles/${vehicleId}`,{method:'DELETE'}); await loadDashboard(); }
 window.deleteVehicle = deleteVehicle;
