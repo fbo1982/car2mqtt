@@ -961,7 +961,9 @@ async function checkEvccDbStatus(){
       const auto = data.used_auto_path ? ` · Auto-Pfad genutzt statt ${data.requested_path || ''}` : '';
       const found = (data.found_paths || []).length ? ` · Gefunden: ${(data.found_paths || []).join(', ')}` : '';
       const docker = data.docker_snapshot && data.docker_snapshot.snapshot_path ? ` · Docker-Snapshot aus EVCC-Container: ${data.docker_snapshot.snapshot_path}` : (data.docker_snapshot && data.docker_snapshot.error ? ` · Docker-Fallback: ${data.docker_snapshot.error}` : "");
-      el.textContent = data.exists ? `EVCC DB OK: ${data.path}${auto}${docker} · Tabellen: ${tableNames || "keine"}${candidateNames ? " · Kandidaten: " + candidateNames : ""}` : `EVCC DB nicht gefunden: ${data.path}${found}${docker}`;
+      const seen = data.docker_snapshot && data.docker_snapshot.containers_seen ? ` · Docker-Container gesehen: ${data.docker_snapshot.containers_seen.map(c => `${(c.names||[]).join("/") || c.id}:${c.image}`).join(", ") || "-"}` : "";
+      const tried = data.docker_snapshot && data.docker_snapshot.remote_paths_tried ? ` · Pfade versucht: ${data.docker_snapshot.remote_paths_tried.join(", ")}` : "";
+      el.textContent = data.exists ? `EVCC DB OK: ${data.path}${auto}${docker} · Tabellen: ${tableNames || "keine"}${candidateNames ? " · Kandidaten: " + candidateNames : ""}` : `EVCC DB nicht gefunden: ${data.path}${found}${docker}${seen}${tried}`;
     }
   }catch(err){ const el = field('settingsEvccStatus'); if(el) el.textContent = err.message || 'EVCC DB Prüfung fehlgeschlagen.'; }
 }

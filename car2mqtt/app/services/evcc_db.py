@@ -22,8 +22,8 @@ SEARCH_ROOTS = [
     Path("/backup"),
     Path("/data"),
 ]
-DOCKER_SOCKET = Path("/var/run/docker.sock")
-DOCKER_EVCC_REMOTE_PATH = "/data/evcc.db"
+DOCKER_SOCKETS = [Path("/var/run/docker.sock"), Path("/run/docker.sock")]
+DOCKER_EVCC_REMOTE_PATHS = ["/data/evcc.db", "/config/evcc.db", "/share/evcc.db"]
 DOCKER_SNAPSHOT_DIR = Path("/data/car2mqtt-evcc-docker-snapshots")
 
 
@@ -64,9 +64,44 @@ def _decode_chunked(data: bytes) -> bytes:
     return bytes(out)
 
 
+def _docker_socket_path() -> Path | None:
+    for sock in DOCKER_SOCKETS:
+        if sock.exists():
+            return sock
+    return None
+
+
+def docker_diagnostics(max_containers: int = 20) -> dict[str, Any]:
+    diag: dict[str, Any] = {
+        "sockets": [str(s) for s in DOCKER_SOCKETS],
+        "socket": str(_docker_socket_path() or ""),
+        "socket_available": _docker_socket_path() is not None,
+        "containers": [],
+    }
+    if not diag["socket_available"]:
+        diag["error"] = "Docker API Socket nicht verfügbar. docker_api wird im Add-on offenbar nicht gemappt."
+        return diag
+    try:
+        containers = _docker_json("GET", "/containers/json?all=1")
+        for c in (containers or [])[:max_containers]:
+            diag["containers"].append({
+                "id": str(c.get("Id", ""))[:12],
+                "names": c.get("Names") or [],
+                "image": c.get("Image", ""),
+                "state": c.get("State", ""),
+                "status": c.get("Status", ""),
+                "labels": c.get("Labels") or {},
+            })
+        diag["container_count"] = len(containers or [])
+    except Exception as exc:
+        diag["error"] = str(exc)
+    return diag
+
+
 def _docker_http(method: str, path: str, body: bytes | None = None, headers: dict[str, str] | None = None, timeout: float = 10.0) -> tuple[int, dict[str, str], bytes]:
-    if not DOCKER_SOCKET.exists():
-        raise FileNotFoundError("Docker API Socket nicht verfügbar: /var/run/docker.sock")
+    socket_path = _docker_socket_path()
+    if not socket_path:
+        raise FileNotFoundError("Docker API Socket nicht verfügbar: /var/run/docker.sock oder /run/docker.sock")
     headers = dict(headers or {})
     body = body or b""
     headers.setdefault("Host", "docker")
@@ -76,7 +111,7 @@ def _docker_http(method: str, path: str, body: bytes | None = None, headers: dic
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.settimeout(timeout)
     try:
-        sock.connect(str(DOCKER_SOCKET))
+        sock.connect(str(socket_path))
         sock.sendall(request.encode("utf-8") + body)
         chunks: list[bytes] = []
         while True:
@@ -125,54 +160,60 @@ def _find_evcc_container() -> dict[str, Any] | None:
     best_score = 999
     for c in containers or []:
         labels = c.get("Labels") or {}
+        names = c.get("Names") or []
         text = " ".join([
             str(c.get("Id", "")),
             str(c.get("Image", "")),
-            " ".join(c.get("Names") or []),
+            str(c.get("ImageID", "")),
+            " ".join(names),
             " ".join(f"{k}={v}" for k, v in labels.items()) if isinstance(labels, dict) else str(labels),
+            str(c.get("Command", "")),
         ]).lower()
         score = 999
         if "evcc" in text:
             score = 0
+        if any("evcc" in str(n).lower() for n in names):
+            score -= 5
         if "addon" in text and "evcc" in text:
-            score = -5
+            score -= 5
+        if "car2mqtt" in text:
+            score += 100
         if score < best_score:
             best = c
             best_score = score
     return best if best_score < 999 else None
 
-
-def copy_evcc_db_from_docker() -> dict[str, Any] | None:
-    container = _find_evcc_container()
-    if not container:
-        return None
+def _try_copy_file_from_container(container: dict[str, Any], remote_path: str) -> dict[str, Any]:
     cid = container.get("Id")
-    if not cid:
-        return None
     import urllib.parse
-    archive_path = urllib.parse.quote(DOCKER_EVCC_REMOTE_PATH, safe="")
+    archive_path = urllib.parse.quote(remote_path, safe="")
     status, _headers, body = _docker_http("GET", f"/containers/{cid}/archive?path={archive_path}", timeout=20.0)
     base = {
         "container_id": str(cid)[:12],
         "container_name": ", ".join(container.get("Names") or []),
         "container_image": container.get("Image", ""),
-        "remote_path": DOCKER_EVCC_REMOTE_PATH,
+        "remote_path": remote_path,
+        "docker_socket": str(_docker_socket_path() or ""),
     }
     if status < 200 or status >= 300:
-        base["error"] = f"Docker konnte {DOCKER_EVCC_REMOTE_PATH} nicht aus dem EVCC-Container lesen ({status})."
+        base["error"] = f"Docker konnte {remote_path} nicht aus dem EVCC-Container lesen ({status})."
+        try:
+            base["response"] = body[:500].decode("utf-8", errors="replace")
+        except Exception:
+            pass
         return base
     DOCKER_SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     target = DOCKER_SNAPSHOT_DIR / f"evcc.db.snapshot-{stamp}"
     try:
         with tarfile.open(fileobj=io.BytesIO(body), mode="r:*") as tf:
-            member = next((m for m in tf.getmembers() if Path(m.name).name == "evcc.db" and m.isfile()), None)
+            member = next((m for m in tf.getmembers() if Path(m.name).name.lower() in DB_NAMES and m.isfile()), None)
             if member is None:
-                base["error"] = "Docker-Archiv enthielt keine evcc.db."
+                base["error"] = "Docker-Archiv enthielt keine evcc.db/evcc.sqlite-Datei."
                 return base
             src = tf.extractfile(member)
             if src is None:
-                base["error"] = "evcc.db konnte aus Docker-Archiv nicht gelesen werden."
+                base["error"] = "EVCC DB konnte aus Docker-Archiv nicht gelesen werden."
                 return base
             with target.open("wb") as fh:
                 shutil.copyfileobj(src, fh)
@@ -182,6 +223,54 @@ def copy_evcc_db_from_docker() -> dict[str, Any] | None:
     base.update({"snapshot_path": str(target), "size_bytes": target.stat().st_size})
     return base
 
+
+def copy_evcc_db_from_docker() -> dict[str, Any] | None:
+    diag = docker_diagnostics()
+    container = _find_evcc_container()
+    if not container:
+        return {
+            "error": "Kein EVCC Docker-Container gefunden.",
+            "docker_socket": diag.get("socket", ""),
+            "socket_available": diag.get("socket_available", False),
+            "containers_seen": [
+                {"id": c.get("id"), "names": c.get("names"), "image": c.get("image"), "state": c.get("state")}
+                for c in diag.get("containers", [])
+            ],
+        }
+    if not container.get("Id"):
+        return {"error": "EVCC Docker-Container ohne Container-ID gefunden.", "docker_diagnostics": diag}
+
+    errors: list[str] = []
+    remote_paths = list(DOCKER_EVCC_REMOTE_PATHS)
+    try:
+        info = _docker_json("GET", f"/containers/{container.get('Id')}/json")
+        for m in info.get("Mounts") or []:
+            dest = str(m.get("Destination") or "")
+            if dest:
+                for name in DB_NAMES:
+                    candidate = dest.rstrip("/") + "/" + name
+                    if candidate not in remote_paths:
+                        remote_paths.append(candidate)
+    except Exception as exc:
+        errors.append(f"Container-Inspect fehlgeschlagen: {exc}")
+
+    for remote_path in remote_paths:
+        res = _try_copy_file_from_container(container, remote_path)
+        if res.get("snapshot_path"):
+            if errors:
+                res["previous_errors"] = errors
+            return res
+        if res.get("error"):
+            errors.append(str(res.get("error")) + ((" · " + str(res.get("response"))) if res.get("response") else ""))
+
+    return {
+        "container_id": str(container.get("Id", ""))[:12],
+        "container_name": ", ".join(container.get("Names") or []),
+        "container_image": container.get("Image", ""),
+        "docker_socket": str(_docker_socket_path() or ""),
+        "remote_paths_tried": remote_paths,
+        "error": "EVCC-Container gefunden, aber keine EVCC-DB konnte aus dem Container kopiert werden. " + " | ".join(errors[-8:]),
+    }
 
 def find_evcc_db_candidates(max_depth: int = 9, max_files: int = 25000) -> list[str]:
     found: list[str] = []
@@ -251,7 +340,7 @@ def _unreachable_hint(requested_path: str, candidates: list[str]) -> str:
     return (
         f"EVCC Datenbank nicht gefunden: {requested_path}. "
         "/data/evcc.db ist normalerweise nur innerhalb des EVCC-Add-ons sichtbar. "
-        "car2mqtt versucht zusätzlich die sichtbaren HAOS-Pfade und ab v1.2.16 per Docker-API einen Diagnose-Snapshot aus dem EVCC-Container zu lesen. "
+        "car2mqtt versucht zusätzlich die sichtbaren HAOS-Pfade und ab v1.2.17 mit erweitertem Docker-Diagnosemodus einen Diagnose-Snapshot aus dem EVCC-Container zu lesen. "
         "Für späteres direktes Live-Schreiben ist ein gemeinsamer Pfad wie /share/evcc.db weiterhin die sauberste Variante. "
         f"Gefundene Kandidaten: {', '.join(candidates) or '-'}"
     )
