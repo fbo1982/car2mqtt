@@ -81,7 +81,11 @@ def _yaml_scalar(value: Any) -> str:
 
 
 def evcc_payload_to_yaml(payload: dict[str, Any]) -> str:
-    """Render a compact YAML fragment for evcc user-defined custom vehicles."""
+    """Render a YAML fragment for evcc user-defined custom vehicles.
+
+    This mirrors the configuration EVCC's Benutzerdefiniertes Gerät editor
+    expects. Custom vehicles need the MQTT plugin blocks to actually read data.
+    """
     lines: list[str] = []
     for key in ("name", "title", "type", "icon", "capacity", "phases"):
         if key in payload and payload.get(key) not in (None, ""):
@@ -96,10 +100,24 @@ def evcc_payload_to_yaml(payload: dict[str, Any]) -> str:
             lines.append(f"{key}:")
             lines.append(f"  source: {_yaml_scalar(cfg.get('source'))}")
             lines.append(f"  topic: {_yaml_scalar(cfg.get('topic'))}")
+            if cfg.get("timeout"):
+                lines.append(f"  timeout: {_yaml_scalar(cfg.get('timeout'))}")
     oi = payload.get("onIdentify")
     if isinstance(oi, dict) and oi.get("mode"):
         lines.append("onIdentify:")
         lines.append(f"  mode: {_yaml_scalar(oi.get('mode'))}")
+    status = payload.get("status")
+    if isinstance(status, dict):
+        lines.append("status:")
+        lines.append(f"  source: {_yaml_scalar(status.get('source') or 'combined')}")
+        for key in ("plugged", "charging"):
+            cfg = status.get(key)
+            if isinstance(cfg, dict) and cfg.get("source") and cfg.get("topic"):
+                lines.append(f"  {key}:")
+                lines.append(f"    source: {_yaml_scalar(cfg.get('source'))}")
+                lines.append(f"    topic: {_yaml_scalar(cfg.get('topic'))}")
+                if cfg.get("timeout"):
+                    lines.append(f"    timeout: {_yaml_scalar(cfg.get('timeout'))}")
     return "\n".join(lines) + "\n"
 
 def build_evcc_custom_vehicle_payload(vehicle: VehicleConfig, mqtt_settings: RuntimeMqttSettings, mapped_root: str | None = None) -> dict[str, Any]:
@@ -111,19 +129,25 @@ def build_evcc_custom_vehicle_payload(vehicle: VehicleConfig, mqtt_settings: Run
         cap = 0
 
     # Keep this intentionally close to evcc's documented YAML syntax for
-    # custom MQTT vehicles. The Config API validates unknown fields strictly,
-    # therefore do not add car2mqtt metadata, identifiers, phases or camelCase
-    # aliases here. evcc expects `limitsoc` (all lower case).
+    # custom MQTT vehicles. User-defined devices in EVCC need the MQTT plugin
+    # blocks; the API sync below sends this either as native custom payload or
+    # as the YAML text used by EVCC's custom-device editor.
+    timeout = str(cfg.get("evcc_timeout") or "24h")
     payload: dict[str, Any] = {
         "name": str(cfg.get("evcc_name") or build_evcc_vehicle_name(vehicle)),
         "title": str(cfg.get("evcc_title") or vehicle.label or vehicle.license_plate),
         "type": "custom",
         "icon": str(cfg.get("evcc_icon") or "car"),
         "capacity": cap,
-        "soc": {"source": "mqtt", "topic": f"{root}/soc"},
-        "range": {"source": "mqtt", "topic": f"{root}/range"},
-        "odometer": {"source": "mqtt", "topic": f"{root}/odometer"},
-        "limitsoc": {"source": "mqtt", "topic": f"{root}/limitSoc"},
+        "soc": {"source": "mqtt", "topic": f"{root}/soc", "timeout": timeout},
+        "range": {"source": "mqtt", "topic": f"{root}/range", "timeout": timeout},
+        "odometer": {"source": "mqtt", "topic": f"{root}/odometer", "timeout": timeout},
+        "limitsoc": {"source": "mqtt", "topic": f"{root}/limitSoc", "timeout": timeout},
+        "status": {
+            "source": "combined",
+            "plugged": {"source": "mqtt", "topic": f"{root}/plugged", "timeout": timeout},
+            "charging": {"source": "mqtt", "topic": f"{root}/charging", "timeout": timeout},
+        },
         "onIdentify": {"mode": _evcc_onidentify_mode(cfg)},
     }
     phases = str(cfg.get("evcc_phases") or cfg.get("phases") or "").strip()
@@ -151,6 +175,39 @@ def build_evcc_config_device_payload(custom_payload: dict[str, Any]) -> dict[str
     cfg = dict(custom_payload or {})
     device_type = str(cfg.pop("type", "custom") or "custom")
     return {"type": device_type, "config": cfg}
+
+
+
+
+def build_evcc_config_api_vehicle_payload(custom_payload: dict[str, Any]) -> dict[str, Any]:
+    """Conservative payload for evcc DB/UI Config API.
+
+    The full car2mqtt EVCC helper contains MQTT plugin blocks (soc, range,
+    odometer, limitsoc). EVCC 0.30x rejects those blocks on the DB/UI Config
+    API for custom vehicle updates with errors like "config template not found"
+    or plugin.Config decode failures. For API sync we only send EVCC vehicle
+    metadata. The MQTT values are still published by car2mqtt and the full YAML
+    helper is still available separately.
+    """
+    src = dict(custom_payload or {})
+    out: dict[str, Any] = {
+        "type": "custom",
+        "name": str(src.get("name") or ""),
+        "title": str(src.get("title") or src.get("name") or ""),
+        "icon": str(src.get("icon") or "car"),
+    }
+    if src.get("capacity") not in (None, "", 0, 0.0):
+        out["capacity"] = src.get("capacity")
+    if src.get("phases") not in (None, ""):
+        out["phases"] = src.get("phases")
+    if src.get("identifiers"):
+        out["identifiers"] = src.get("identifiers")
+    oi = src.get("onIdentify")
+    if isinstance(oi, dict) and oi.get("mode"):
+        out["onIdentify"] = {"mode": str(oi.get("mode"))}
+    if not out.get("name"):
+        out.pop("name", None)
+    return out
 
 
 def build_evcc_custom_vehicle_payload_from_card(card: dict[str, Any], mqtt_settings: RuntimeMqttSettings, link_cfg: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -310,47 +367,53 @@ class EvccClient:
             pass
         return out
 
+    def _vehicle_request_candidates(self, payload: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+        """Payload variants for EVCC vehicle config API.
+
+        EVCC versions differ here: template devices are JSON forms, while
+        user-defined/custom devices are edited as YAML in the web UI. Try the
+        YAML-editor shape first, then native custom JSON. This keeps the full
+        working custom configuration (soc/range/odometer/limitsoc/status).
+        """
+        full = dict(payload or {})
+        yaml_text = evcc_payload_to_yaml(full)
+        return [
+            ("custom-yaml-config", {"type": "custom", "config": yaml_text}),
+            ("custom-yaml-yaml", {"type": "custom", "yaml": yaml_text}),
+            ("custom-yaml-value", {"type": "custom", "value": yaml_text}),
+            ("custom-json-flat", full),
+            ("custom-json-wrapped", build_evcc_config_device_payload(full)),
+            ("custom-metadata", build_evcc_config_api_vehicle_payload(full)),
+        ]
+
     def upsert_vehicle(self, payload: dict[str, Any], evcc_ref: str = "") -> dict[str, Any]:
         ref = str(evcc_ref or "").strip()
         path_id = _evcc_id_from_ref(ref)
-        wrapped = build_evcc_config_device_payload(payload)
-        yaml_text = evcc_payload_to_yaml(payload)
-        # evcc's user-defined-device UI stores custom devices through a YAML/code
-        # editor on some versions. The exact Config-API shape differs between
-        # releases, so try the known safe shapes before giving up. We never create
-        # a replacement vehicle when an existing EVCC ID is linked.
-        yaml_wrapped_candidates = (
-            {"type": "custom", "config": yaml_text},
-            {"type": "custom", "yaml": yaml_text},
-            {"type": "custom", "name": payload.get("name"), "title": payload.get("title"), "config": yaml_text},
-        )
         errors: list[str] = []
 
-        update_candidates = (payload, wrapped) + yaml_wrapped_candidates
-        create_candidates = (payload, wrapped) + yaml_wrapped_candidates
-
         if path_id:
-            for candidate in update_candidates:
+            for label, candidate in self._vehicle_request_candidates(payload):
                 try:
-                    return {"action": "updated", "ref": f"db:{path_id}", "response": self.request("PUT", f"/config/devices/vehicle/{quote(path_id, safe='')}", candidate, auth=True)}
+                    res = self.request("PUT", f"/config/devices/vehicle/{quote(path_id, safe='')}", candidate, auth=True)
+                    return {"action": "updated", "ref": f"db:{path_id}", "variant": label, "response": res}
                 except Exception as exc:
-                    errors.append(str(exc))
+                    errors.append(f"{label}: {exc}")
 
             # Sicherheitsregel: Wenn ein bestehendes EVCC-Fahrzeug verknüpft ist,
             # darf car2mqtt bei fehlgeschlagenem Update NICHT heimlich ein Ersatz-
             # fahrzeug anlegen. Die Zuordnung bleibt erhalten und der Nutzer sieht
             # den konkreten EVCC-Fehler.
-            raise RuntimeError("EVCC Fahrzeug konnte nicht aktualisiert werden. Es wurde kein neues Fahrzeug angelegt. " + " | ".join(errors[-4:]))
+            raise RuntimeError("EVCC Fahrzeug konnte nicht aktualisiert werden. Es wurde kein neues Fahrzeug angelegt. " + " | ".join(errors[-6:]))
 
-        for candidate in create_candidates:
+        for label, candidate in self._vehicle_request_candidates(payload):
             try:
                 res = self.request("POST", "/config/devices/vehicle", candidate, auth=True)
                 new_id = self._extract_created_vehicle_ref(res, payload)
-                return {"action": "created", "ref": new_id or ref or str(payload.get("name") or ""), "response": res}
+                return {"action": "created", "ref": new_id or ref or str(payload.get("name") or ""), "variant": label, "response": res}
             except Exception as exc:
-                errors.append(str(exc))
+                errors.append(f"{label}: {exc}")
 
-        raise RuntimeError("EVCC Fahrzeug konnte nicht angelegt/aktualisiert werden. " + " | ".join(errors[-4:]))
+        raise RuntimeError("EVCC Fahrzeug konnte nicht angelegt/aktualisiert werden. " + " | ".join(errors[-6:]))
 
     def _extract_created_vehicle_ref(self, res: Any, payload: dict[str, Any]) -> str:
         new_id = ""
