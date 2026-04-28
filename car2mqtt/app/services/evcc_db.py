@@ -20,9 +20,50 @@ def normalize_db_path(path: str | None) -> str:
     return str(path or "/data/evcc.db").strip() or "/data/evcc.db"
 
 
+def find_evcc_db_candidates(max_depth: int = 5) -> list[str]:
+    """Find EVCC sqlite DB candidates visible inside the car2mqtt add-on container."""
+    roots = [Path("/addon_configs"), Path("/config/addons_config"), Path("/config"), Path("/share"), Path("/data")]
+    names = {"evcc.db", "evcc.sqlite", "evcc.sqlite3"}
+    found: list[str] = []
+    seen: set[str] = set()
+    for root in roots:
+        if not root.exists() or not root.is_dir():
+            continue
+        try:
+            for child in root.rglob("*"):
+                try:
+                    if not child.is_file():
+                        continue
+                    if child.name not in names and not ("evcc" in child.name.lower() and child.suffix.lower() in {".db", ".sqlite", ".sqlite3"}):
+                        continue
+                    try:
+                        rel_depth = len(child.relative_to(root).parts)
+                    except Exception:
+                        rel_depth = 99
+                    if rel_depth > max_depth:
+                        continue
+                    resolved = str(child)
+                    if resolved not in seen:
+                        seen.add(resolved)
+                        found.append(resolved)
+                except Exception:
+                    continue
+        except Exception:
+            continue
+    return found
+
+
+def resolve_evcc_db_path(path: str | None) -> tuple[str, list[str], bool]:
+    requested = normalize_db_path(path)
+    candidates = find_evcc_db_candidates()
+    if Path(requested).exists():
+        return requested, candidates, False
+    if candidates:
+        return candidates[0], candidates, True
+    return requested, candidates, False
+
+
 def _connect_readonly(path: str) -> sqlite3.Connection:
-    # URI mode keeps the diagnostic read-only. If that fails, sqlite will raise
-    # a clear error which we pass back to the UI.
     uri = "file:" + Path(path).absolute().as_posix() + "?mode=ro"
     con = sqlite3.connect(uri, uri=True, timeout=3)
     con.row_factory = sqlite3.Row
@@ -30,10 +71,14 @@ def _connect_readonly(path: str) -> sqlite3.Connection:
 
 
 def inspect_evcc_db(path: str | None = None, sample_limit: int = 5) -> dict[str, Any]:
-    db_path = normalize_db_path(path)
+    requested_path = normalize_db_path(path)
+    db_path, db_candidates, used_auto_path = resolve_evcc_db_path(path)
     p = Path(db_path)
     result: dict[str, Any] = {
+        "requested_path": requested_path,
         "path": db_path,
+        "used_auto_path": used_auto_path,
+        "found_paths": db_candidates,
         "exists": p.exists(),
         "readable": os.access(db_path, os.R_OK) if p.exists() else False,
         "size_bytes": p.stat().st_size if p.exists() else 0,
@@ -41,7 +86,7 @@ def inspect_evcc_db(path: str | None = None, sample_limit: int = 5) -> dict[str,
         "candidates": [],
     }
     if not p.exists():
-        result["error"] = "EVCC Datenbankdatei existiert nicht."
+        result["error"] = "EVCC Datenbankdatei existiert nicht. Hinweis: /data/evcc.db ist meist nur innerhalb des EVCC-Add-ons sichtbar. car2mqtt benötigt den Pfad aus Sicht des car2mqtt-Containers, typischerweise /addon_configs/<evcc-slug>/evcc.db."
         return result
     if not os.access(db_path, os.R_OK):
         result["error"] = "EVCC Datenbankdatei ist nicht lesbar."
@@ -80,10 +125,11 @@ def inspect_evcc_db(path: str | None = None, sample_limit: int = 5) -> dict[str,
 
 
 def backup_evcc_db(path: str | None = None, backup_dir: str | None = None) -> dict[str, Any]:
-    db_path = normalize_db_path(path)
+    requested_path = normalize_db_path(path)
+    db_path, db_candidates, used_auto_path = resolve_evcc_db_path(path)
     src = Path(db_path)
     if not src.exists():
-        raise FileNotFoundError(f"EVCC Datenbank nicht gefunden: {db_path}")
+        raise FileNotFoundError(f"EVCC Datenbank nicht gefunden: {requested_path}. /data/evcc.db ist aus car2mqtt oft nicht sichtbar. Gefundene Kandidaten: {', '.join(db_candidates) or '-'}")
     if not os.access(db_path, os.R_OK):
         raise PermissionError(f"EVCC Datenbank nicht lesbar: {db_path}")
     target_dir = Path(backup_dir or src.parent / "car2mqtt-evcc-backups")
@@ -91,4 +137,4 @@ def backup_evcc_db(path: str | None = None, backup_dir: str | None = None) -> di
     stamp = time.strftime("%Y%m%d-%H%M%S")
     target = target_dir / f"{src.name}.car2mqtt-backup-{stamp}"
     shutil.copy2(src, target)
-    return {"status": "ok", "source": str(src), "backup": str(target), "size_bytes": target.stat().st_size}
+    return {"status": "ok", "requested_path": requested_path, "source": str(src), "used_auto_path": used_auto_path, "found_paths": db_candidates, "backup": str(target), "size_bytes": target.stat().st_size}
