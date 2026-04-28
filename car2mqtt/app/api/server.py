@@ -41,6 +41,7 @@ from app.providers.gwm_config import (
 from app.services.worker_manager import WorkerManager
 from app.services.ha_discovery import publish_all_discovery, publish_vehicle_discovery, clear_vehicle_discovery
 from app.services.evcc_integration import EvccClient, build_evcc_custom_vehicle_payload, build_evcc_custom_vehicle_payload_from_card
+from app.services.evcc_db import inspect_evcc_db, backup_evcc_db, normalize_db_path
 
 logger = logging.getLogger("car2mqtt.server")
 
@@ -95,6 +96,7 @@ class HomeZoneSettingsPayload(BaseModel):
     evcc_auto_create: bool = False
     evcc_auto_update: bool = True
     evcc_auto_delete: bool = False
+    evcc_db_path: str = "/data/evcc.db"
 
 class EvccLinkPayload(BaseModel):
     evcc_ref: str = ""
@@ -959,7 +961,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.2.12",
+                "version": "1.2.13",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -1003,6 +1005,7 @@ def create_app() -> FastAPI:
         cfg.ui_settings.evcc_auto_create = bool(payload.evcc_auto_create)
         cfg.ui_settings.evcc_auto_update = bool(payload.evcc_auto_update)
         cfg.ui_settings.evcc_auto_delete = bool(payload.evcc_auto_delete)
+        cfg.ui_settings.evcc_db_path = normalize_db_path(payload.evcc_db_path)
         store.save(cfg)
         try:
             cards, _ = build_cards()
@@ -1159,6 +1162,22 @@ def create_app() -> FastAPI:
         try:
             client = _evcc_client_from_settings()
             return {"status": "ok", "vehicles": client.list_vehicles()}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post("/api/evcc/db/check")
+    async def evcc_db_check():
+        cfg = store.load()
+        try:
+            return inspect_evcc_db(getattr(cfg.ui_settings, "evcc_db_path", "/data/evcc.db"))
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post("/api/evcc/db/backup")
+    async def evcc_db_backup():
+        cfg = store.load()
+        try:
+            return backup_evcc_db(getattr(cfg.ui_settings, "evcc_db_path", "/data/evcc.db"))
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 

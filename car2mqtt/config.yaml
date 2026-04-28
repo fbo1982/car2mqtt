@@ -1,5 +1,5 @@
 name: "Car2MQTT"
-version: '1.2.12'
+version: '1.2.13'
 slug: "car2mqtt"
 description: "Multi-vehicle MQTT bridge with BMW wizard/auth flow for Home Assistant"
 url: "https://github.com/tbo1982/car2mqtt"

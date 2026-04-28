@@ -496,8 +496,9 @@ select, option {
           <h4>EVCC Datenbank / UI-Konfiguration</h4>
           <div class="field" style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px"><input id="settingsEvccEnabled" type="checkbox"><span>EVCC Integration aktiv</span></label></div>
           <div class="grid two" style="margin-top:14px"><div class="field"><label>EVCC URL</label><input id="settingsEvccUrl" placeholder="http://localhost:7070" /></div><div class="field"><label>EVCC Passwort <span class="muted">optional</span></label><input id="settingsEvccPassword" type="password" placeholder="leer lassen = unverändert" /></div></div>
+          <div class="grid two" style="margin-top:14px"><div class="field"><label>EVCC DB Pfad</label><input id="settingsEvccDbPath" placeholder="/data/evcc.db" /></div><div class="field"><label>DB-Modus</label><div class="muted">v1.2.13 prüft und sichert die DB nur. Es wird noch nicht direkt geschrieben.</div></div></div>
           <div class="grid two" style="margin-top:14px"><label class="comm-toggle"><input id="settingsEvccAutoCreate" type="checkbox"><span><span class="comm-title">Neue Fahrzeuge automatisch anlegen</span></span></label><label class="comm-toggle"><input id="settingsEvccAutoUpdate" type="checkbox"><span><span class="comm-title">Verknüpfte Fahrzeuge automatisch updaten</span></span></label><label class="comm-toggle"><input id="settingsEvccAutoDelete" type="checkbox"><span><span class="comm-title">Verwaltete Fahrzeuge beim Löschen entfernen</span></span></label></div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button id="testEvccBtn" type="button" class="ghost-btn">EVCC Verbindung testen</button><button id="loadEvccVehiclesBtn" type="button" class="ghost-btn">EVCC Fahrzeuge laden</button></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button id="testEvccBtn" type="button" class="ghost-btn">EVCC Verbindung testen</button><button id="loadEvccVehiclesBtn" type="button" class="ghost-btn">EVCC Fahrzeuge laden</button><button id="checkEvccDbBtn" type="button" class="ghost-btn">EVCC DB prüfen</button><button id="backupEvccDbBtn" type="button" class="ghost-btn">EVCC DB Backup</button></div>
           <div id="settingsEvccStatus" class="muted" style="margin-top:10px"></div>
         </div>
       </div>
@@ -946,6 +947,7 @@ function renderSettingsDialog(data){
   if(field("settingsEvccEnabled")) field("settingsEvccEnabled").checked = !!ui.evcc_enabled;
   if(field("settingsEvccUrl")) field("settingsEvccUrl").value = ui.evcc_url || "http://localhost:7070";
   if(field("settingsEvccPassword")) field("settingsEvccPassword").value = "";
+  if(field("settingsEvccDbPath")) field("settingsEvccDbPath").value = ui.evcc_db_path || "/data/evcc.db";
   if(field("settingsEvccAutoCreate")) field("settingsEvccAutoCreate").checked = !!ui.evcc_auto_create;
   if(field("settingsEvccAutoUpdate")) field("settingsEvccAutoUpdate").checked = ui.evcc_auto_update !== false;
   if(field("settingsEvccAutoDelete")) field("settingsEvccAutoDelete").checked = !!ui.evcc_auto_delete;
@@ -1518,7 +1520,7 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
   try{
     const select = field('settingsHomeZoneSelect');
     const trackerToggle = field('settingsDeviceTrackerEnabled');
-    const resp = await postJson('api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '', device_tracker_enabled: !!(trackerToggle && trackerToggle.checked), ha_discovery_enabled: !!field('settingsHaDiscoveryEnabled')?.checked, ha_discovery_prefix: field('settingsHaDiscoveryPrefix')?.value || 'homeassistant', ha_discovery_retain: !!field('settingsHaDiscoveryRetain')?.checked, evcc_enabled: !!field('settingsEvccEnabled')?.checked, evcc_url: field('settingsEvccUrl')?.value || 'http://localhost:7070', evcc_password: field('settingsEvccPassword')?.value || '', evcc_auto_create: !!field('settingsEvccAutoCreate')?.checked, evcc_auto_update: !!field('settingsEvccAutoUpdate')?.checked, evcc_auto_delete: !!field('settingsEvccAutoDelete')?.checked });
+    const resp = await postJson('api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '', device_tracker_enabled: !!(trackerToggle && trackerToggle.checked), ha_discovery_enabled: !!field('settingsHaDiscoveryEnabled')?.checked, ha_discovery_prefix: field('settingsHaDiscoveryPrefix')?.value || 'homeassistant', ha_discovery_retain: !!field('settingsHaDiscoveryRetain')?.checked, evcc_enabled: !!field('settingsEvccEnabled')?.checked, evcc_url: field('settingsEvccUrl')?.value || 'http://localhost:7070', evcc_password: field('settingsEvccPassword')?.value || '', evcc_auto_create: !!field('settingsEvccAutoCreate')?.checked, evcc_auto_update: !!field('settingsEvccAutoUpdate')?.checked, evcc_auto_delete: !!field('settingsEvccAutoDelete')?.checked, evcc_db_path: field('settingsEvccDbPath')?.value || '/data/evcc.db' });
     uiSettings = resp.ui_settings || {};
     helperHomezoneJson = resp.effective_homezone || helperHomezoneJson;
     const info = field('settingsHomeZoneInfo');
@@ -1546,6 +1548,21 @@ async function loadEvccVehiclesStatus(){
     const names = (data.vehicles || []).map(v => `${v.title || v.name || v.ref} (${v.ref || v.name || '-'})`).join(', ');
     const el = field('settingsEvccStatus'); if(el) el.textContent = names ? `EVCC Fahrzeuge: ${names}` : 'Keine EVCC Fahrzeuge gefunden.';
   }catch(err){ const el = field('settingsEvccStatus'); if(el) el.textContent = err.message || 'EVCC Fahrzeuge konnten nicht geladen werden.'; }
+}
+async function checkEvccDbStatus(){
+  try{
+    const data = await postJson('./api/evcc/db/check', {});
+    const tableNames = (data.tables || []).map(t => `${t.name}(${t.count ?? '?'})`).join(', ');
+    const candidateNames = (data.candidates || []).map(t => t.name).join(', ');
+    const el = field('settingsEvccStatus');
+    if(el) el.textContent = data.exists ? `EVCC DB OK: ${data.path} · Tabellen: ${tableNames || 'keine'}${candidateNames ? ' · Kandidaten: ' + candidateNames : ''}` : `EVCC DB nicht gefunden: ${data.path}`;
+  }catch(err){ const el = field('settingsEvccStatus'); if(el) el.textContent = err.message || 'EVCC DB Prüfung fehlgeschlagen.'; }
+}
+async function backupEvccDbStatus(){
+  try{
+    const data = await postJson('./api/evcc/db/backup', {});
+    const el = field('settingsEvccStatus'); if(el) el.textContent = `EVCC DB Backup erstellt: ${data.backup || 'ok'}`;
+  }catch(err){ const el = field('settingsEvccStatus'); if(el) el.textContent = err.message || 'EVCC DB Backup fehlgeschlagen.'; }
 }
 async function syncCurrentVehicleToEvcc(){
   if(!editState.vehicleId) return;
@@ -1608,6 +1625,10 @@ const testEvccBtn = field('testEvccBtn');
 if(testEvccBtn) testEvccBtn.onclick = (ev)=>{ ev.preventDefault(); testEvccConnection(); };
 const loadEvccVehiclesBtn = field('loadEvccVehiclesBtn');
 if(loadEvccVehiclesBtn) loadEvccVehiclesBtn.onclick = (ev)=>{ ev.preventDefault(); loadEvccVehiclesStatus(); };
+const checkEvccDbBtn = field('checkEvccDbBtn');
+if(checkEvccDbBtn) checkEvccDbBtn.onclick = (ev)=>{ ev.preventDefault(); checkEvccDbStatus(); };
+const backupEvccDbBtn = field('backupEvccDbBtn');
+if(backupEvccDbBtn) backupEvccDbBtn.onclick = (ev)=>{ ev.preventDefault(); backupEvccDbStatus(); };
 const evccSyncBtn = field('evccSyncBtn');
 if(evccSyncBtn) evccSyncBtn.onclick = (ev)=>{ ev.preventDefault(); syncCurrentVehicleToEvcc(); };
 const publishVehicleDiscoveryBtn = field('publishVehicleDiscoveryBtn');
