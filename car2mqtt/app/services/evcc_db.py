@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import io
+import json
 import os
 import shutil
+import socket
 import sqlite3
+import tarfile
 import time
 from pathlib import Path
 from typing import Any
@@ -10,14 +14,17 @@ from typing import Any
 
 DB_NAMES = {"evcc.db", "evcc.sqlite", "evcc.sqlite3"}
 SEARCH_ROOTS = [
-    Path("/addons"),              # legacy/HAOS add-on data mapping, if available
-    Path("/addon_configs"),       # newer HA add-on config mapping
+    Path("/addons"),
+    Path("/addon_configs"),
     Path("/config/addons_config"),
     Path("/config"),
     Path("/share"),
     Path("/backup"),
-    Path("/data"),                # own car2mqtt add-on data only
+    Path("/data"),
 ]
+DOCKER_SOCKET = Path("/var/run/docker.sock")
+DOCKER_EVCC_REMOTE_PATH = "/data/evcc.db"
+DOCKER_SNAPSHOT_DIR = Path("/data/car2mqtt-evcc-docker-snapshots")
 
 
 def _safe_cell(value: Any, max_len: int = 500) -> Any:
@@ -37,14 +44,146 @@ def _looks_like_evcc_db(path: Path) -> bool:
     return name in DB_NAMES or ("evcc" in name and path.suffix.lower() in {".db", ".sqlite", ".sqlite3"})
 
 
-def find_evcc_db_candidates(max_depth: int = 9, max_files: int = 25000) -> list[str]:
-    """Find EVCC sqlite DB candidates visible inside the car2mqtt add-on container.
+def _decode_chunked(data: bytes) -> bytes:
+    out = bytearray()
+    pos = 0
+    while True:
+        end = data.find(b"\r\n", pos)
+        if end < 0:
+            break
+        size_line = data[pos:end].split(b";", 1)[0].strip()
+        try:
+            size = int(size_line, 16)
+        except ValueError:
+            break
+        pos = end + 2
+        if size == 0:
+            break
+        out.extend(data[pos:pos + size])
+        pos += size + 2
+    return bytes(out)
 
-    Important: /data/evcc.db is normally only the path inside the EVCC add-on.
-    car2mqtt can only see it if Home Assistant exposes the legacy add-on data
-    directory through /addons or if the DB is stored in /addon_configs, /share,
-    /config, etc.
-    """
+
+def _docker_http(method: str, path: str, body: bytes | None = None, headers: dict[str, str] | None = None, timeout: float = 10.0) -> tuple[int, dict[str, str], bytes]:
+    if not DOCKER_SOCKET.exists():
+        raise FileNotFoundError("Docker API Socket nicht verfügbar: /var/run/docker.sock")
+    headers = dict(headers or {})
+    body = body or b""
+    headers.setdefault("Host", "docker")
+    headers.setdefault("Connection", "close")
+    headers.setdefault("Content-Length", str(len(body)))
+    request = f"{method} {path} HTTP/1.1\r\n" + "".join(f"{k}: {v}\r\n" for k, v in headers.items()) + "\r\n"
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    try:
+        sock.connect(str(DOCKER_SOCKET))
+        sock.sendall(request.encode("utf-8") + body)
+        chunks: list[bytes] = []
+        while True:
+            try:
+                chunk = sock.recv(65536)
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            chunks.append(chunk)
+    finally:
+        sock.close()
+    raw = b"".join(chunks)
+    head, sep, payload = raw.partition(b"\r\n\r\n")
+    if not sep:
+        raise RuntimeError("Ungültige Docker API Antwort")
+    lines = head.decode("iso-8859-1", errors="replace").split("\r\n")
+    status = 0
+    if lines:
+        parts = lines[0].split()
+        if len(parts) >= 2 and parts[1].isdigit():
+            status = int(parts[1])
+    out_headers: dict[str, str] = {}
+    for line in lines[1:]:
+        if ":" in line:
+            k, v = line.split(":", 1)
+            out_headers[k.strip().lower()] = v.strip()
+    if out_headers.get("transfer-encoding", "").lower() == "chunked":
+        payload = _decode_chunked(payload)
+    return status, out_headers, payload
+
+
+def _docker_json(method: str, path: str) -> Any:
+    status, _headers, body = _docker_http(method, path)
+    if status < 200 or status >= 300:
+        raise RuntimeError(f"Docker API {method} {path} fehlgeschlagen ({status}): {body[:500].decode('utf-8', errors='replace')}")
+    return json.loads(body.decode("utf-8") or "null")
+
+
+def _find_evcc_container() -> dict[str, Any] | None:
+    try:
+        containers = _docker_json("GET", "/containers/json?all=1")
+    except Exception:
+        return None
+    best = None
+    best_score = 999
+    for c in containers or []:
+        labels = c.get("Labels") or {}
+        text = " ".join([
+            str(c.get("Id", "")),
+            str(c.get("Image", "")),
+            " ".join(c.get("Names") or []),
+            " ".join(f"{k}={v}" for k, v in labels.items()) if isinstance(labels, dict) else str(labels),
+        ]).lower()
+        score = 999
+        if "evcc" in text:
+            score = 0
+        if "addon" in text and "evcc" in text:
+            score = -5
+        if score < best_score:
+            best = c
+            best_score = score
+    return best if best_score < 999 else None
+
+
+def copy_evcc_db_from_docker() -> dict[str, Any] | None:
+    container = _find_evcc_container()
+    if not container:
+        return None
+    cid = container.get("Id")
+    if not cid:
+        return None
+    import urllib.parse
+    archive_path = urllib.parse.quote(DOCKER_EVCC_REMOTE_PATH, safe="")
+    status, _headers, body = _docker_http("GET", f"/containers/{cid}/archive?path={archive_path}", timeout=20.0)
+    base = {
+        "container_id": str(cid)[:12],
+        "container_name": ", ".join(container.get("Names") or []),
+        "container_image": container.get("Image", ""),
+        "remote_path": DOCKER_EVCC_REMOTE_PATH,
+    }
+    if status < 200 or status >= 300:
+        base["error"] = f"Docker konnte {DOCKER_EVCC_REMOTE_PATH} nicht aus dem EVCC-Container lesen ({status})."
+        return base
+    DOCKER_SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    target = DOCKER_SNAPSHOT_DIR / f"evcc.db.snapshot-{stamp}"
+    try:
+        with tarfile.open(fileobj=io.BytesIO(body), mode="r:*") as tf:
+            member = next((m for m in tf.getmembers() if Path(m.name).name == "evcc.db" and m.isfile()), None)
+            if member is None:
+                base["error"] = "Docker-Archiv enthielt keine evcc.db."
+                return base
+            src = tf.extractfile(member)
+            if src is None:
+                base["error"] = "evcc.db konnte aus Docker-Archiv nicht gelesen werden."
+                return base
+            with target.open("wb") as fh:
+                shutil.copyfileobj(src, fh)
+    except Exception as exc:
+        base["error"] = f"Docker-Snapshot konnte nicht extrahiert werden: {exc}"
+        return base
+    base.update({"snapshot_path": str(target), "size_bytes": target.stat().st_size})
+    return base
+
+
+def find_evcc_db_candidates(max_depth: int = 9, max_files: int = 25000) -> list[str]:
     found: list[str] = []
     seen: set[str] = set()
     scanned = 0
@@ -62,7 +201,6 @@ def find_evcc_db_candidates(max_depth: int = 9, max_files: int = 25000) -> list[
                     rel_depth = 99
                 if rel_depth >= max_depth:
                     dirs[:] = []
-                # keep scan cheap and avoid unrelated huge dirs
                 dirs[:] = [d for d in dirs if not d.startswith(".") and d not in {"node_modules", "__pycache__", "tmp", "cache"}]
                 for filename in files:
                     child = Path(base) / filename
@@ -74,7 +212,6 @@ def find_evcc_db_candidates(max_depth: int = 9, max_files: int = 25000) -> list[
                         found.append(resolved)
         except Exception:
             continue
-    # prefer explicit evcc.db and paths that look like EVCC add-on/config folders
     def score(p: str) -> tuple[int, str]:
         low = p.lower()
         s = 0
@@ -113,36 +250,14 @@ def _connect_readonly(path: str) -> sqlite3.Connection:
 def _unreachable_hint(requested_path: str, candidates: list[str]) -> str:
     return (
         f"EVCC Datenbank nicht gefunden: {requested_path}. "
-        "Wichtig: /data/evcc.db ist normalerweise nur innerhalb des EVCC-Add-ons sichtbar. "
-        "car2mqtt kann diese Datei nur sehen, wenn Home Assistant den EVCC-Add-on-Datenordner unter /addons freigibt "
-        "oder wenn die EVCC-Datenbank in einem gemeinsamen Pfad liegt, z. B. /share/evcc.db oder /addon_configs/<evcc>/evcc.db. "
+        "/data/evcc.db ist normalerweise nur innerhalb des EVCC-Add-ons sichtbar. "
+        "car2mqtt versucht zusätzlich die sichtbaren HAOS-Pfade und ab v1.2.16 per Docker-API einen Diagnose-Snapshot aus dem EVCC-Container zu lesen. "
+        "Für späteres direktes Live-Schreiben ist ein gemeinsamer Pfad wie /share/evcc.db weiterhin die sauberste Variante. "
         f"Gefundene Kandidaten: {', '.join(candidates) or '-'}"
     )
 
 
-def inspect_evcc_db(path: str | None = None, sample_limit: int = 5) -> dict[str, Any]:
-    requested_path = normalize_db_path(path)
-    db_path, db_candidates, used_auto_path = resolve_evcc_db_path(path)
-    p = Path(db_path)
-    result: dict[str, Any] = {
-        "requested_path": requested_path,
-        "path": db_path,
-        "used_auto_path": used_auto_path,
-        "found_paths": db_candidates,
-        "search_roots": [str(r) for r in SEARCH_ROOTS if r.exists()],
-        "exists": p.exists(),
-        "readable": os.access(db_path, os.R_OK) if p.exists() else False,
-        "size_bytes": p.stat().st_size if p.exists() else 0,
-        "tables": [],
-        "candidates": [],
-    }
-    if not p.exists():
-        result["error"] = _unreachable_hint(requested_path, db_candidates)
-        return result
-    if not os.access(db_path, os.R_OK):
-        result["error"] = "EVCC Datenbankdatei ist nicht lesbar: " + db_path
-        return result
-
+def _inspect_sqlite(db_path: str, sample_limit: int, result: dict[str, Any]) -> dict[str, Any]:
     with _connect_readonly(db_path) as con:
         rows = con.execute("SELECT name, type FROM sqlite_master WHERE type IN ('table','view') ORDER BY name").fetchall()
         for row in rows:
@@ -175,17 +290,60 @@ def inspect_evcc_db(path: str | None = None, sample_limit: int = 5) -> dict[str,
     return result
 
 
+def inspect_evcc_db(path: str | None = None, sample_limit: int = 5) -> dict[str, Any]:
+    requested_path = normalize_db_path(path)
+    db_path, db_candidates, used_auto_path = resolve_evcc_db_path(path)
+    docker_snapshot = None
+    if not Path(db_path).exists():
+        docker_snapshot = copy_evcc_db_from_docker()
+        if docker_snapshot and docker_snapshot.get("snapshot_path") and Path(str(docker_snapshot["snapshot_path"])).exists():
+            db_path = str(docker_snapshot["snapshot_path"])
+            used_auto_path = True
+    p = Path(db_path)
+    result: dict[str, Any] = {
+        "requested_path": requested_path,
+        "path": db_path,
+        "used_auto_path": used_auto_path,
+        "found_paths": db_candidates,
+        "docker_snapshot": docker_snapshot,
+        "search_roots": [str(r) for r in SEARCH_ROOTS if r.exists()],
+        "exists": p.exists(),
+        "readable": os.access(db_path, os.R_OK) if p.exists() else False,
+        "size_bytes": p.stat().st_size if p.exists() else 0,
+        "tables": [],
+        "candidates": [],
+    }
+    if not p.exists():
+        result["error"] = _unreachable_hint(requested_path, db_candidates)
+        if docker_snapshot and docker_snapshot.get("error"):
+            result["error"] += " Docker-Fallback: " + str(docker_snapshot.get("error"))
+        return result
+    if not os.access(db_path, os.R_OK):
+        result["error"] = "EVCC Datenbankdatei ist nicht lesbar: " + db_path
+        return result
+    return _inspect_sqlite(db_path, sample_limit, result)
+
+
 def backup_evcc_db(path: str | None = None, backup_dir: str | None = None) -> dict[str, Any]:
     requested_path = normalize_db_path(path)
     db_path, db_candidates, used_auto_path = resolve_evcc_db_path(path)
+    docker_snapshot = None
+    if not Path(db_path).exists():
+        docker_snapshot = copy_evcc_db_from_docker()
+        if docker_snapshot and docker_snapshot.get("snapshot_path") and Path(str(docker_snapshot["snapshot_path"])).exists():
+            db_path = str(docker_snapshot["snapshot_path"])
+            used_auto_path = True
     src = Path(db_path)
     if not src.exists():
-        raise FileNotFoundError(_unreachable_hint(requested_path, db_candidates))
+        msg = _unreachable_hint(requested_path, db_candidates)
+        if docker_snapshot and docker_snapshot.get("error"):
+            msg += " Docker-Fallback: " + str(docker_snapshot.get("error"))
+        raise FileNotFoundError(msg)
     if not os.access(db_path, os.R_OK):
         raise PermissionError(f"EVCC Datenbank nicht lesbar: {db_path}")
-    target_dir = Path(backup_dir or src.parent / "car2mqtt-evcc-backups")
+    target_dir = Path(backup_dir or Path("/data/car2mqtt-evcc-backups"))
     target_dir.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     target = target_dir / f"{src.name}.car2mqtt-backup-{stamp}"
     shutil.copy2(src, target)
-    return {"status": "ok", "requested_path": requested_path, "source": str(src), "used_auto_path": used_auto_path, "found_paths": db_candidates, "backup": str(target), "size_bytes": target.stat().st_size}
+    return {"status": "ok", "requested_path": requested_path, "source": str(src), "used_auto_path": used_auto_path, "found_paths": db_candidates, "docker_snapshot": docker_snapshot, "backup": str(target), "size_bytes": target.stat().st_size}

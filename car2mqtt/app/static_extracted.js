@@ -960,7 +960,8 @@ async function checkEvccDbStatus(){
     if(el){
       const auto = data.used_auto_path ? ` · Auto-Pfad genutzt statt ${data.requested_path || ''}` : '';
       const found = (data.found_paths || []).length ? ` · Gefunden: ${(data.found_paths || []).join(', ')}` : '';
-      el.textContent = data.exists ? `EVCC DB OK: ${data.path}${auto} · Tabellen: ${tableNames || 'keine'}${candidateNames ? ' · Kandidaten: ' + candidateNames : ''}` : `EVCC DB nicht gefunden: ${data.path}${found}`;
+      const docker = data.docker_snapshot && data.docker_snapshot.snapshot_path ? ` · Docker-Snapshot aus EVCC-Container: ${data.docker_snapshot.snapshot_path}` : (data.docker_snapshot && data.docker_snapshot.error ? ` · Docker-Fallback: ${data.docker_snapshot.error}` : "");
+      el.textContent = data.exists ? `EVCC DB OK: ${data.path}${auto}${docker} · Tabellen: ${tableNames || "keine"}${candidateNames ? " · Kandidaten: " + candidateNames : ""}` : `EVCC DB nicht gefunden: ${data.path}${found}${docker}`;
     }
   }catch(err){ const el = field('settingsEvccStatus'); if(el) el.textContent = err.message || 'EVCC DB Prüfung fehlgeschlagen.'; }
 }
