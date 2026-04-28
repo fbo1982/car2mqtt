@@ -612,6 +612,17 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
             continue
         label = str(meta.get('label') or meta.get('title') or meta.get('display_name') or meta.get('name') or plate).strip() or plate
         metrics = payload.get('metrics', {}) or {}
+        evcc_cfg = _evcc_cfg_from_provider(payload.get('evcc') or {})
+        # Host ist fachliche Quelle fuer Name/Titel/Kapazitaet. Wenn der Host noch
+        # keine EVCC-Werte veroeffentlicht hat, nutzen Remotes die normalen
+        # Fahrzeugdaten als sinnvollen Fallback.
+        if not evcc_cfg.get('evcc_name'):
+            evcc_cfg['evcc_name'] = label
+        if not evcc_cfg.get('evcc_title'):
+            evcc_cfg['evcc_title'] = label
+        if not evcc_cfg.get('evcc_capacity_kwh') and metrics.get('capacityKwh') not in (None, ''):
+            evcc_cfg['evcc_capacity_kwh'] = str(metrics.get('capacityKwh'))
+            evcc_cfg['capacity_kwh'] = str(metrics.get('capacityKwh'))
         key = (manufacturer, plate)
         # allow remote duplicate even if same plate exists locally but from other server
         card_id = f"remote::{manufacturer}::{plate}::{server_name}"
@@ -655,7 +666,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
             'source_topic_base': '',
             'remote': True,
             'remote_server_name': server_name,
-            'evcc_config': _evcc_cfg_from_provider(payload.get('evcc') or {}),
+            'evcc_config': evcc_cfg,
         })
     cards.sort(key=lambda c: (str(c.get('label','')).lower(), str(c.get('license_plate','')).lower(), str(c.get('remote_server_name','')).lower()))
     return cards
@@ -687,16 +698,19 @@ def _remote_vehicle_payload_from_card(card: dict[str, Any]) -> dict[str, Any]:
 
 
 
-def _evcc_mqtt_values(provider_config: dict[str, Any] | None) -> dict[str, Any]:
+def _evcc_mqtt_values(provider_config: dict[str, Any] | None, *, fallback_title: str = "", fallback_capacity: Any = "") -> dict[str, Any]:
     cfg = _evcc_cfg_from_provider(provider_config or {})
     identifiers = _normalize_evcc_identifier_list(cfg.get("evcc_identifiers") or "")
-    # Wichtig: evcc_ref / EVCC-ID wird absichtlich NICHT per MQTT veröffentlicht.
-    # Die EVCC-ID ist eine lokale Zuordnung je car2mqtt-Instanz. Remote-Instanzen
-    # lesen nur die fachliche Fahrzeugkonfiguration über MQTT und pflegen ihre eigene EVCC-ID.
+    title = str(cfg.get("evcc_title") or fallback_title or "").strip()
+    name = str(cfg.get("evcc_name") or title or "").strip()
+    capacity = str(cfg.get("evcc_capacity_kwh") or cfg.get("capacity_kwh") or fallback_capacity or "").strip()
+    # Wichtig: evcc_ref / EVCC-ID und onIdentify werden absichtlich NICHT per MQTT veröffentlicht.
+    # Beide Werte sind lokale Zuordnungen je car2mqtt-Instanz. Remote-Instanzen
+    # lesen nur die fachliche Fahrzeugkonfiguration über MQTT und pflegen ihre eigene EVCC-ID/onIdentify.
     return {
-        "evcc/name": cfg.get("evcc_name") or "",
-        "evcc/title": cfg.get("evcc_title") or "",
-        "evcc/capacity_kwh": cfg.get("evcc_capacity_kwh") or cfg.get("capacity_kwh") or "",
+        "evcc/name": name,
+        "evcc/title": title,
+        "evcc/capacity_kwh": capacity,
         "evcc/phases": cfg.get("evcc_phases") or "",
         "evcc/identifiers": identifiers,
         "evcc/identifiers_csv": ",".join(identifiers),
@@ -706,22 +720,28 @@ def _evcc_mqtt_values(provider_config: dict[str, Any] | None) -> dict[str, Any]:
 def _publish_evcc_vehicle_config_to_mqtt(card_or_vehicle: Any, mqtt_settings, provider_config: dict[str, Any] | None = None) -> int:
     if not getattr(mqtt_settings, 'host', ''):
         return 0
+    fallback_title = ""
+    fallback_capacity = ""
     if isinstance(card_or_vehicle, VehicleConfig):
         manufacturer = str(card_or_vehicle.manufacturer or '').lower()
         plate = str(card_or_vehicle.license_plate or '')
         root = mapped_topic(mqtt_settings.base_topic, manufacturer, plate)
         cfg = provider_config if provider_config is not None else (card_or_vehicle.provider_config or {})
+        fallback_title = str(card_or_vehicle.label or card_or_vehicle.license_plate or '').strip()
+        fallback_capacity = (cfg or {}).get('capacity_kwh') or (cfg or {}).get('capacityKwh') or ''
     else:
         card = dict(card_or_vehicle or {})
         manufacturer = str(card.get('manufacturer') or '').lower()
         plate = str(card.get('license_plate') or '')
         root = str(card.get('mapped_topic') or mapped_topic(mqtt_settings.base_topic, manufacturer, plate)).rstrip('/')
         cfg = provider_config or {}
+        fallback_title = str(card.get('label') or card.get('license_plate') or '').strip()
+        fallback_capacity = ((card.get('metrics') or {}).get('capacityKwh') or '')
     client = LocalMqttClient(mqtt_settings)
     count = 0
     try:
         client.connect()
-        for key, value in _evcc_mqtt_values(cfg).items():
+        for key, value in _evcc_mqtt_values(cfg, fallback_title=fallback_title, fallback_capacity=fallback_capacity).items():
             client.publish(f"{root}/{key}", value)
             count += 1
     finally:
@@ -906,6 +926,7 @@ def create_app() -> FastAPI:
                 mqtt_evcc_cfg['evcc_ref'] = local_link_cfg.get('evcc_ref') or ''
                 mqtt_evcc_cfg['evcc_managed'] = local_link_cfg.get('evcc_managed', True)
                 mqtt_evcc_cfg['evcc_auto_sync'] = local_link_cfg.get('evcc_auto_sync', True)
+                mqtt_evcc_cfg['evcc_onidentify_mode'] = _normalize_evcc_onidentify_mode(local_link_cfg.get('evcc_onidentify_mode') or 'off')
                 card['evcc_config'] = mqtt_evcc_cfg
         cards.sort(key=lambda c: (str(c.get('label','')).lower(), str(c.get('license_plate','')).lower(), 1 if c.get('remote') else 0))
         return cards, mqtt_settings.model_dump(mode="json")
@@ -938,7 +959,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.1.99",
+                "version": "1.2.0",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -1193,11 +1214,12 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
             # Bei Remote-Fahrzeugen werden EVCC-ID und onIdentify-Modus lokal gepflegt.
             # Name/Titel/Kapazität/Phasen/Identifiers kommen vom Host per MQTT.
+            existing_link_cfg = _evcc_cfg_from_provider((getattr(store.load().ui_settings, "evcc_vehicle_links", {}) or {}).get(vehicle_id, {}) or {})
             link_cfg = {
-                "evcc_ref": str(cfg_values.get("evcc_ref") or link_cfg.get("evcc_ref") or "").strip(),
-                "evcc_managed": bool(cfg_values.get("evcc_managed", link_cfg.get("evcc_managed", True))),
-                "evcc_auto_sync": bool(cfg_values.get("evcc_auto_sync", link_cfg.get("evcc_auto_sync", True))),
-                "evcc_onidentify_mode": _normalize_evcc_onidentify_mode(cfg_values.get("evcc_onidentify_mode") or link_cfg.get("evcc_onidentify_mode") or "off"),
+                "evcc_ref": str(cfg_values.get("evcc_ref") or existing_link_cfg.get("evcc_ref") or "").strip(),
+                "evcc_managed": bool(cfg_values.get("evcc_managed", existing_link_cfg.get("evcc_managed", True))),
+                "evcc_auto_sync": bool(cfg_values.get("evcc_auto_sync", existing_link_cfg.get("evcc_auto_sync", True))),
+                "evcc_onidentify_mode": _normalize_evcc_onidentify_mode(cfg_values.get("evcc_onidentify_mode") or existing_link_cfg.get("evcc_onidentify_mode") or "off"),
             }
             log_store.append(vehicle_id, "Lokale EVCC Remote-Zuordnung gespeichert. Fahrzeugwerte werden vom Host per MQTT gelesen.")
             _save_remote_link_cfg(vehicle_id, link_cfg)

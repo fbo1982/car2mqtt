@@ -630,17 +630,20 @@ function normalizeEvccOnIdentifyMode(value){
 }
 function evccCfgFromCardOrVehicle(obj){
   const cfg = (obj && obj.evcc_config) || (obj && obj.provider_config) || {};
-  const cap = cfg.evcc_capacity_kwh ?? cfg.capacity_kwh ?? '';
+  const fallbackTitle = (obj && (obj.label || obj.title || obj.license_plate)) || '';
+  const fallbackCapacity = (obj && obj.metrics && obj.metrics.capacityKwh != null) ? obj.metrics.capacityKwh : '';
+  const cap = cfg.evcc_capacity_kwh ?? cfg.capacity_kwh ?? fallbackCapacity ?? '';
+  const title = cfg.evcc_title || fallbackTitle || '';
   return {
     evcc_ref: cfg.evcc_ref || '',
     evcc_managed: cfg.evcc_managed !== false,
     evcc_auto_sync: cfg.evcc_auto_sync !== false,
-    evcc_name: cfg.evcc_name || '',
-    evcc_title: cfg.evcc_title || '',
+    evcc_name: cfg.evcc_name || title,
+    evcc_title: title,
     evcc_capacity_kwh: cap || '',
     evcc_phases: cfg.evcc_phases || '',
     evcc_identifiers: Array.isArray(cfg.evcc_identifiers) ? cfg.evcc_identifiers.join(', ') : (cfg.evcc_identifiers || ''),
-    evcc_onidentify_mode: normalizeEvccOnIdentifyMode(cfg.evcc_onidentify_mode || cfg.evcc_onidentify_pv || cfg.evcc_onidentify_connected || 'off'),
+    evcc_onidentify_mode: normalizeEvccOnIdentifyMode(cfg.evcc_onidentify_mode || 'off'),
   };
 }
 function fillEvccVehicleConfigFields(obj){
@@ -659,6 +662,7 @@ function setEvccRemoteFieldMode(isRemote){
   const editableOnlyOnHost = ['editEvccName','editEvccTitle','editEvccCapacity','editEvccPhases','editEvccIdentifiers'];
   editableOnlyOnHost.forEach(id => { const el = field(id); if(el) el.disabled = !!isRemote; });
   if(field('editEvccRef')) field('editEvccRef').disabled = false;
+  if(field('editEvccOnIdentifyMode')) field('editEvccOnIdentifyMode').disabled = false;
   field('evccRemoteConfigHint')?.classList.toggle('hidden', !isRemote);
   if(field('saveEvccVehicleConfigBtn')) field('saveEvccVehicleConfigBtn').textContent = isRemote ? 'Lokale EVCC-Zuordnung speichern' : 'EVCC/MQTT-Konfiguration speichern';
 }
@@ -1552,11 +1556,13 @@ async function saveCurrentEvccVehicleConfig(){
   try{
     const data = await postJson(`./api/vehicles/${editState.vehicleId}/evcc/config`, collectEvccVehicleConfigPayload());
     if(data.remote){
-      alert('EVCC-ID gespeichert. Die restliche EVCC/MQTT-Konfiguration wird vom Host per MQTT gelesen.');
+      alert('Lokale EVCC-Zuordnung gespeichert. EVCC ID und onIdentify bleiben lokal auf dieser Instanz.');
     }else{
       alert(`EVCC/MQTT-Konfiguration gespeichert. MQTT Topics veröffentlicht: ${data.published || 0}`);
     }
     await loadDashboard();
+    const updated = getCurrentEditCard();
+    if(updated) fillEvccVehicleConfigFields(updated);
     await refreshVehicleLogs();
   }catch(err){ alert(err.message || 'EVCC/MQTT-Konfiguration konnte nicht gespeichert werden.'); }
 }

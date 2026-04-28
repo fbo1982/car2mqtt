@@ -72,6 +72,36 @@ def build_evcc_vehicle_name(vehicle: VehicleConfig) -> str:
     return f"car2mqtt_{_slug(vehicle.manufacturer)}_{_slug(normalize_plate(vehicle.license_plate) or vehicle.id)}"
 
 
+
+def _yaml_scalar(value: Any) -> str:
+    text = str(value if value is not None else "")
+    if re.match(r"^[A-Za-z0-9_.:/@+-]+$", text):
+        return text
+    return '"' + text.replace('\\', '\\\\').replace('\"', '\\"') + '"'
+
+
+def evcc_payload_to_yaml(payload: dict[str, Any]) -> str:
+    """Render a compact YAML fragment for evcc user-defined custom vehicles."""
+    lines: list[str] = []
+    for key in ("name", "title", "type", "icon", "capacity", "phases"):
+        if key in payload and payload.get(key) not in (None, ""):
+            lines.append(f"{key}: {_yaml_scalar(payload.get(key))}")
+    if payload.get("identifiers"):
+        lines.append("identifiers:")
+        for item in payload.get("identifiers") or []:
+            lines.append(f"  - {_yaml_scalar(item)}")
+    for key in ("soc", "range", "odometer", "limitsoc"):
+        cfg = payload.get(key)
+        if isinstance(cfg, dict) and cfg.get("source") and cfg.get("topic"):
+            lines.append(f"{key}:")
+            lines.append(f"  source: {_yaml_scalar(cfg.get('source'))}")
+            lines.append(f"  topic: {_yaml_scalar(cfg.get('topic'))}")
+    oi = payload.get("onIdentify")
+    if isinstance(oi, dict) and oi.get("mode"):
+        lines.append("onIdentify:")
+        lines.append(f"  mode: {_yaml_scalar(oi.get('mode'))}")
+    return "\n".join(lines) + "\n"
+
 def build_evcc_custom_vehicle_payload(vehicle: VehicleConfig, mqtt_settings: RuntimeMqttSettings, mapped_root: str | None = None) -> dict[str, Any]:
     root = (mapped_root or mapped_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)).rstrip("/")
     cfg = vehicle.provider_config or {}
@@ -284,14 +314,20 @@ class EvccClient:
         ref = str(evcc_ref or "").strip()
         path_id = _evcc_id_from_ref(ref)
         wrapped = build_evcc_config_device_payload(payload)
+        yaml_text = evcc_payload_to_yaml(payload)
+        # evcc's user-defined-device UI stores custom devices through a YAML/code
+        # editor on some versions. The exact Config-API shape differs between
+        # releases, so try the known safe shapes before giving up. We never create
+        # a replacement vehicle when an existing EVCC ID is linked.
+        yaml_wrapped_candidates = (
+            {"type": "custom", "config": yaml_text},
+            {"type": "custom", "yaml": yaml_text},
+            {"type": "custom", "name": payload.get("name"), "title": payload.get("title"), "config": yaml_text},
+        )
         errors: list[str] = []
 
-        # Custom MQTT vehicles are native evcc vehicles, not guided templates.
-        # Therefore the flat YAML-like form must be tried before the wrapped
-        # Config-UI template form. The wrapped form caused "config template not
-        # found" for type=custom on evcc 0.305.x.
-        update_candidates = (payload, wrapped)
-        create_candidates = (payload, wrapped)
+        update_candidates = (payload, wrapped) + yaml_wrapped_candidates
+        create_candidates = (payload, wrapped) + yaml_wrapped_candidates
 
         if path_id:
             for candidate in update_candidates:
