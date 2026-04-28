@@ -8,6 +8,18 @@ from pathlib import Path
 from typing import Any
 
 
+DB_NAMES = {"evcc.db", "evcc.sqlite", "evcc.sqlite3"}
+SEARCH_ROOTS = [
+    Path("/addons"),              # legacy/HAOS add-on data mapping, if available
+    Path("/addon_configs"),       # newer HA add-on config mapping
+    Path("/config/addons_config"),
+    Path("/config"),
+    Path("/share"),
+    Path("/backup"),
+    Path("/data"),                # own car2mqtt add-on data only
+]
+
+
 def _safe_cell(value: Any, max_len: int = 500) -> Any:
     if isinstance(value, (bytes, bytearray)):
         return f"<binary {len(value)} bytes>"
@@ -20,36 +32,64 @@ def normalize_db_path(path: str | None) -> str:
     return str(path or "/data/evcc.db").strip() or "/data/evcc.db"
 
 
-def find_evcc_db_candidates(max_depth: int = 5) -> list[str]:
-    """Find EVCC sqlite DB candidates visible inside the car2mqtt add-on container."""
-    roots = [Path("/addon_configs"), Path("/config/addons_config"), Path("/config"), Path("/share"), Path("/data")]
-    names = {"evcc.db", "evcc.sqlite", "evcc.sqlite3"}
+def _looks_like_evcc_db(path: Path) -> bool:
+    name = path.name.lower()
+    return name in DB_NAMES or ("evcc" in name and path.suffix.lower() in {".db", ".sqlite", ".sqlite3"})
+
+
+def find_evcc_db_candidates(max_depth: int = 9, max_files: int = 25000) -> list[str]:
+    """Find EVCC sqlite DB candidates visible inside the car2mqtt add-on container.
+
+    Important: /data/evcc.db is normally only the path inside the EVCC add-on.
+    car2mqtt can only see it if Home Assistant exposes the legacy add-on data
+    directory through /addons or if the DB is stored in /addon_configs, /share,
+    /config, etc.
+    """
     found: list[str] = []
     seen: set[str] = set()
-    for root in roots:
+    scanned = 0
+    for root in SEARCH_ROOTS:
         if not root.exists() or not root.is_dir():
             continue
         try:
-            for child in root.rglob("*"):
+            for base, dirs, files in os.walk(root):
+                scanned += len(files)
+                if scanned > max_files:
+                    break
                 try:
-                    if not child.is_file():
-                        continue
-                    if child.name not in names and not ("evcc" in child.name.lower() and child.suffix.lower() in {".db", ".sqlite", ".sqlite3"}):
-                        continue
-                    try:
-                        rel_depth = len(child.relative_to(root).parts)
-                    except Exception:
-                        rel_depth = 99
-                    if rel_depth > max_depth:
+                    rel_depth = len(Path(base).relative_to(root).parts)
+                except Exception:
+                    rel_depth = 99
+                if rel_depth >= max_depth:
+                    dirs[:] = []
+                # keep scan cheap and avoid unrelated huge dirs
+                dirs[:] = [d for d in dirs if not d.startswith(".") and d not in {"node_modules", "__pycache__", "tmp", "cache"}]
+                for filename in files:
+                    child = Path(base) / filename
+                    if not _looks_like_evcc_db(child):
                         continue
                     resolved = str(child)
                     if resolved not in seen:
                         seen.add(resolved)
                         found.append(resolved)
-                except Exception:
-                    continue
         except Exception:
             continue
+    # prefer explicit evcc.db and paths that look like EVCC add-on/config folders
+    def score(p: str) -> tuple[int, str]:
+        low = p.lower()
+        s = 0
+        if low.endswith("/evcc.db"):
+            s -= 20
+        if "/evcc" in low:
+            s -= 10
+        if low.startswith("/addons"):
+            s -= 5
+        if low.startswith("/addon_configs"):
+            s -= 4
+        if low.startswith("/share"):
+            s -= 3
+        return (s, p)
+    found.sort(key=score)
     return found
 
 
@@ -70,6 +110,16 @@ def _connect_readonly(path: str) -> sqlite3.Connection:
     return con
 
 
+def _unreachable_hint(requested_path: str, candidates: list[str]) -> str:
+    return (
+        f"EVCC Datenbank nicht gefunden: {requested_path}. "
+        "Wichtig: /data/evcc.db ist normalerweise nur innerhalb des EVCC-Add-ons sichtbar. "
+        "car2mqtt kann diese Datei nur sehen, wenn Home Assistant den EVCC-Add-on-Datenordner unter /addons freigibt "
+        "oder wenn die EVCC-Datenbank in einem gemeinsamen Pfad liegt, z. B. /share/evcc.db oder /addon_configs/<evcc>/evcc.db. "
+        f"Gefundene Kandidaten: {', '.join(candidates) or '-'}"
+    )
+
+
 def inspect_evcc_db(path: str | None = None, sample_limit: int = 5) -> dict[str, Any]:
     requested_path = normalize_db_path(path)
     db_path, db_candidates, used_auto_path = resolve_evcc_db_path(path)
@@ -79,6 +129,7 @@ def inspect_evcc_db(path: str | None = None, sample_limit: int = 5) -> dict[str,
         "path": db_path,
         "used_auto_path": used_auto_path,
         "found_paths": db_candidates,
+        "search_roots": [str(r) for r in SEARCH_ROOTS if r.exists()],
         "exists": p.exists(),
         "readable": os.access(db_path, os.R_OK) if p.exists() else False,
         "size_bytes": p.stat().st_size if p.exists() else 0,
@@ -86,10 +137,10 @@ def inspect_evcc_db(path: str | None = None, sample_limit: int = 5) -> dict[str,
         "candidates": [],
     }
     if not p.exists():
-        result["error"] = "EVCC Datenbankdatei existiert nicht. Hinweis: /data/evcc.db ist meist nur innerhalb des EVCC-Add-ons sichtbar. car2mqtt benötigt den Pfad aus Sicht des car2mqtt-Containers, typischerweise /addon_configs/<evcc-slug>/evcc.db."
+        result["error"] = _unreachable_hint(requested_path, db_candidates)
         return result
     if not os.access(db_path, os.R_OK):
-        result["error"] = "EVCC Datenbankdatei ist nicht lesbar."
+        result["error"] = "EVCC Datenbankdatei ist nicht lesbar: " + db_path
         return result
 
     with _connect_readonly(db_path) as con:
@@ -129,7 +180,7 @@ def backup_evcc_db(path: str | None = None, backup_dir: str | None = None) -> di
     db_path, db_candidates, used_auto_path = resolve_evcc_db_path(path)
     src = Path(db_path)
     if not src.exists():
-        raise FileNotFoundError(f"EVCC Datenbank nicht gefunden: {requested_path}. /data/evcc.db ist aus car2mqtt oft nicht sichtbar. Gefundene Kandidaten: {', '.join(db_candidates) or '-'}")
+        raise FileNotFoundError(_unreachable_hint(requested_path, db_candidates))
     if not os.access(db_path, os.R_OK):
         raise PermissionError(f"EVCC Datenbank nicht lesbar: {db_path}")
     target_dir = Path(backup_dir or src.parent / "car2mqtt-evcc-backups")
