@@ -40,8 +40,7 @@ from app.providers.gwm_config import (
 )
 from app.services.worker_manager import WorkerManager
 from app.services.ha_discovery import publish_all_discovery, publish_vehicle_discovery, clear_vehicle_discovery
-from app.services.evcc_integration import EvccClient, build_evcc_custom_vehicle_payload, build_evcc_custom_vehicle_payload_from_card
-from app.services.evcc_db import inspect_evcc_db, backup_evcc_db, normalize_db_path
+from app.services.evcc_integration import build_evcc_custom_vehicle_payload, build_evcc_custom_vehicle_payload_from_card, evcc_payload_to_yaml
 
 logger = logging.getLogger("car2mqtt.server")
 
@@ -90,13 +89,15 @@ class HomeZoneSettingsPayload(BaseModel):
     ha_discovery_enabled: bool = True
     ha_discovery_prefix: str = "homeassistant"
     ha_discovery_retain: bool = True
+    # EVCC wird ab v1.2.19 nicht mehr per API/DB beschrieben.
+    # Diese Felder bleiben nur zur Abwärtskompatibilität erhalten.
     evcc_enabled: bool = False
     evcc_url: str = "http://localhost:7070"
     evcc_password: str = ""
     evcc_auto_create: bool = False
-    evcc_auto_update: bool = True
+    evcc_auto_update: bool = False
     evcc_auto_delete: bool = False
-    evcc_db_path: str = "/data/evcc.db"
+    evcc_db_path: str = ""
 
 class EvccLinkPayload(BaseModel):
     evcc_ref: str = ""
@@ -961,7 +962,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.2.17",
+                "version": "1.2.18",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -998,14 +999,15 @@ def create_app() -> FastAPI:
         cfg.ui_settings.ha_discovery_enabled = bool(payload.ha_discovery_enabled)
         cfg.ui_settings.ha_discovery_prefix = str(payload.ha_discovery_prefix or 'homeassistant').strip() or 'homeassistant'
         cfg.ui_settings.ha_discovery_retain = bool(payload.ha_discovery_retain)
-        cfg.ui_settings.evcc_enabled = bool(payload.evcc_enabled)
+        # EVCC API/DB-Sync ist deaktiviert. car2mqtt erzeugt nur noch den YAML-Helper zum Kopieren.
+        cfg.ui_settings.evcc_enabled = False
         cfg.ui_settings.evcc_url = str(payload.evcc_url or '').strip() or 'http://localhost:7070'
         if payload.evcc_password:
             cfg.ui_settings.evcc_password = str(payload.evcc_password)
-        cfg.ui_settings.evcc_auto_create = bool(payload.evcc_auto_create)
-        cfg.ui_settings.evcc_auto_update = bool(payload.evcc_auto_update)
-        cfg.ui_settings.evcc_auto_delete = bool(payload.evcc_auto_delete)
-        cfg.ui_settings.evcc_db_path = normalize_db_path(payload.evcc_db_path)
+        cfg.ui_settings.evcc_auto_create = False
+        cfg.ui_settings.evcc_auto_update = False
+        cfg.ui_settings.evcc_auto_delete = False
+        cfg.ui_settings.evcc_db_path = ''
         store.save(cfg)
         try:
             cards, _ = build_cards()
@@ -1150,46 +1152,21 @@ def create_app() -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    def _evcc_client_from_settings():
-        cfg = store.load()
-        ui = cfg.ui_settings
-        if not ui.evcc_url:
-            raise HTTPException(status_code=400, detail="EVCC URL ist nicht gesetzt")
-        return EvccClient(ui.evcc_url, ui.evcc_password or "")
-
     @app.get("/api/evcc/vehicles")
     async def evcc_list_vehicles():
-        try:
-            client = _evcc_client_from_settings()
-            return {"status": "ok", "vehicles": client.list_vehicles()}
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    @app.post("/api/evcc/db/check")
-    async def evcc_db_check():
-        cfg = store.load()
-        try:
-            return inspect_evcc_db(getattr(cfg.ui_settings, "evcc_db_path", "/data/evcc.db"))
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    @app.post("/api/evcc/db/backup")
-    async def evcc_db_backup():
-        cfg = store.load()
-        try:
-            return backup_evcc_db(getattr(cfg.ui_settings, "evcc_db_path", "/data/evcc.db"))
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return {"vehicles": [], "disabled": True, "message": "EVCC API/DB-Sync ist deaktiviert. Nutze den EVCC YAML-Helper zum Kopieren."}
 
     @app.post("/api/evcc/test")
     async def evcc_test():
-        try:
-            client = _evcc_client_from_settings()
-            state = client.status()
-            vehicles = client.list_vehicles()
-            return {"status": "ok", "vehicles": vehicles, "version": (state or {}).get("version", "") if isinstance(state, dict) else ""}
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return {"ok": True, "disabled": True, "message": "EVCC wird nicht mehr direkt beschrieben. Der YAML-Helper bleibt verfügbar."}
+
+    @app.post("/api/evcc/db/check")
+    async def evcc_db_check():
+        return {"exists": False, "disabled": True, "message": "Direkter EVCC-DB-Zugriff wurde entfernt. Nutze den EVCC YAML-Helper."}
+
+    @app.post("/api/evcc/db/backup")
+    async def evcc_db_backup():
+        return {"status": "disabled", "message": "Direkter EVCC-DB-Zugriff wurde entfernt."}
 
     @app.post("/api/vehicles/{vehicle_id}/evcc/link")
     async def evcc_link_vehicle(vehicle_id: str, payload: EvccLinkPayload):
@@ -1251,68 +1228,21 @@ def create_app() -> FastAPI:
 
     @app.post("/api/vehicles/{vehicle_id}/evcc/sync")
     async def evcc_sync_vehicle(vehicle_id: str):
+        # EVCC API/DB-Sync wurde bewusst entfernt. Dieser Endpunkt liefert nur noch
+        # den generierten YAML-Block zurück, damit alte UI-Aufrufe nicht fehlschlagen.
         vehicle = store.get_vehicle(vehicle_id)
-        remote_card = None
-        link_cfg = {}
         if not vehicle:
             remote_card = _find_remote_card(vehicle_id)
             if not remote_card:
                 raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
-            link_cfg = _remote_link_cfg(vehicle_id)
-        try:
-            client = _evcc_client_from_settings()
-            if remote_card:
-                payload = build_evcc_custom_vehicle_payload_from_card(remote_card, load_runtime_mqtt_settings(), link_cfg)
-                result = client.upsert_vehicle(payload, str(link_cfg.get("evcc_ref") or ""))
-                ref = str(result.get("ref") or link_cfg.get("evcc_ref") or payload.get("name") or "")
-                if ref:
-                    link_cfg["evcc_ref"] = ref
-                link_cfg["evcc_managed"] = True
-                link_cfg["evcc_auto_sync"] = True
-                _save_remote_link_cfg(vehicle_id, link_cfg)
-                log_store.append(vehicle_id, f"EVCC Remote-Sync erfolgreich: {result.get('action')} {ref}")
-                return {"status": "ok", "result": result, "payload": payload, "remote": True}
-            payload = build_evcc_custom_vehicle_payload(vehicle, load_runtime_mqtt_settings())
-            result = client.upsert_vehicle(payload, str(vehicle.provider_config.get("evcc_ref") or ""))
-            ref = str(result.get("ref") or vehicle.provider_config.get("evcc_ref") or payload.get("name") or "")
-            if ref:
-                vehicle.provider_config["evcc_ref"] = ref
-            vehicle.provider_config["evcc_managed"] = True
-            vehicle.provider_config["evcc_auto_sync"] = True
-            store.upsert_vehicle(vehicle)
-            log_store.append(vehicle_id, f"EVCC Sync erfolgreich: {result.get('action')} {ref}")
-            return {"status": "ok", "result": result, "payload": payload}
-        except Exception as exc:
-            log_store.append(vehicle_id, f"EVCC Sync fehlgeschlagen: {exc}")
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            payload = build_evcc_custom_vehicle_payload_from_card(remote_card, load_runtime_mqtt_settings(), _remote_link_cfg(vehicle_id))
+            return {"status": "ok", "disabled": True, "payload": payload, "yaml": evcc_payload_to_yaml(payload), "remote": True}
+        payload = build_evcc_custom_vehicle_payload(vehicle, load_runtime_mqtt_settings())
+        return {"status": "ok", "disabled": True, "payload": payload, "yaml": evcc_payload_to_yaml(payload)}
 
     @app.delete("/api/vehicles/{vehicle_id}/evcc")
     async def evcc_delete_vehicle(vehicle_id: str):
-        vehicle = store.get_vehicle(vehicle_id)
-        remote_card = None
-        link_cfg = {}
-        if not vehicle:
-            remote_card = _find_remote_card(vehicle_id)
-            if not remote_card:
-                raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
-            link_cfg = _remote_link_cfg(vehicle_id)
-        try:
-            client = _evcc_client_from_settings()
-            if remote_card:
-                result = client.delete_vehicle(str(link_cfg.get("evcc_ref") or ""))
-                link_cfg.pop("evcc_ref", None)
-                link_cfg["evcc_managed"] = False
-                _save_remote_link_cfg(vehicle_id, link_cfg)
-                log_store.append(vehicle_id, f"EVCC Remote-Fahrzeug entfernt: {result}")
-                return {"status": "ok", "result": result, "remote": True}
-            result = client.delete_vehicle(str(vehicle.provider_config.get("evcc_ref") or ""))
-            vehicle.provider_config.pop("evcc_ref", None)
-            vehicle.provider_config["evcc_managed"] = False
-            store.upsert_vehicle(vehicle)
-            log_store.append(vehicle_id, f"EVCC Fahrzeug entfernt: {result}")
-            return {"status": "ok", "result": result}
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return {"status": "disabled", "message": "EVCC API/DB-Löschen wurde entfernt. Entferne das Fahrzeug bei Bedarf manuell in EVCC."}
 
     @app.get("/api/providers")
     async def get_providers():
@@ -1569,22 +1499,7 @@ def create_app() -> FastAPI:
                 log_store.append(vehicle.id, f"EVCC MQTT-Konfiguration veröffentlicht: {published_evcc_cfg} Topics")
         except Exception as exc:
             log_store.append(vehicle.id, f"EVCC MQTT-Konfiguration konnte nicht veröffentlicht werden: {exc}")
-        try:
-            cfg_now = store.load()
-            auto_sync = bool((vehicle.provider_config or {}).get("evcc_auto_sync") or (cfg_now.ui_settings.evcc_enabled and cfg_now.ui_settings.evcc_auto_create))
-            if auto_sync and cfg_now.ui_settings.evcc_enabled:
-                client = EvccClient(cfg_now.ui_settings.evcc_url, cfg_now.ui_settings.evcc_password or "")
-                payload_evcc = build_evcc_custom_vehicle_payload(vehicle, load_runtime_mqtt_settings())
-                result_evcc = client.upsert_vehicle(payload_evcc, str(vehicle.provider_config.get("evcc_ref") or ""))
-                ref_evcc = str(result_evcc.get("ref") or vehicle.provider_config.get("evcc_ref") or payload_evcc.get("name") or "")
-                if ref_evcc:
-                    vehicle.provider_config["evcc_ref"] = ref_evcc
-                    vehicle.provider_config["evcc_managed"] = True
-                    vehicle.provider_config["evcc_auto_sync"] = True
-                    store.upsert_vehicle(vehicle)
-                log_store.append(vehicle.id, f"EVCC automatisch synchronisiert: {result_evcc.get('action')} {ref_evcc}")
-        except Exception as exc:
-            log_store.append(vehicle.id, f"EVCC Auto-Sync fehlgeschlagen: {exc}")
+        # EVCC Auto-Sync entfernt: car2mqtt stellt nur noch den YAML-Helper zum Kopieren bereit.
         worker_manager.publish_vehicle_saved_meta(vehicle.id)
 
         worker_manager.sync_vehicle_to_forward_clients(vehicle.id)
@@ -1746,12 +1661,7 @@ def create_app() -> FastAPI:
             log_store.append(vehicle_id, "Home Assistant Discovery entfernt")
         except Exception as exc:
             log_store.append(vehicle_id, f"Home Assistant Discovery konnte nicht entfernt werden: {exc}")
-        try:
-            if cfg_before.ui_settings.evcc_enabled and cfg_before.ui_settings.evcc_auto_delete and bool((vehicle.provider_config or {}).get("evcc_managed")):
-                EvccClient(cfg_before.ui_settings.evcc_url, cfg_before.ui_settings.evcc_password or "").delete_vehicle(str(vehicle.provider_config.get("evcc_ref") or ""))
-                log_store.append(vehicle_id, "EVCC Fahrzeug automatisch entfernt")
-        except Exception as exc:
-            log_store.append(vehicle_id, f"EVCC Auto-Delete fehlgeschlagen: {exc}")
+        # EVCC Auto-Delete entfernt: EVCC-Konfiguration wird nur noch als YAML-Helper bereitgestellt.
         config = store.load()
         config.vehicles = [v for v in config.vehicles if v.id != vehicle_id]
         store.save(config)

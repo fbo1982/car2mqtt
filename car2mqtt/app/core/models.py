@@ -56,9 +56,9 @@ class UiSettings(BaseModel):
     evcc_url: str = "http://localhost:7070"
     evcc_password: str = ""
     evcc_auto_create: bool = False
-    evcc_auto_update: bool = True
+    evcc_auto_update: bool = False
     evcc_auto_delete: bool = False
-    evcc_db_path: str = "/data/evcc.db"
+    evcc_db_path: str = ""
     evcc_vehicle_links: Dict[str, Any] = Field(default_factory=dict)
 
 

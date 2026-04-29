@@ -339,12 +339,12 @@ def _connect_readonly(path: str) -> sqlite3.Connection:
 def _unreachable_hint(requested_path: str, candidates: list[str]) -> str:
     return (
         f"EVCC Datenbank nicht gefunden: {requested_path}. "
-        "/data/evcc.db ist normalerweise nur innerhalb des EVCC-Add-ons sichtbar. "
-        "car2mqtt versucht zusätzlich die sichtbaren HAOS-Pfade und ab v1.2.17 mit erweitertem Docker-Diagnosemodus einen Diagnose-Snapshot aus dem EVCC-Container zu lesen. "
-        "Für späteres direktes Live-Schreiben ist ein gemeinsamer Pfad wie /share/evcc.db weiterhin die sauberste Variante. "
+        "/data/evcc.db ist normalerweise nur innerhalb des EVCC-Add-ons sichtbar und kann aus einem anderen Add-on nicht direkt geöffnet werden. "
+        "Wenn auch der Docker-Fallback keinen EVCC-Container sieht, hat car2mqtt technisch keinen Zugriff auf die EVCC-DB. "
+        "Für direktes DB-Schreiben muss die EVCC-DB in einen gemeinsam sichtbaren Pfad gelegt werden, z. B. /share/evcc.db, und EVCC muss diese DB verwenden. "
+        "Alternativ bleibt nur EVCC-API/YAML-Helper. "
         f"Gefundene Kandidaten: {', '.join(candidates) or '-'}"
     )
-
 
 def _inspect_sqlite(db_path: str, sample_limit: int, result: dict[str, Any]) -> dict[str, Any]:
     with _connect_readonly(db_path) as con:

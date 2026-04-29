@@ -963,7 +963,12 @@ async function checkEvccDbStatus(){
       const docker = data.docker_snapshot && data.docker_snapshot.snapshot_path ? ` · Docker-Snapshot aus EVCC-Container: ${data.docker_snapshot.snapshot_path}` : (data.docker_snapshot && data.docker_snapshot.error ? ` · Docker-Fallback: ${data.docker_snapshot.error}` : "");
       const seen = data.docker_snapshot && data.docker_snapshot.containers_seen ? ` · Docker-Container gesehen: ${data.docker_snapshot.containers_seen.map(c => `${(c.names||[]).join("/") || c.id}:${c.image}`).join(", ") || "-"}` : "";
       const tried = data.docker_snapshot && data.docker_snapshot.remote_paths_tried ? ` · Pfade versucht: ${data.docker_snapshot.remote_paths_tried.join(", ")}` : "";
-      el.textContent = data.exists ? `EVCC DB OK: ${data.path}${auto}${docker} · Tabellen: ${tableNames || "keine"}${candidateNames ? " · Kandidaten: " + candidateNames : ""}` : `EVCC DB nicht gefunden: ${data.path}${found}${docker}${seen}${tried}`;
+      if(data.exists){
+        el.textContent = `EVCC DB OK: ${data.path}${auto}${docker} · Tabellen: ${tableNames || "keine"}${candidateNames ? " · Kandidaten: " + candidateNames : ""}`;
+      } else {
+        const noAccess = ' · Kein direkter DB-Zugriff möglich. /data/evcc.db liegt nur im EVCC-Add-on. Bitte EVCC-DB nach /share/evcc.db legen oder API/YAML-Helper verwenden.';
+        el.textContent = `EVCC DB nicht gefunden: ${data.path}${found}${docker}${seen}${tried}${noAccess}`;
+      }
     }
   }catch(err){ const el = field('settingsEvccStatus'); if(el) el.textContent = err.message || 'EVCC DB Prüfung fehlgeschlagen.'; }
 }

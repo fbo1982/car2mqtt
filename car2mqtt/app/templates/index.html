@@ -213,7 +213,7 @@ select, option {
   <div class="panel">
     <div class="modal-head"><div><div class="eyebrow">Fahrzeug</div><h3>Fahrzeug bearbeiten</h3></div><button id="closeEditBtn" class="icon-btn">✕</button></div>
     <div id="editError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyConfigsBtn" type="button" class="ghost-btn">Copy Configs</button><button id="publishVehicleDiscoveryBtn" type="button" class="ghost-btn">HA Discovery</button><button id="evccSyncBtn" type="button" class="ghost-btn">EVCC Sync</button><button id="evccLinkBtn" type="button" class="ghost-btn">EVCC ID zuordnen</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyConfigsBtn" type="button" class="ghost-btn">EVCC YAML / Copy Configs</button><button id="publishVehicleDiscoveryBtn" type="button" class="ghost-btn">HA Discovery</button></div>
     <div class="modal-body grid">
       <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
@@ -360,10 +360,9 @@ select, option {
 
 
       <div id="editEvccVehicleSection" class="info-box dialog-narrow" style="margin-top:18px">
-        <div class="eyebrow">EVCC / MQTT Fahrzeugkonfiguration</div>
-        <div id="evccRemoteConfigHint" class="muted hidden" style="margin-top:10px">Remote-Fahrzeug: EVCC ID / Ref und onIdentify-Modus werden lokal auf dieser car2mqtt-Instanz gespeichert. Name, Titel, Akkukapazität, Phasen und Identifiers kommen vom Host per MQTT.</div>
+        <div class="eyebrow">EVCC Helper-Konfiguration</div>
+        <div id="evccRemoteConfigHint" class="muted hidden" style="margin-top:10px">Remote-Fahrzeug: Die EVCC-Helper-Werte dienen nur zum Erzeugen des YAML-Blocks zum Kopieren. Es wird nichts automatisch in EVCC geschrieben.</div>
         <div class="grid two" style="margin-top:14px">
-          <div class="field"><label>EVCC ID / Ref</label><input id="editEvccRef" placeholder="z. B. db:19" /></div>
           <div class="field"><label>EVCC Name</label><input id="editEvccName" placeholder="optional" /></div>
           <div class="field"><label>EVCC Titel</label><input id="editEvccTitle" placeholder="optional" /></div>
           <div class="field"><label>Akkukapazität (kWh)</label><input id="editEvccCapacity" type="number" step="0.1" /></div>
@@ -371,8 +370,8 @@ select, option {
           <div class="field"><label>Identifiers</label><input id="editEvccIdentifiers" placeholder="z. B. RFID1, RFID2" /></div>
         </div>
         <div class="field" style="margin-top:14px"><label>onIdentify Modus</label><select id="editEvccOnIdentifyMode"><option value="off">Aus (off)</option><option value="pv">PV (pv)</option><option value="minpv">Min+PV (minpv)</option><option value="now">Schnell (now)</option></select></div>
-        <div class="log-actions" style="margin-top:14px"><button id="saveEvccVehicleConfigBtn" type="button" class="ghost-btn">EVCC/MQTT-Konfiguration speichern</button></div>
-        <div class="muted" style="margin-top:10px">Die EVCC ID / Ref und der onIdentify-Modus werden nur lokal gespeichert und nie per MQTT veröffentlicht. Name, Titel, Akkukapazität, Phasen und Identifiers werden bei Host-Fahrzeugen per MQTT veröffentlicht; Remote-Fahrzeuge lesen diese Werte vom Host.</div>
+        <div class="log-actions" style="margin-top:14px"><button id="saveEvccVehicleConfigBtn" type="button" class="ghost-btn">EVCC Helper speichern</button></div>
+        <div class="muted" style="margin-top:10px">Diese Werte werden nur für den EVCC YAML-Block verwendet. car2mqtt legt keine Fahrzeuge in EVCC an, ändert keine EVCC-Fahrzeuge und löscht keine EVCC-Fahrzeuge.</div>
       </div>
 
       <div class="info-box dialog-narrow" style="margin-top:18px">
@@ -493,13 +492,9 @@ select, option {
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button id="publishHaDiscoveryBtn" type="button" class="ghost-btn">Discovery neu senden</button></div>
         </div>
         <div class="howto-card">
-          <h4>EVCC Datenbank / UI-Konfiguration</h4>
-          <div class="field" style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px"><input id="settingsEvccEnabled" type="checkbox"><span>EVCC Integration aktiv</span></label></div>
-          <div class="grid two" style="margin-top:14px"><div class="field"><label>EVCC URL</label><input id="settingsEvccUrl" placeholder="http://localhost:7070" /></div><div class="field"><label>EVCC Passwort <span class="muted">optional</span></label><input id="settingsEvccPassword" type="password" placeholder="leer lassen = unverändert" /></div></div>
-          <div class="grid two" style="margin-top:14px"><div class="field"><label>EVCC DB Pfad</label><input id="settingsEvccDbPath" placeholder="/data/evcc.db" /></div><div class="field"><label>DB-Modus</label><div class="muted">v1.2.17 sucht zusätzlich per Docker-Diagnose und zeigt Details an. Es wird weiterhin noch nicht direkt geschrieben.</div></div></div>
-          <div class="grid two" style="margin-top:14px"><label class="comm-toggle"><input id="settingsEvccAutoCreate" type="checkbox"><span><span class="comm-title">Neue Fahrzeuge automatisch anlegen</span></span></label><label class="comm-toggle"><input id="settingsEvccAutoUpdate" type="checkbox"><span><span class="comm-title">Verknüpfte Fahrzeuge automatisch updaten</span></span></label><label class="comm-toggle"><input id="settingsEvccAutoDelete" type="checkbox"><span><span class="comm-title">Verwaltete Fahrzeuge beim Löschen entfernen</span></span></label></div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button id="testEvccBtn" type="button" class="ghost-btn">EVCC Verbindung testen</button><button id="loadEvccVehiclesBtn" type="button" class="ghost-btn">EVCC Fahrzeuge laden</button><button id="checkEvccDbBtn" type="button" class="ghost-btn">EVCC DB prüfen</button><button id="backupEvccDbBtn" type="button" class="ghost-btn">EVCC DB Backup</button></div>
-          <div id="settingsEvccStatus" class="muted" style="margin-top:10px"></div>
+          <h4>EVCC Helper</h4>
+          <div class="muted" style="margin-top:10px">car2mqtt schreibt nicht mehr direkt in EVCC und verwendet keine EVCC-DB/API-Synchronisation mehr. Die EVCC-Konfiguration wird ausschließlich als benutzerdefiniertes Fahrzeug/YAML-Block zum Kopieren bereitgestellt.</div>
+          <div id="settingsEvccStatus" class="muted" style="margin-top:10px">EVCC Direktzugriff deaktiviert.</div>
         </div>
       </div>
     </div>
@@ -650,7 +645,7 @@ function evccCfgFromCardOrVehicle(obj){
 function fillEvccVehicleConfigFields(obj){
   const cfg = evccCfgFromCardOrVehicle(obj || {});
   const isRemote = !!(obj && obj.remote);
-  field('editEvccRef').value = cfg.evcc_ref || '';
+  if(field('editEvccRef')) field('editEvccRef').value = cfg.evcc_ref || '';
   field('editEvccName').value = cfg.evcc_name || '';
   field('editEvccTitle').value = cfg.evcc_title || '';
   field('editEvccCapacity').value = cfg.evcc_capacity_kwh || '';
@@ -660,18 +655,15 @@ function fillEvccVehicleConfigFields(obj){
   setEvccRemoteFieldMode(isRemote);
 }
 function setEvccRemoteFieldMode(isRemote){
-  const editableOnlyOnHost = ['editEvccName','editEvccTitle','editEvccCapacity','editEvccPhases','editEvccIdentifiers'];
-  editableOnlyOnHost.forEach(id => { const el = field(id); if(el) el.disabled = !!isRemote; });
-  if(field('editEvccRef')) field('editEvccRef').disabled = false;
-  if(field('editEvccOnIdentifyMode')) field('editEvccOnIdentifyMode').disabled = false;
+  ['editEvccName','editEvccTitle','editEvccCapacity','editEvccPhases','editEvccIdentifiers','editEvccOnIdentifyMode'].forEach(id => { const el = field(id); if(el) el.disabled = false; });
   field('evccRemoteConfigHint')?.classList.toggle('hidden', !isRemote);
-  if(field('saveEvccVehicleConfigBtn')) field('saveEvccVehicleConfigBtn').textContent = isRemote ? 'Lokale EVCC-Zuordnung speichern' : 'EVCC/MQTT-Konfiguration speichern';
+  if(field('saveEvccVehicleConfigBtn')) field('saveEvccVehicleConfigBtn').textContent = 'EVCC Helper speichern';
 }
 function collectEvccVehicleConfigPayload(){
   return {
-    evcc_ref: field('editEvccRef')?.value?.trim() || '',
-    evcc_managed: true,
-    evcc_auto_sync: true,
+    evcc_ref: '',
+    evcc_managed: false,
+    evcc_auto_sync: false,
     evcc_name: field('editEvccName')?.value?.trim() || '',
     evcc_title: field('editEvccTitle')?.value?.trim() || '',
     evcc_capacity_kwh: field('editEvccCapacity')?.value?.trim() || '',
@@ -695,7 +687,7 @@ function setEditRemoteMode(enabled, card=null){
   const saveCloseBtn = field('saveEditBtn');
   if(keepOpenBtn){
     keepOpenBtn.style.display = '';
-    keepOpenBtn.textContent = enabled ? 'Lokale EVCC-Zuordnung speichern' : 'Speichern';
+    keepOpenBtn.textContent = enabled ? 'Speichern' : 'Speichern';
   }
   if(saveCloseBtn){
     saveCloseBtn.style.display = '';
@@ -747,7 +739,12 @@ function getCopyConfigContext(){
   const varPrefix = `${id.toLowerCase()}_`;
   const evccCfg = evccCfgFromCardOrVehicle(current || {});
   const onIdentifyMode = normalizeEvccOnIdentifyMode(field('editEvccOnIdentifyMode')?.value || evccCfg.evcc_onidentify_mode || 'off');
-  return { manufacturer, manufacturerPrefix, id, rawPlate, title, current, capacity, topicBase, entityBase, varPrefix, onIdentifyMode };
+  const evccName = field('editEvccName')?.value?.trim() || evccCfg.evcc_name || title;
+  const evccTitle = field('editEvccTitle')?.value?.trim() || evccCfg.evcc_title || title;
+  const evccCapacity = field('editEvccCapacity')?.value?.trim() || evccCfg.evcc_capacity_kwh || capacity;
+  const evccPhases = field('editEvccPhases')?.value || evccCfg.evcc_phases || '3';
+  const evccIdentifiers = field('editEvccIdentifiers')?.value?.trim() || evccCfg.evcc_identifiers || id;
+  return { manufacturer, manufacturerPrefix, id, rawPlate, title, current, capacity, topicBase, entityBase, varPrefix, onIdentifyMode, evccName, evccTitle, evccCapacity, evccPhases, evccIdentifiers };
 }
 function getHelperCards(){
   return (cards || []).filter(card => card && card.license_plate && card.manufacturer);
@@ -1159,17 +1156,19 @@ daheimladen_force_evcc_vehicle:
 }
 
 function buildEvccCustomTemplate(){
-  const { id, title, capacity, topicBase, onIdentifyMode } = getCopyConfigContext();
+  const { id, topicBase, onIdentifyMode, evccTitle, evccCapacity, evccPhases, evccIdentifiers } = getCopyConfigContext();
+  const identifiers = String(evccIdentifiers || id).split(/[\n,;]+/).map(x => x.trim()).filter(Boolean);
+  const identifierBlock = identifiers.length ? identifiers.map(x => `  - ${yamlEscape(x)}`).join('\n') : `  - ${id}`;
   return `###########################################
 ###### CAR2MQTT Custom EVCC Template ######
 ###########################################
 
-title: ${yamlEscape(title)} #<- Angezeigter Fahrzeugname
-capacity: ${capacity || '0'} #<- Auf die Batteriekapazität anpassen
-phases: 3 #<- Wieviele Phasen werden verwendet 1,3 zulässig
+title: ${yamlEscape(evccTitle)} #<- Angezeigter Fahrzeugname
+capacity: ${evccCapacity || '0'} #<- Auf die Batteriekapazität anpassen
+phases: ${evccPhases || '3'} #<- Wieviele Phasen werden verwendet 1,3 zulässig
 icon: car
 identifiers:
-  - ${id}
+${identifierBlock}
 soc:
   source: mqtt
   topic: ${topicBase}/soc
@@ -1520,7 +1519,7 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
   try{
     const select = field('settingsHomeZoneSelect');
     const trackerToggle = field('settingsDeviceTrackerEnabled');
-    const resp = await postJson('api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '', device_tracker_enabled: !!(trackerToggle && trackerToggle.checked), ha_discovery_enabled: !!field('settingsHaDiscoveryEnabled')?.checked, ha_discovery_prefix: field('settingsHaDiscoveryPrefix')?.value || 'homeassistant', ha_discovery_retain: !!field('settingsHaDiscoveryRetain')?.checked, evcc_enabled: !!field('settingsEvccEnabled')?.checked, evcc_url: field('settingsEvccUrl')?.value || 'http://localhost:7070', evcc_password: field('settingsEvccPassword')?.value || '', evcc_auto_create: !!field('settingsEvccAutoCreate')?.checked, evcc_auto_update: !!field('settingsEvccAutoUpdate')?.checked, evcc_auto_delete: !!field('settingsEvccAutoDelete')?.checked, evcc_db_path: field('settingsEvccDbPath')?.value || '/data/evcc.db' });
+    const resp = await postJson('api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '', device_tracker_enabled: !!(trackerToggle && trackerToggle.checked), ha_discovery_enabled: !!field('settingsHaDiscoveryEnabled')?.checked, ha_discovery_prefix: field('settingsHaDiscoveryPrefix')?.value || 'homeassistant', ha_discovery_retain: !!field('settingsHaDiscoveryRetain')?.checked, evcc_enabled: false, evcc_url: '', evcc_password: '', evcc_auto_create: false, evcc_auto_update: false, evcc_auto_delete: false, evcc_db_path: '' });
     uiSettings = resp.ui_settings || {};
     helperHomezoneJson = resp.effective_homezone || helperHomezoneJson;
     const info = field('settingsHomeZoneInfo');
@@ -1561,7 +1560,12 @@ async function checkEvccDbStatus(){
       const docker = data.docker_snapshot && data.docker_snapshot.snapshot_path ? ` · Docker-Snapshot aus EVCC-Container: ${data.docker_snapshot.snapshot_path}` : (data.docker_snapshot && data.docker_snapshot.error ? ` · Docker-Fallback: ${data.docker_snapshot.error}` : "");
       const seen = data.docker_snapshot && data.docker_snapshot.containers_seen ? ` · Docker-Container gesehen: ${data.docker_snapshot.containers_seen.map(c => `${(c.names||[]).join("/") || c.id}:${c.image}`).join(", ") || "-"}` : "";
       const tried = data.docker_snapshot && data.docker_snapshot.remote_paths_tried ? ` · Pfade versucht: ${data.docker_snapshot.remote_paths_tried.join(", ")}` : "";
-      el.textContent = data.exists ? `EVCC DB OK: ${data.path}${auto}${docker} · Tabellen: ${tableNames || "keine"}${candidateNames ? " · Kandidaten: " + candidateNames : ""}` : `EVCC DB nicht gefunden: ${data.path}${found}${docker}${seen}${tried}`;
+      if(data.exists){
+        el.textContent = `EVCC DB OK: ${data.path}${auto}${docker} · Tabellen: ${tableNames || "keine"}${candidateNames ? " · Kandidaten: " + candidateNames : ""}`;
+      } else {
+        const noAccess = ' · Kein direkter DB-Zugriff möglich. /data/evcc.db liegt nur im EVCC-Add-on. Bitte EVCC-DB nach /share/evcc.db legen oder API/YAML-Helper verwenden.';
+        el.textContent = `EVCC DB nicht gefunden: ${data.path}${found}${docker}${seen}${tried}${noAccess}`;
+      }
     }
   }catch(err){ const el = field('settingsEvccStatus'); if(el) el.textContent = err.message || 'EVCC DB Prüfung fehlgeschlagen.'; }
 }
@@ -1593,9 +1597,9 @@ async function saveCurrentEvccVehicleConfig(closeAfter=false){
   try{
     const data = await postJson(`./api/vehicles/${editState.vehicleId}/evcc/config`, collectEvccVehicleConfigPayload());
     if(data.remote){
-      alert('Lokale EVCC-Zuordnung gespeichert. EVCC ID und onIdentify bleiben lokal auf dieser Instanz.');
+      alert('EVCC Helper gespeichert. Es wurde nichts in EVCC geschrieben.');
     }else{
-      alert(`EVCC/MQTT-Konfiguration gespeichert. MQTT Topics veröffentlicht: ${data.published || 0}`);
+      alert(`EVCC Helper gespeichert. MQTT Topics veröffentlicht: ${data.published || 0}`);
     }
     await loadDashboard();
     const updated = getCurrentEditCard();
@@ -1603,7 +1607,7 @@ async function saveCurrentEvccVehicleConfig(closeAfter=false){
     await refreshVehicleLogs();
     if(closeAfter){ stopLiveLogs(); field('editDialog').close(); }
     return true;
-  }catch(err){ alert(err.message || 'EVCC/MQTT-Konfiguration konnte nicht gespeichert werden.'); return false; }
+  }catch(err){ alert(err.message || 'EVCC Helper konnte nicht gespeichert werden.'); return false; }
 }
 async function linkCurrentVehicleToEvcc(){
   if(!editState.vehicleId) return;
@@ -1637,11 +1641,11 @@ if(checkEvccDbBtn) checkEvccDbBtn.onclick = (ev)=>{ ev.preventDefault(); checkEv
 const backupEvccDbBtn = field('backupEvccDbBtn');
 if(backupEvccDbBtn) backupEvccDbBtn.onclick = (ev)=>{ ev.preventDefault(); backupEvccDbStatus(); };
 const evccSyncBtn = field('evccSyncBtn');
-if(evccSyncBtn) evccSyncBtn.onclick = (ev)=>{ ev.preventDefault(); syncCurrentVehicleToEvcc(); };
+if(evccSyncBtn) evccSyncBtn.onclick = (ev)=>{ ev.preventDefault(); openEvccConfigDialog(); };
 const publishVehicleDiscoveryBtn = field('publishVehicleDiscoveryBtn');
 if(publishVehicleDiscoveryBtn) publishVehicleDiscoveryBtn.onclick = (ev)=>{ ev.preventDefault(); publishCurrentVehicleDiscovery(); };
 const evccLinkBtn = field('evccLinkBtn');
-if(evccLinkBtn) evccLinkBtn.onclick = (ev)=>{ ev.preventDefault(); linkCurrentVehicleToEvcc(); };
+if(evccLinkBtn) evccLinkBtn.onclick = (ev)=>{ ev.preventDefault(); openEvccConfigDialog(); };
 const saveEvccVehicleConfigBtn = field('saveEvccVehicleConfigBtn');
 if(saveEvccVehicleConfigBtn) saveEvccVehicleConfigBtn.onclick = (ev)=>{ ev.preventDefault(); saveCurrentEvccVehicleConfig(false); };
 const helperConfigBtn = field('copyHelperBtn');
