@@ -361,8 +361,8 @@ select, option {
 
       <div id="editEvccVehicleSection" class="info-box dialog-narrow" style="margin-top:18px">
         <div class="eyebrow">EVCC Helper-Konfiguration</div>
-        <div id="evccRemoteConfigHint" class="muted hidden" style="margin-top:10px">Remote-Fahrzeug: Die EVCC-Helper-Werte dienen nur zum Erzeugen des YAML-Blocks zum Kopieren. Es wird nichts automatisch in EVCC geschrieben.</div>
-        <div class="grid two" style="margin-top:14px">
+        <div id="evccRemoteConfigHint" class="muted hidden" style="margin-top:10px">Remote-Fahrzeug: EVCC Name, Titel, Akkukapazität, Phasen und Identifiers kommen vom Host per MQTT und werden hier nicht bearbeitet. Lokal wird nur der onIdentify-Modus gespeichert.</div>
+        <div class="grid two evcc-host-only" style="margin-top:14px">
           <div class="field"><label>EVCC Name</label><input id="editEvccName" placeholder="optional" /></div>
           <div class="field"><label>EVCC Titel</label><input id="editEvccTitle" placeholder="optional" /></div>
           <div class="field"><label>Akkukapazität (kWh)</label><input id="editEvccCapacity" type="number" step="0.1" /></div>
@@ -370,7 +370,6 @@ select, option {
           <div class="field"><label>Identifiers</label><input id="editEvccIdentifiers" placeholder="z. B. RFID1, RFID2" /></div>
         </div>
         <div class="field" style="margin-top:14px"><label>onIdentify Modus</label><select id="editEvccOnIdentifyMode"><option value="off">Aus (off)</option><option value="pv">PV (pv)</option><option value="minpv">Min+PV (minpv)</option><option value="now">Schnell (now)</option></select></div>
-        <div class="log-actions" style="margin-top:14px"><button id="saveEvccVehicleConfigBtn" type="button" class="ghost-btn">EVCC Helper speichern</button></div>
         <div class="muted" style="margin-top:10px">Diese Werte werden nur für den EVCC YAML-Block verwendet. car2mqtt legt keine Fahrzeuge in EVCC an, ändert keine EVCC-Fahrzeuge und löscht keine EVCC-Fahrzeuge.</div>
       </div>
 
@@ -655,9 +654,9 @@ function fillEvccVehicleConfigFields(obj){
   setEvccRemoteFieldMode(isRemote);
 }
 function setEvccRemoteFieldMode(isRemote){
-  ['editEvccName','editEvccTitle','editEvccCapacity','editEvccPhases','editEvccIdentifiers','editEvccOnIdentifyMode'].forEach(id => { const el = field(id); if(el) el.disabled = false; });
-  field('evccRemoteConfigHint')?.classList.toggle('hidden', !isRemote);
-  if(field('saveEvccVehicleConfigBtn')) field('saveEvccVehicleConfigBtn').textContent = 'EVCC Helper speichern';
+  ["editEvccName","editEvccTitle","editEvccCapacity","editEvccPhases","editEvccIdentifiers","editEvccOnIdentifyMode"].forEach(id => { const el = field(id); if(el) el.disabled = false; });
+  document.querySelectorAll(".evcc-host-only").forEach(el => { el.style.display = isRemote ? "none" : ""; });
+  field("evccRemoteConfigHint")?.classList.toggle("hidden", !isRemote);
 }
 function collectEvccVehicleConfigPayload(){
   return {
@@ -1595,19 +1594,15 @@ async function publishCurrentVehicleDiscovery(){
 async function saveCurrentEvccVehicleConfig(closeAfter=false){
   if(!editState.vehicleId) return false;
   try{
-    const data = await postJson(`./api/vehicles/${editState.vehicleId}/evcc/config`, collectEvccVehicleConfigPayload());
-    if(data.remote){
-      alert('EVCC Helper gespeichert. Es wurde nichts in EVCC geschrieben.');
-    }else{
-      alert(`EVCC Helper gespeichert. MQTT Topics veröffentlicht: ${data.published || 0}`);
-    }
+    await postJson(`./api/vehicles/${editState.vehicleId}/evcc/config`, collectEvccVehicleConfigPayload());
     await loadDashboard();
     const updated = getCurrentEditCard();
     if(updated) fillEvccVehicleConfigFields(updated);
     await refreshVehicleLogs();
-    if(closeAfter){ stopLiveLogs(); field('editDialog').close(); }
+    if(closeAfter){ stopLiveLogs(); field("editDialog").close(); }
+    else showNotice("editError", "Gespeichert.");
     return true;
-  }catch(err){ alert(err.message || 'EVCC Helper konnte nicht gespeichert werden.'); return false; }
+  }catch(err){ showNotice("editError", err.message || "EVCC Helper konnte nicht gespeichert werden."); return false; }
 }
 async function linkCurrentVehicleToEvcc(){
   if(!editState.vehicleId) return;
@@ -1646,8 +1641,6 @@ const publishVehicleDiscoveryBtn = field('publishVehicleDiscoveryBtn');
 if(publishVehicleDiscoveryBtn) publishVehicleDiscoveryBtn.onclick = (ev)=>{ ev.preventDefault(); publishCurrentVehicleDiscovery(); };
 const evccLinkBtn = field('evccLinkBtn');
 if(evccLinkBtn) evccLinkBtn.onclick = (ev)=>{ ev.preventDefault(); openEvccConfigDialog(); };
-const saveEvccVehicleConfigBtn = field('saveEvccVehicleConfigBtn');
-if(saveEvccVehicleConfigBtn) saveEvccVehicleConfigBtn.onclick = (ev)=>{ ev.preventDefault(); saveCurrentEvccVehicleConfig(false); };
 const helperConfigBtn = field('copyHelperBtn');
 if(helperConfigBtn) helperConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openHelperConfigDialog(); };
 const closeHelperConfigBtn = field('closeHelperConfigBtn');
