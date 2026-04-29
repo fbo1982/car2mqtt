@@ -80,6 +80,7 @@ class GwmIntegratedWorker:
         self._monitor_client: mqtt.Client | None = None
         self._proc: subprocess.Popen | None = None
         self._reauth_required = False
+        self._reauth_recovery_count = 0
 
     def _session_marker_path(self) -> Path:
         return self.vehicle_dir / ".ora_session_ready"
@@ -291,6 +292,7 @@ class GwmIntegratedWorker:
             self.log(f"[ora2mqtt run] {cleaned}")
             if self._is_reauth_required(cleaned):
                 self._reauth_required = True
+                self.log("ORA Token-/Refresh-Problem erkannt - automatischer Recovery-Neustart wird vorbereitet")
 
     def _run(self) -> None:
         while not self._stop.is_set():
@@ -330,10 +332,22 @@ class GwmIntegratedWorker:
                 rc = self._proc.wait(timeout=1) if self._proc else -1
                 self.log(f"ORA Runner beendet (rc={rc})")
                 if self._reauth_required:
-                    self.on_error("ReAuth erforderlich - Refresh Token abgelaufen")
-                    self.log("ORA ReAuth erforderlich erkannt - kein automatischer Retry")
-                    break
-                self.on_disconnect(str(rc))
+                    self._reauth_recovery_count += 1
+                    try:
+                        merge_ora_tokens(self.vehicle.provider_config, config_path)
+                        publish_ora_token_backup(self.vehicle.provider_config, self.settings, self.vehicle.id, self.log)
+                    except Exception as exc:
+                        self.log(f"ORA Token-Recovery: Token-Sicherung nach Runner-Ende fehlgeschlagen: {exc}")
+                    if auto_reconnect:
+                        self.on_detail("ORA Token-Recovery: Verbindung wird neu aufgebaut")
+                        self.log(f"ORA ReAuth/Refresh-Problem erkannt - automatischer Neustart statt hartem ReAuth (Versuch {self._reauth_recovery_count})")
+                    else:
+                        self.on_error("ReAuth erforderlich - Refresh Token abgelaufen")
+                        self.log("ORA ReAuth erforderlich erkannt - Auto-Reconnect ist deaktiviert")
+                        break
+                else:
+                    self._reauth_recovery_count = 0
+                    self.on_disconnect(str(rc))
 
             except Exception as exc:
                 message = str(exc)
