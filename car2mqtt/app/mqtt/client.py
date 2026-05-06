@@ -46,7 +46,7 @@ class LocalMqttClient:
             self._connected_event.clear()
             self.connected = False
 
-    def publish(self, topic: str, payload: Any, retain: bool | None = None, qos: int | None = None, wait: bool = True) -> None:
+    def publish(self, topic: str, payload: Any, retain: bool | None = None, qos: int | None = None) -> None:
         data = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
         info = self.client.publish(
             topic,
@@ -54,27 +54,9 @@ class LocalMqttClient:
             retain=self.settings.retain if retain is None else retain,
             qos=self.settings.qos if qos is None else qos,
         )
-        if wait:
-            info.wait_for_publish(timeout=5)
+        info.wait_for_publish(timeout=5)
         if info.rc != mqtt.MQTT_ERR_SUCCESS:
             raise RuntimeError(f"MQTT publish fehlgeschlagen: {info.rc}")
-
-    def publish_many(self, items: list[tuple[str, Any, bool | None, int | None]], wait: bool = False) -> None:
-        infos = []
-        for topic, payload, retain, qos in items:
-            data = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
-            info = self.client.publish(
-                topic,
-                data,
-                retain=self.settings.retain if retain is None else retain,
-                qos=self.settings.qos if qos is None else qos,
-            )
-            infos.append(info)
-            if info.rc != mqtt.MQTT_ERR_SUCCESS:
-                raise RuntimeError(f"MQTT publish fehlgeschlagen: {info.rc}")
-        if wait:
-            for info in infos:
-                info.wait_for_publish(timeout=5)
 
 
 def test_connection(settings: RuntimeMqttSettings) -> dict:

@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import time
-import threading
 from pathlib import Path
 import json
 import os
-import ssl
 
 import requests
 from typing import Any, Dict
@@ -20,8 +18,6 @@ from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
 from app.mapping.bmw_mapper import map_bmw_payload
 from app.mapping.gwm_mapper import apply_gwm_metric
-from app.mapping.acconia_mapper import apply_acconia_metric
-from app.mapping.vag_mapper import map_vag_payload
 
 GWM_OBSOLETE_MAPPED_KEYS = {
     "chargeLimitMode",
@@ -34,75 +30,6 @@ from app.mqtt.client import LocalMqttClient
 from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic, vehicle_root_topic
 from app.providers.bmw.streaming import BMWStreamWorker
 from app.providers.gwm_runner import GwmIntegratedWorker
-from app.providers.acconia_api import AcconiaSilenceApi
-
-
-
-class AcconiaApiWorker:
-    def __init__(self, vehicle, mqtt_settings, on_connect, on_disconnect, on_error, on_snapshot, log_callback):
-        self.vehicle = vehicle
-        self.mqtt_settings = mqtt_settings
-        self.on_connect_cb = on_connect
-        self.on_disconnect_cb = on_disconnect
-        self.on_error_cb = on_error
-        self.on_snapshot_cb = on_snapshot
-        self.log_callback = log_callback
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
-        cfg = vehicle.provider_config or {}
-        self.api = AcconiaSilenceApi(
-            account=str(cfg.get("account", "")),
-            password=str(cfg.get("password", "")),
-            api_key=str(cfg.get("api_key", "")),
-        )
-        try:
-            self.poll_interval = max(30, int(cfg.get("poll_interval") or 60))
-        except Exception:
-            self.poll_interval = 60
-
-    def start(self) -> None:
-        self._stop.clear()
-        self._thread = threading.Thread(target=self._run, name=f"car2mqtt-acconia-{self.vehicle.id[:8]}", daemon=True)
-        self._thread.start()
-
-    def stop(self) -> None:
-        self._stop.set()
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=5)
-        self.on_disconnect_cb(0)
-
-    def _select_scooter(self, scooters: list[dict[str, Any]]) -> dict[str, Any] | None:
-        if not scooters:
-            return None
-        wanted = str((self.vehicle.provider_config or {}).get("vehicle_id") or self.vehicle.id or "").strip().lower()
-        plate = "".join(ch for ch in self.vehicle.license_plate.upper().strip() if ch.isalnum()).lower()
-        for scooter in scooters:
-            candidates = [scooter.get("frameNo"), scooter.get("imei"), scooter.get("name"), scooter.get("vin"), scooter.get("id")]
-            for candidate in candidates:
-                normalized = "".join(ch for ch in str(candidate or "").upper().strip() if ch.isalnum()).lower()
-                if normalized and normalized in {wanted, plate}:
-                    return scooter
-        return scooters[0]
-
-    def _run(self) -> None:
-        first_ok = False
-        while not self._stop.is_set():
-            try:
-                scooters = self.api.fetch_scooters()
-                scooter = self._select_scooter(scooters)
-                if not scooter:
-                    raise RuntimeError("Silence API liefert kein Fahrzeug zurück")
-                if not first_ok:
-                    first_ok = True
-                    self.on_connect_cb()
-                    self.log_callback("Acconia/Silence Login erfolgreich - API Polling aktiv")
-                self.on_snapshot_cb(scooter)
-            except Exception as exc:
-                self.on_error_cb(f"Acconia/Silence API Fehler: {exc}")
-                self.log_callback(f"Acconia/Silence API Fehler: {exc}")
-            self._stop.wait(self.poll_interval)
-
-
 
 
 class WorkerManager:
@@ -113,30 +40,17 @@ class WorkerManager:
         self.log_store = VehicleLogStore(data_dir)
         self.workers: dict[str, object] = {}
         self._bmw_raw_cache: dict[str, dict] = {}
-        self._gwm_buffers: dict[str, list[tuple[str, str]]] = {}
-        self._gwm_buffer_locks: dict[str, threading.Lock] = {}
-        self._gwm_buffer_timers: dict[str, threading.Timer] = {}
-        self._gwm_last_meta_publish: dict[str, float] = {}
-        self._gwm_mapped_cache: dict[str, dict[str, Any]] = {}
-        self._gwm_mapped_cache_locks: dict[str, threading.Lock] = {}
-        self._mapped_publish_cache: dict[str, dict[str, Any]] = {}
-        self._mapped_publish_cache_locks: dict[str, threading.Lock] = {}
-        self._last_meta_publish: dict[str, float] = {}
         self.mqtt_client_status_file = self.data_dir / "mqtt_client_status.json"
 
     def start_all(self) -> None:
         settings = load_runtime_mqtt_settings()
         for vehicle in self.config_store.load().vehicles:
-            if vehicle.manufacturer in {"bmw", "gwm", "acconia", "byd", "citroen", "hyundai", "kia", "lucid", "mercedes", "mg", "nissan", "opel", "peugeot", "renault", "tesla", "toyota", "volvo", "vag", "vw", "vwcv", "audi", "skoda", "seat", "cupra"} and vehicle.enabled and vehicle.provider_state.auth_state == "authorized":
+            if vehicle.manufacturer in {"bmw", "gwm"} and vehicle.enabled and vehicle.provider_state.auth_state == "authorized":
                 self.start_or_restart_vehicle(vehicle.id, settings)
 
     def stop_vehicle(self, vehicle_id: str) -> None:
         worker = self.workers.pop(vehicle_id, None)
         self._bmw_raw_cache.pop(vehicle_id, None)
-        self._mapped_publish_cache.pop(vehicle_id, None)
-        self._mapped_publish_cache_locks.pop(vehicle_id, None)
-        self._last_meta_publish.pop(vehicle_id, None)
-        self._clear_gwm_buffer(vehicle_id)
         if worker:
             worker.stop()
             self.log_store.append(vehicle_id, "Worker gestoppt")
@@ -144,7 +58,7 @@ class WorkerManager:
     def start_or_restart_vehicle(self, vehicle_id: str, mqtt_settings=None) -> None:
         mqtt_settings = mqtt_settings or load_runtime_mqtt_settings()
         vehicle = self.config_store.get_vehicle(vehicle_id)
-        if not vehicle or vehicle.manufacturer not in {"bmw", "gwm", "acconia", "byd", "citroen", "hyundai", "kia", "lucid", "mercedes", "mg", "nissan", "opel", "peugeot", "renault", "tesla", "toyota", "volvo", "vag", "vw", "vwcv", "audi", "skoda", "seat", "cupra"}:
+        if not vehicle or vehicle.manufacturer not in {"bmw", "gwm"}:
             return
         if not vehicle.enabled:
             self._set_runtime_state(vehicle_id, "inactive", "Fahrzeug ist inaktiv")
@@ -167,32 +81,6 @@ class WorkerManager:
             )
             self.log_store.append(vehicle_id, "ORA Workerstart angefordert")
             self._set_runtime_state(vehicle_id, "starting", "ORA Worker startet")
-            self.workers[vehicle_id].start()
-            return
-
-
-        if vehicle.manufacturer in {"byd", "citroen", "hyundai", "kia", "lucid", "mercedes", "mg", "nissan", "opel", "peugeot", "renault", "tesla", "toyota", "volvo"}:
-            self.log_store.append(vehicle_id, "Hersteller-Grundstruktur gespeichert - API-Connector noch nicht aktiviert")
-            self._set_runtime_state(vehicle_id, "saved", "Hersteller vorbereitet - nächster Schritt ist der API-Connector")
-            return
-
-        if vehicle.manufacturer in {"vag", "vw", "vwcv", "audi", "skoda", "seat", "cupra"}:
-            self.log_store.append(vehicle_id, "Marken-Grundstruktur gespeichert - API-Connector noch nicht aktiviert")
-            self._set_runtime_state(vehicle_id, "saved", "Marke vorbereitet - nächster Schritt ist der API-Connector")
-            return
-
-        if vehicle.manufacturer == "acconia":
-            self.workers[vehicle_id] = AcconiaApiWorker(
-                vehicle=vehicle,
-                mqtt_settings=mqtt_settings,
-                on_connect=lambda vid=vehicle_id: self._set_runtime_state(vid, "connected", "Acconia/Silence API verbunden"),
-                on_disconnect=lambda rc, vid=vehicle_id: self._set_runtime_state(vid, "disconnected", f"Acconia/Silence API gestoppt (rc={rc})"),
-                on_error=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "error", message),
-                on_snapshot=lambda data, vid=vehicle_id: self._handle_acconia_snapshot(vid, data, mqtt_settings),
-                log_callback=lambda message, vid=vehicle_id: self.log_store.append(vid, message),
-            )
-            self.log_store.append(vehicle_id, "Acconia/Silence API Workerstart angefordert")
-            self._set_runtime_state(vehicle_id, "starting", "Acconia/Silence API Worker startet")
             self.workers[vehicle_id].start()
             return
 
@@ -361,11 +249,11 @@ class WorkerManager:
             suffix = source_topic[len(local_base)+1:]
         return f"{target_base}/{suffix}" if target_base else source_topic
 
-    def _forward_client_settings(self, client_cfg) -> RuntimeMqttSettings:
+    def _publish_to_forward_client(self, client_cfg, topic: str, payload: Any) -> None:
         if not getattr(client_cfg, 'host', ''):
             raise RuntimeError('MQTT Client ohne Host konfiguriert')
         local = load_runtime_mqtt_settings()
-        return RuntimeMqttSettings(
+        settings = RuntimeMqttSettings(
             host=client_cfg.host,
             port=client_cfg.port,
             username=client_cfg.username,
@@ -376,88 +264,36 @@ class WorkerManager:
             retain=local.retain,
             tls=local.tls,
         )
-
-    def _publish_to_forward_client_many(self, client_cfg, items: list[tuple[str, Any, bool | None, int | None]]) -> None:
-        settings = self._forward_client_settings(client_cfg)
         client = LocalMqttClient(settings)
         try:
             client.connect()
-            client.publish_many(items, wait=False)
+            client.publish(topic, payload)
         finally:
             client.disconnect()
 
-    def _publish_to_forward_client(self, client_cfg, topic: str, payload: Any) -> None:
-        self._publish_to_forward_client_many(client_cfg, [(topic, payload, None, None)])
-
-    def _build_flatten_items(self, base_topic_prefix: str, data: Dict[str, Any]) -> tuple[Dict[str, Any], list[tuple[str, Any, bool | None, int | None]]]:
-        data_points = (data or {}).get("data", {}) or {}
-        nested: Dict[str, Any] = {}
-        items: list[tuple[str, Any, bool | None, int | None]] = []
+    def _forward_flatten_publish(self, vehicle, mqtt_settings, raw_topic_base: str, data: Dict[str, Any]) -> None:
+        data_points = (data or {}).get('data', {}) or {}
         if not isinstance(data_points, dict):
-            return nested, items
+            return
         for metric_name, metric_data in data_points.items():
-            metric_topic = f"{base_topic_prefix}/{metric_name.replace('.', '/')}"
-            items.append((metric_topic, metric_data, None, None))
+            metric_topic = f"{raw_topic_base}/{metric_name.replace('.', '/')}"
+            self._forward_publish(vehicle, mqtt_settings, metric_topic, metric_data, is_raw=True)
             if isinstance(metric_data, dict):
                 for key, value in metric_data.items():
-                    items.append((f"{metric_topic}/{key}", value, None, None))
-            parts = metric_name.split('.')
-            ref = nested
-            for part in parts[:-1]:
-                ref = ref.setdefault(part, {})
-            ref[parts[-1]] = metric_data
-        return nested, items
+                    self._forward_publish(vehicle, mqtt_settings, f"{metric_topic}/{key}", value, is_raw=True)
 
-    def _forward_many(self, vehicle, mqtt_settings, source_items: list[tuple[str, Any, bool | None, int | None]], *, is_raw: bool) -> None:
-        if not source_items:
-            return
+    def _forward_publish(self, vehicle, mqtt_settings, source_topic: str, payload: Any, *, is_raw: bool) -> None:
         local_base = str(getattr(mqtt_settings, 'base_topic', 'car') or 'car')
         for client_cfg in self._target_clients_for_vehicle(vehicle):
             if is_raw and not client_cfg.send_raw:
                 continue
-            target_items = [(self._forward_topic(topic, client_cfg.base_topic, local_base), payload, retain, qos) for topic, payload, retain, qos in source_items]
+            target_topic = self._forward_topic(source_topic, client_cfg.base_topic, local_base)
             try:
-                self._publish_to_forward_client_many(client_cfg, target_items)
+                self._publish_to_forward_client(client_cfg, target_topic, payload)
+                self._mark_forward_client_status(client_cfg.id, ok=True)
             except Exception as exc:
-                self.log_store.append(vehicle.id, f"MQTT Client {client_cfg.name or client_cfg.id}: Batch-Publish fehlgeschlagen ({exc})")
-
-    def _forward_flatten_publish(self, vehicle, mqtt_settings, raw_topic_base: str, data: Dict[str, Any]) -> None:
-        _nested, items = self._build_flatten_items(raw_topic_base, data)
-        self._forward_many(vehicle, mqtt_settings, items, is_raw=True)
-
-    def _forward_publish(self, vehicle, mqtt_settings, source_topic: str, payload: Any, *, is_raw: bool) -> None:
-        self._forward_many(vehicle, mqtt_settings, [(source_topic, payload, None, None)], is_raw=is_raw)
-
-    def _mapped_block_publish_items(self, mapped_base: str, metrics: Dict[str, Any], removed_keys: set[str] | None = None) -> list[tuple[str, Any, bool | None, int | None]]:
-        items: list[tuple[str, Any, bool | None, int | None]] = []
-        for key in sorted(removed_keys or set()):
-            items.append((f"{mapped_base}/{key}", "", True, None))
-        for key in sorted(metrics.keys()):
-            items.append((f"{mapped_base}/{key}", metrics.get(key), None, None))
-        items.append((f"{mapped_base}/_snapshot", metrics, None, None))
-        return items
-
-    def _publish_mapped_block_if_changed(self, vehicle_id: str, vehicle, mqtt_settings, mapped_base: str, metrics: Dict[str, Any]) -> tuple[bool, set[str], list[tuple[str, Any, bool | None, int | None]]]:
-        lock = self._mapped_publish_cache_locks.setdefault(vehicle_id, threading.Lock())
-        with lock:
-            cached = dict(self._mapped_publish_cache.get(vehicle_id) or {})
-            if not cached:
-                runtime = self.state_store.get_all().get(vehicle_id)
-                cached = dict((runtime.metrics if runtime else {}) or {})
-            changed_keys = {key for key, value in metrics.items() if cached.get(key) != value}
-            removed_keys = {key for key in cached if key not in metrics}
-            if not changed_keys and not removed_keys:
-                return False, set(), []
-            items = self._mapped_block_publish_items(mapped_base, metrics, removed_keys)
-            client = LocalMqttClient(mqtt_settings)
-            try:
-                client.connect()
-                client.publish_many(items, wait=False)
-            finally:
-                client.disconnect()
-            self._mapped_publish_cache[vehicle_id] = dict(metrics)
-        self._forward_many(vehicle, mqtt_settings, items, is_raw=False)
-        return True, changed_keys | removed_keys, items
+                self._mark_forward_client_status(client_cfg.id, ok=False, error=str(exc))
+                self.log_store.append(vehicle.id, f"MQTT Client {client_cfg.name or client_cfg.id}: Publish fehlgeschlagen ({exc})")
 
     def _handle_gwm_error(self, vehicle_id: str, message: str) -> None:
         state = "reauth_required" if "reauth erforderlich" in (message or "").lower() else "error"
@@ -529,40 +365,46 @@ class WorkerManager:
         if not settings.host:
             return
         topic = meta_topic(settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
-        items: list[tuple[str, Any, bool | None, int | None]] = [
-            (f"{topic}/status", runtime.connection_state, None, None),
-            (f"{topic}/detail", runtime.connection_detail, None, None),
-            (f"{topic}/auth_state", runtime.auth_state, None, None),
-            (f"{topic}/raw_topic", runtime.raw_topic, None, None),
-            (f"{topic}/mapped_topic", runtime.mapped_topic, None, None),
-            (f"{topic}/server_name", self._resolve_server_name(), None, None),
-            (f"{topic}/label", vehicle.label, None, None),
-            (f"{topic}/license_plate", vehicle.license_plate, None, None),
-            (f"{topic}/manufacturer", vehicle.manufacturer, None, None),
-        ]
         vin_value = str((vehicle.provider_config or {}).get('vin') or (runtime.provider_meta or {}).get('vin') or '')
+        meta_values = {
+            f"{topic}/status": runtime.connection_state,
+            f"{topic}/detail": runtime.connection_detail,
+            f"{topic}/auth_state": runtime.auth_state,
+            f"{topic}/raw_topic": runtime.raw_topic,
+            f"{topic}/mapped_topic": runtime.mapped_topic,
+            f"{topic}/server_name": self._resolve_server_name(),
+            f"{topic}/label": vehicle.label,
+            f"{topic}/license_plate": vehicle.license_plate,
+            f"{topic}/manufacturer": vehicle.manufacturer,
+        }
         if vin_value:
-            items.append((f"{topic}/vin", vin_value, None, None))
+            meta_values[f"{topic}/vin"] = vin_value
         if runtime.last_update:
-            items.append((f"{topic}/last_update", runtime.last_update, None, None))
+            meta_values[f"{topic}/last_update"] = runtime.last_update
         client = LocalMqttClient(settings)
         try:
             client.connect()
-            client.publish_many(items, wait=False)
+            for meta_topic_name, meta_value in meta_values.items():
+                client.publish(meta_topic_name, meta_value)
         finally:
             client.disconnect()
-
-    def _publish_meta_throttled(self, vehicle_id: str, vehicle, runtime: VehicleRuntimeState, settings, *, force: bool = False, interval_seconds: int = 10) -> None:
-        now = time.monotonic()
-        last = self._last_meta_publish.get(vehicle_id, 0)
-        if force or (now - last) >= interval_seconds:
-            self._last_meta_publish[vehicle_id] = now
-            self._publish_meta(vehicle, runtime, settings)
+        for meta_topic_name, meta_value in meta_values.items():
+            self._forward_publish(vehicle, settings, meta_topic_name, meta_value, is_raw=False)
 
     def _flatten_publish(self, client: LocalMqttClient, base_topic_prefix: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        nested, items = self._build_flatten_items(base_topic_prefix, data)
-        if items:
-            client.publish_many(items, wait=False)
+        data_points = data.get("data", {})
+        nested: Dict[str, Any] = {}
+        for metric_name, metric_data in data_points.items():
+            metric_topic = f"{base_topic_prefix}/{metric_name.replace('.', '/')}"
+            client.publish(metric_topic, metric_data)
+            if isinstance(metric_data, dict):
+                for key, value in metric_data.items():
+                    client.publish(f"{metric_topic}/{key}", value)
+            parts = metric_name.split('.')
+            ref = nested
+            for part in parts[:-1]:
+                ref = ref.setdefault(part, {})
+            ref[parts[-1]] = metric_data
         return nested
 
     def _deep_merge_dict(self, target: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any]:
@@ -577,27 +419,26 @@ class WorkerManager:
         vehicle = self.config_store.get_vehicle(vehicle_id)
         if not vehicle:
             return
-        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings, callback_topic)
-        nested, raw_items = self._build_flatten_items(raw_topic_base, data)
         client = LocalMqttClient(mqtt_settings)
+        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings, callback_topic)
         try:
             client.connect()
-            if raw_items:
-                client.publish_many(raw_items, wait=False)
-        finally:
-            client.disconnect()
-        self._forward_many(vehicle, mqtt_settings, raw_items, is_raw=True)
-
-        cached = self._bmw_raw_cache.get(vehicle_id, {})
-        merged = self._deep_merge_dict(cached, nested)
-        self._bmw_raw_cache[vehicle_id] = merged
-        mapped_payload = map_bmw_payload(merged)
-        mapped_published, changed_keys, _mapped_items = self._publish_mapped_block_if_changed(vehicle_id, vehicle, mqtt_settings, mapped, mapped_payload)
-        if mapped_published:
+            nested = self._flatten_publish(client, raw_topic_base, data)
+            self._forward_flatten_publish(vehicle, mqtt_settings, raw_topic_base, data)
+            cached = self._bmw_raw_cache.get(vehicle_id, {})
+            merged = self._deep_merge_dict(cached, nested)
+            self._bmw_raw_cache[vehicle_id] = merged
+            mapped_payload = map_bmw_payload(merged)
+            for key, value in mapped_payload.items():
+                topic = f"{mapped}/{key}"
+                client.publish(topic, value)
+                self._forward_publish(vehicle, mqtt_settings, topic, value, is_raw=False)
             self.log_store.append(
                 vehicle_id,
-                f"BMW Mapping aktualisiert: kompletter mapped Block gepublished ({len(mapped_payload)} Werte, {len(changed_keys)} Änderungen)"
+                f"BMW Mapping aktualisiert: soc={mapped_payload.get('soc')} range={mapped_payload.get('range')} odometer={mapped_payload.get('odometer')} capacityKwh={mapped_payload.get('capacityKwh')}"
             )
+        finally:
+            client.disconnect()
 
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
         runtime.connection_state = "connected"
@@ -615,23 +456,14 @@ class WorkerManager:
         self.state_store.upsert(runtime)
         count = len((data or {}).get("data", {}))
         self.log_store.append(vehicle_id, f"Live-Daten empfangen: {count} Datenpunkte -> {callback_topic} (Mapping aus kumuliertem Snapshot)")
-        self._publish_meta_throttled(vehicle_id, vehicle, runtime, mqtt_settings, force=bool(mapped_published))
+        self._publish_meta(vehicle, runtime, mqtt_settings)
 
 
-    def _clear_gwm_buffer(self, vehicle_id: str) -> None:
-        timer = self._gwm_buffer_timers.pop(vehicle_id, None)
-        if timer:
-            try:
-                timer.cancel()
-            except Exception:
-                pass
-        self._gwm_buffers.pop(vehicle_id, None)
-        self._gwm_buffer_locks.pop(vehicle_id, None)
-        self._gwm_last_meta_publish.pop(vehicle_id, None)
-        self._gwm_mapped_cache.pop(vehicle_id, None)
-        self._gwm_mapped_cache_locks.pop(vehicle_id, None)
+    def _handle_gwm_payload(self, vehicle_id: str, source_topic: str, payload: str, mqtt_settings) -> None:
+        vehicle = self.config_store.get_vehicle(vehicle_id)
+        if not vehicle:
+            return
 
-    def _parse_gwm_topic(self, vehicle, source_topic: str, mqtt_settings) -> dict[str, Any] | None:
         raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
         root_parts = [
             str(getattr(mqtt_settings, "base_topic", "car") or "car").strip().strip("/") or "car",
@@ -641,6 +473,7 @@ class WorkerManager:
         topic_parts = source_topic.split("/")
         discovered_source_id = ""
         relative_parts: list[str] = []
+
         root_parts_lower = [part.lower() for part in root_parts]
 
         if len(topic_parts) >= 5 and [part.lower() for part in topic_parts[:3]] == root_parts_lower:
@@ -652,247 +485,75 @@ class WorkerManager:
         else:
             relative_parts = topic_parts
 
+        relative = "/".join(relative_parts)
         relative_parts_lower = [part.lower() for part in relative_parts]
         if "status" not in relative_parts_lower:
-            return None
+            return
         status_idx = relative_parts_lower.index("status")
         metric_parts = relative_parts[status_idx + 1:]
+        relative = "/".join(metric_parts)
         if not discovered_source_id and len(topic_parts) >= 4:
             discovered_source_id = topic_parts[3]
         source_root = f"{vehicle_root_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)}/{discovered_source_id}" if discovered_source_id else raw_topic_base
         is_meta_source = (discovered_source_id or "").lower() == "_meta"
         is_meta_status = is_meta_source and [part.lower() for part in metric_parts] == []
-        item_id = ""
-        field_name = metric_parts[-1] if metric_parts else ""
-        metric_parts_lower = [part.lower() for part in metric_parts]
-        if "items" in metric_parts_lower:
-            idx = metric_parts_lower.index("items")
-            if len(metric_parts) > idx + 1:
-                item_id = metric_parts[idx + 1]
-            if len(metric_parts) > idx + 2:
-                field_name = metric_parts[idx + 2]
-        return {
-            "raw_topic_base": raw_topic_base,
-            "mapped": mapped,
-            "source_root": source_root,
-            "is_meta_source": is_meta_source,
-            "is_meta_status": is_meta_status,
-            "item_id": item_id,
-            "field_name": field_name,
-            "relative": "/".join(metric_parts),
-        }
 
-    def _handle_gwm_payload(self, vehicle_id: str, source_topic: str, payload: str, mqtt_settings) -> None:
-        # ORA/GWM sends many single MQTT data points in bursts. Do not map/publish each
-        # point synchronously. Buffer briefly and process the burst as one snapshot.
-        vehicle = self.config_store.get_vehicle(vehicle_id)
-        if not vehicle:
-            return
-        parsed = self._parse_gwm_topic(vehicle, source_topic, mqtt_settings)
-        if not parsed:
-            return
-        lock = self._gwm_buffer_locks.setdefault(vehicle_id, threading.Lock())
-        with lock:
-            self._gwm_buffers.setdefault(vehicle_id, []).append((source_topic, payload))
-            if vehicle_id not in self._gwm_buffer_timers:
-                timer = threading.Timer(0.35, self._flush_gwm_buffer, args=(vehicle_id, mqtt_settings))
-                timer.daemon = True
-                self._gwm_buffer_timers[vehicle_id] = timer
-                timer.start()
-
-    def _flush_gwm_buffer(self, vehicle_id: str, mqtt_settings) -> None:
-        lock = self._gwm_buffer_locks.setdefault(vehicle_id, threading.Lock())
-        with lock:
-            messages = self._gwm_buffers.pop(vehicle_id, [])
-            self._gwm_buffer_timers.pop(vehicle_id, None)
-        if not messages:
-            return
-
-        vehicle = self.config_store.get_vehicle(vehicle_id)
-        if not vehicle:
-            return
-
-        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
         previous_metrics = dict(runtime.metrics or {})
         metrics = dict(previous_metrics)
         obsolete_present = {key for key in GWM_OBSOLETE_MAPPED_KEYS if key in metrics}
         for key in obsolete_present:
             metrics.pop(key, None)
-
-        source_root = runtime.raw_topic or raw_topic_base
-        last_source_topic = ""
-        last_relative = ""
-        last_field_name = ""
-        raw_forward_messages: list[tuple[str, str]] = []
-        meta_status_seen = False
-
-        for source_topic, payload in messages:
-            parsed = self._parse_gwm_topic(vehicle, source_topic, mqtt_settings)
-            if not parsed:
-                continue
-            last_source_topic = source_topic
-            last_relative = str(parsed.get("relative") or "")
-            last_field_name = str(parsed.get("field_name") or "")
-            if parsed.get("is_meta_status"):
-                meta_status_seen = True
-            if not parsed.get("is_meta_source"):
-                source_root = str(parsed.get("source_root") or source_root)
-                raw_forward_messages.append((source_topic, payload))
-            metrics = apply_gwm_metric(metrics, str(parsed.get("item_id") or ""), payload, str(parsed.get("field_name") or ""))
-
-        changed_keys = {key for key, value in metrics.items() if previous_metrics.get(key) != value}
-
-        # Keep a per-vehicle in-memory cache of the last published mapped block.
-        # GWM/ORA arrives as many single datapoints, so comparing against this cache
-        # lets us decide once per buffered burst whether the complete mapped block
-        # must be published. When anything changed, publish all mapped values in one
-        # MQTT batch and then cache that exact mapped block behind this vehicle.
-        cache_lock = self._gwm_mapped_cache_locks.setdefault(vehicle_id, threading.Lock())
-        with cache_lock:
-            cached_metrics = dict(self._gwm_mapped_cache.get(vehicle_id) or previous_metrics or {})
-            cache_changed = obsolete_present or any(cached_metrics.get(key) != value for key, value in metrics.items())
-            removed_cached_keys = {key for key in cached_metrics if key not in metrics}
-            cache_changed = cache_changed or bool(removed_cached_keys)
-
-        if not cache_changed and not changed_keys and not obsolete_present and meta_status_seen and len(messages) == 1:
-            return
+        item_id = ""
+        field_name = metric_parts[-1] if metric_parts else ""
+        if "items" in [part.lower() for part in metric_parts]:
+            idx = [part.lower() for part in metric_parts].index("items")
+            if len(metric_parts) > idx + 1:
+                item_id = metric_parts[idx + 1]
+            if len(metric_parts) > idx + 2:
+                field_name = metric_parts[idx + 2]
+        metrics = apply_gwm_metric(metrics, item_id, payload, field_name)
 
         runtime.connection_state = "connected"
         runtime.connection_detail = "ORA Stream aktiv"
         runtime.auth_state = vehicle.provider_state.auth_state
-        runtime.raw_topic = source_root
+        if not is_meta_source:
+            runtime.raw_topic = source_root
+        elif not runtime.raw_topic:
+            runtime.raw_topic = raw_topic_base
         runtime.mapped_topic = mapped
-        runtime.metrics = metrics
-        runtime.provider_meta = {
-            "vehicle_id": vehicle.provider_config.get("vehicle_id", vehicle.id),
-            "source_topic": last_source_topic,
-            "source_root": source_root,
-            "relative_topic": last_relative,
-            "direct_source_enabled": True,
-            "buffered_messages": len(messages),
-            "mapped_cache_enabled": True,
-            "mapped_cache_keys": len(metrics),
-        }
-        runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
-        self.state_store.upsert(runtime)
-
-        publish_items: list[tuple[str, Any, bool | None, int | None]] = []
-        if cache_changed:
-            for key in sorted(obsolete_present | removed_cached_keys):
-                publish_items.append((f"{mapped}/{key}", "", True, None))
-            for key in sorted(metrics.keys()):
-                publish_items.append((f"{mapped}/{key}", metrics.get(key), None, None))
-            publish_items.append((f"{mapped}/_snapshot", metrics, None, None))
-
-        client = LocalMqttClient(mqtt_settings)
-        try:
-            client.connect()
-            if publish_items:
-                client.publish_many(publish_items, wait=False)
-        finally:
-            client.disconnect()
-
-        if cache_changed:
-            with cache_lock:
-                self._gwm_mapped_cache[vehicle_id] = dict(metrics)
-            self._mapped_publish_cache[vehicle_id] = dict(metrics)
-
-        raw_forward_items = [(source_topic, payload, None, None) for source_topic, payload in raw_forward_messages]
-        self._forward_many(vehicle, mqtt_settings, raw_forward_items, is_raw=True)
-        self._forward_many(vehicle, mqtt_settings, publish_items, is_raw=False)
-
-        if cache_changed:
-            self.log_store.append(vehicle_id, f"ORA Snapshot verarbeitet: {len(messages)} Datenpunkte, kompletter mapped Block gepublished ({len(metrics)} Werte, {len(changed_keys)} Änderungen)")
-        elif not meta_status_seen:
-            self.log_store.append(vehicle_id, f"ORA Snapshot empfangen: {len(messages)} Datenpunkte ohne mapped Änderung ({last_field_name or last_relative or 'status'})")
-
-        now = time.monotonic()
-        last_meta = self._gwm_last_meta_publish.get(vehicle_id, 0)
-        if (now - last_meta) >= 10 or changed_keys or obsolete_present:
-            self._gwm_last_meta_publish[vehicle_id] = now
-            self._publish_meta(vehicle, runtime, mqtt_settings)
-
-
-    def _handle_acconia_payload(self, vehicle_id: str, source_topic: str, payload: str, mqtt_settings) -> None:
-        vehicle = self.config_store.get_vehicle(vehicle_id)
-        if not vehicle:
-            return
-        source_base = str((vehicle.provider_config or {}).get("source_topic_base") or "").strip().strip("/")
-        relative = str(source_topic or "").strip("/")
-        if source_base and relative.lower().startswith((source_base + "/").lower()):
-            relative = relative[len(source_base) + 1:]
-        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
-        runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
-        previous_metrics = dict(runtime.metrics or {})
-        metrics = apply_acconia_metric(
-            dict(previous_metrics),
-            relative,
-            payload,
-            int((vehicle.provider_config or {}).get("battery_count") or 0),
-            (vehicle.provider_config or {}).get("capacity_kwh"),
-        )
         changed_keys = {key for key, value in metrics.items() if previous_metrics.get(key) != value}
-        runtime.connection_state = "connected"
-        runtime.connection_detail = "Acconia/Silence MQTT Quelle aktiv"
-        runtime.auth_state = vehicle.provider_state.auth_state
-        runtime.raw_topic = raw_topic_base
-        runtime.mapped_topic = mapped
-        runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         runtime.metrics = metrics
         runtime.provider_meta = {
             "vehicle_id": vehicle.provider_config.get("vehicle_id", vehicle.id),
-            "source_topic_base": source_base,
             "source_topic": source_topic,
-            "relative_topic": relative,
+            "source_root": source_root,
+            "relative_topic": "/".join(metric_parts),
+            "direct_source_enabled": True,
         }
+
+        runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         self.state_store.upsert(runtime)
 
-        raw_topic = f"{raw_topic_base}/{relative}" if relative else raw_topic_base
-        raw_items = [(raw_topic, payload, None, None)]
         client = LocalMqttClient(mqtt_settings)
         try:
             client.connect()
-            client.publish_many(raw_items, wait=False)
+            if not is_meta_source:
+                self._forward_publish(vehicle, mqtt_settings, source_topic, payload, is_raw=True)
+            for key in sorted(obsolete_present):
+                topic = f"{mapped}/{key}"
+                client.publish(topic, "", retain=True)
+                self._forward_publish(vehicle, mqtt_settings, topic, "", is_raw=False)
+            for key in sorted(changed_keys):
+                topic = f"{mapped}/{key}"
+                client.publish(topic, metrics.get(key))
+                self._forward_publish(vehicle, mqtt_settings, topic, metrics.get(key), is_raw=False)
         finally:
             client.disconnect()
-        self._forward_many(vehicle, mqtt_settings, raw_items, is_raw=True)
-        mapped_published, changed_keys, _mapped_items = self._publish_mapped_block_if_changed(vehicle_id, vehicle, mqtt_settings, mapped, metrics)
 
-        self.log_store.append(vehicle_id, f"Acconia Datenpunkt empfangen: {source_topic} -> {relative} = {payload}; mapped={'Block gepublished' if mapped_published else 'unverändert'}")
-        self._publish_meta_throttled(vehicle_id, vehicle, runtime, mqtt_settings, force=bool(mapped_published))
-
-
-    def _handle_acconia_snapshot(self, vehicle_id: str, data: dict[str, Any], mqtt_settings) -> None:
-        vehicle = self.config_store.get_vehicle(vehicle_id)
-        if not vehicle:
-            return
-        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
-        runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
-        previous_metrics = dict(runtime.metrics or {})
-        metrics = apply_acconia_metric(dict(previous_metrics), "", data or {}, int((vehicle.provider_config or {}).get("battery_count") or 0), (vehicle.provider_config or {}).get("capacity_kwh"))
-        changed_keys = {key for key, value in metrics.items() if previous_metrics.get(key) != value}
-        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        runtime.connection_state = "connected"
-        runtime.connection_detail = "Acconia/Silence API Polling aktiv"
-        runtime.auth_state = vehicle.provider_state.auth_state
-        runtime.raw_topic = raw_topic_base
-        runtime.mapped_topic = mapped
-        runtime.last_update = now
-        runtime.metrics = metrics
-        runtime.provider_meta = {"vehicle_id": vehicle.provider_config.get("vehicle_id", vehicle.id), "frameNo": (data or {}).get("frameNo", ""), "imei": (data or {}).get("imei", ""), "source": "Silence API"}
-        self.state_store.upsert(runtime)
-        raw_items = [(f"{raw_topic_base}/snapshot", data or {}, None, None)]
-        client = LocalMqttClient(mqtt_settings)
-        try:
-            client.connect()
-            client.publish_many(raw_items, wait=False)
-        finally:
-            client.disconnect()
-        self._forward_many(vehicle, mqtt_settings, raw_items, is_raw=True)
-        mapped_published, changed_keys, _mapped_items = self._publish_mapped_block_if_changed(vehicle_id, vehicle, mqtt_settings, mapped, metrics)
-        self.log_store.append(vehicle_id, f"Acconia/Silence Snapshot verarbeitet: soc={metrics.get('soc')} charging={metrics.get('charging')} gps={metrics.get('latitude')},{metrics.get('longitude')} mapped={'Block gepublished' if mapped_published else 'unverändert'}")
-        self._publish_meta_throttled(vehicle_id, vehicle, runtime, mqtt_settings, force=bool(mapped_published))
+        if not is_meta_status:
+            self.log_store.append(vehicle_id, f"ORA Datenpunkt empfangen: {source_topic} -> mapped aus {field_name or relative or 'status'} = {payload}")
+        self._publish_meta(vehicle, runtime, mqtt_settings)
 
     def publish_vehicle_saved_meta(self, vehicle_id: str) -> None:
         vehicle = self.config_store.get_vehicle(vehicle_id)

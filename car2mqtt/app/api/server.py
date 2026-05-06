@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict
 import time
 import ssl
+from datetime import datetime, timezone
 
 import requests
 import paho.mqtt.client as mqtt
@@ -39,8 +40,6 @@ from app.providers.gwm_config import (
     clear_ora_token_backup,
 )
 from app.services.worker_manager import WorkerManager
-from app.services.ha_discovery import publish_all_discovery, publish_vehicle_discovery, clear_vehicle_discovery
-from app.services.evcc_integration import build_evcc_custom_vehicle_payload, build_evcc_custom_vehicle_payload_from_card, evcc_payload_to_yaml
 
 logger = logging.getLogger("car2mqtt.server")
 
@@ -86,119 +85,6 @@ class GwmVerificationPayload(BaseModel):
 class HomeZoneSettingsPayload(BaseModel):
     helper_home_zone_entity_id: str = ""
     device_tracker_enabled: bool = False
-    ha_discovery_enabled: bool = True
-    ha_discovery_prefix: str = "homeassistant"
-    ha_discovery_retain: bool = True
-    # EVCC wird ab v1.2.19 nicht mehr per API/DB beschrieben.
-    # Diese Felder bleiben nur zur Abwärtskompatibilität erhalten.
-    evcc_enabled: bool = False
-    evcc_url: str = "http://localhost:7070"
-    evcc_password: str = ""
-    evcc_auto_create: bool = False
-    evcc_auto_update: bool = False
-    evcc_auto_delete: bool = False
-    evcc_db_path: str = ""
-
-class EvccLinkPayload(BaseModel):
-    evcc_ref: str = ""
-    evcc_managed: bool = True
-    evcc_auto_sync: bool = True
-    evcc_name: str = ""
-    evcc_title: str = ""
-    evcc_capacity_kwh: str = ""
-
-
-class EvccVehicleConfigPayload(BaseModel):
-    evcc_ref: str = ""
-    evcc_managed: bool = True
-    evcc_auto_sync: bool = True
-    evcc_name: str = ""
-    evcc_title: str = ""
-    evcc_capacity_kwh: str = ""
-    evcc_phases: str = ""
-    evcc_identifiers: str = ""
-    evcc_onidentify_off: str = ""
-    evcc_onidentify_pv: str = ""
-    evcc_onidentify_minpv: str = ""
-    evcc_onidentify_now: str = ""
-    evcc_onidentify_mode: str = "off"
-
-
-EVCC_PROVIDER_CONFIG_KEYS = {
-    "evcc_ref", "evcc_managed", "evcc_auto_sync", "evcc_name", "evcc_title",
-    "capacity_kwh", "evcc_capacity_kwh", "evcc_phases", "evcc_identifiers",
-    "evcc_onidentify_off", "evcc_onidentify_pv",
-    "evcc_onidentify_minpv", "evcc_onidentify_now", "evcc_onidentify_mode",
-    "evcc_onidentify_unknown", "evcc_onidentify_disconnected",
-    "evcc_onidentify_connected", "evcc_onidentify_charging",
-}
-
-
-def _normalize_evcc_identifier_list(value: Any) -> list[str]:
-    if isinstance(value, list):
-        raw = value
-    else:
-        raw = re.split(r"[\n,;]+", str(value or ""))
-    result = []
-    for item in raw:
-        text = str(item or "").strip()
-        if text and text not in result:
-            result.append(text)
-    return result
-
-
-def _normalize_evcc_onidentify_mode(value: Any, fallback: str = "off") -> str:
-    mode = str(value or "").strip().lower()
-    aliases = {
-        "aus": "off", "off": "off",
-        "pv": "pv",
-        "min+pv": "minpv", "minpv": "minpv", "min_pv": "minpv", "min-pv": "minpv",
-        "schnell": "now", "now": "now",
-    }
-    if mode in aliases:
-        return aliases[mode]
-    return fallback if fallback in {"off", "pv", "minpv", "now"} else "off"
-
-
-def _evcc_cfg_from_payload(payload: EvccVehicleConfigPayload) -> dict[str, Any]:
-    cfg = {
-        "evcc_ref": str(payload.evcc_ref or "").strip(),
-        "evcc_managed": bool(payload.evcc_managed),
-        "evcc_auto_sync": bool(payload.evcc_auto_sync),
-        "evcc_name": str(payload.evcc_name or "").strip(),
-        "evcc_title": str(payload.evcc_title or "").strip(),
-        "evcc_capacity_kwh": str(payload.evcc_capacity_kwh or "").strip(),
-        "capacity_kwh": str(payload.evcc_capacity_kwh or "").strip(),
-        "evcc_phases": str(payload.evcc_phases or "").strip(),
-        "evcc_identifiers": ", ".join(_normalize_evcc_identifier_list(payload.evcc_identifiers)),
-        "evcc_onidentify_mode": _normalize_evcc_onidentify_mode(payload.evcc_onidentify_mode or payload.evcc_onidentify_pv or "off"),
-        "evcc_onidentify_off": "off",
-        "evcc_onidentify_pv": "pv",
-        "evcc_onidentify_minpv": "minpv",
-        "evcc_onidentify_now": "now",
-    }
-    return cfg
-
-
-def _evcc_cfg_from_provider(provider_config: dict[str, Any] | None) -> dict[str, Any]:
-    cfg = dict(provider_config or {})
-    cap = cfg.get("evcc_capacity_kwh") if cfg.get("evcc_capacity_kwh") not in (None, "") else cfg.get("capacity_kwh", "")
-    return {
-        "evcc_ref": str(cfg.get("evcc_ref") or "").strip(),
-        "evcc_managed": bool(cfg.get("evcc_managed", True)),
-        "evcc_auto_sync": bool(cfg.get("evcc_auto_sync", True)),
-        "evcc_name": str(cfg.get("evcc_name") or "").strip(),
-        "evcc_title": str(cfg.get("evcc_title") or "").strip(),
-        "evcc_capacity_kwh": str(cap or "").strip(),
-        "capacity_kwh": str(cap or "").strip(),
-        "evcc_phases": str(cfg.get("evcc_phases") or "").strip(),
-        "evcc_identifiers": ", ".join(_normalize_evcc_identifier_list(cfg.get("evcc_identifiers") or "")),
-        "evcc_onidentify_mode": _normalize_evcc_onidentify_mode(cfg.get("evcc_onidentify_mode") or cfg.get("evcc_onidentify_pv") or cfg.get("evcc_onidentify_connected") or "off"),
-        "evcc_onidentify_off": "off",
-        "evcc_onidentify_pv": "pv",
-        "evcc_onidentify_minpv": "minpv",
-        "evcc_onidentify_now": "now",
-    }
 
 
 def _normalize_vehicle_id(license_plate: str) -> str:
@@ -497,7 +383,7 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
             "capacityKwh": metrics.get("capacityKwh"),
             "fuelLevel": metrics.get("fuelLevel"),
             "fuelRange": metrics.get("fuelRange"),
-            "vehicleType": metrics.get("vehicleType") or ('ev' if vehicle.manufacturer in {'gwm','acconia'} else None),
+            "vehicleType": metrics.get("vehicleType") or ('ev' if vehicle.manufacturer == 'gwm' else None),
             "latitude": metrics.get("latitude"),
             "longitude": metrics.get("longitude"),
         },
@@ -510,10 +396,9 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         },
         "last_update": (runtime_state or {}).get("last_update", ""),
         "enabled": vehicle.enabled,
-        "manufacturer_note": "ORA Runner vorbereitet" if vehicle.manufacturer == "gwm" else ("Acconia/Silence API vorbereitet" if vehicle.manufacturer == "acconia" else ""),
-        "source_topic_base": vehicle.provider_config.get("source_topic_base", "") if vehicle.manufacturer in {"gwm"} else "",
+        "manufacturer_note": "ORA Runner vorbereitet" if vehicle.manufacturer == "gwm" else "",
+        "source_topic_base": vehicle.provider_config.get("source_topic_base", "") if vehicle.manufacturer == "gwm" else "",
         "device_tracker_enabled": bool(getattr(vehicle, 'device_tracker_enabled', False)),
-        "evcc_config": _evcc_cfg_from_provider(vehicle.provider_config),
     }
 
 
@@ -559,29 +444,14 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
         plate = ''.join(ch for ch in parts[2].upper().strip() if ch.isalnum())
         section = parts[3]
         key = '/'.join(parts[4:])
-        if manufacturer not in {'bmw', 'gwm', 'acconia', 'byd', 'citroen', 'hyundai', 'kia', 'lucid', 'mercedes', 'mg', 'nissan', 'opel', 'peugeot', 'renault', 'tesla', 'toyota', 'volvo', 'vag', 'vw', 'vwcv', 'audi', 'skoda', 'seat', 'cupra'} or not plate:
+        if manufacturer not in {'bmw', 'gwm'} or not plate:
             return
-        entry = grouped.setdefault((manufacturer, plate), {'manufacturer': manufacturer, 'license_plate': plate, 'meta': {}, 'metrics': {}, 'evcc': {}})
+        entry = grouped.setdefault((manufacturer, plate), {'manufacturer': manufacturer, 'license_plate': plate, 'meta': {}, 'metrics': {}})
         payload = msg.payload.decode('utf-8', errors='ignore')
         if section == '_meta':
             entry['meta'][key] = payload
-        elif section == 'mapped' and key:
-            parsed = _parse_mqtt_scalar(payload)
-            if key.startswith('evcc/'):
-                evcc_key = key[5:]
-                if evcc_key == 'name':
-                    entry['evcc']['evcc_name'] = str(parsed or '')
-                elif evcc_key == 'title':
-                    entry['evcc']['evcc_title'] = str(parsed or '')
-                elif evcc_key in {'capacity_kwh', 'capacityKwh'}:
-                    entry['evcc']['evcc_capacity_kwh'] = str(parsed or '')
-                    entry['evcc']['capacity_kwh'] = str(parsed or '')
-                elif evcc_key == 'phases':
-                    entry['evcc']['evcc_phases'] = str(parsed or '')
-                elif evcc_key in {'identifiers', 'identifiers_csv'}:
-                    entry['evcc']['evcc_identifiers'] = parsed
-            elif '/' not in key:
-                entry['metrics'][key] = parsed
+        elif section == 'mapped' and key and '/' not in key:
+            entry['metrics'][key] = _parse_mqtt_scalar(payload)
 
     client = mqtt.Client(client_id=f"car2mqtt-remote-{int(time.time()*1000)%100000}")
     if getattr(mqtt_settings, 'username', ''):
@@ -615,17 +485,6 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
             continue
         label = str(meta.get('label') or meta.get('title') or meta.get('display_name') or meta.get('name') or plate).strip() or plate
         metrics = payload.get('metrics', {}) or {}
-        evcc_cfg = _evcc_cfg_from_provider(payload.get('evcc') or {})
-        # Host ist fachliche Quelle fuer Name/Titel/Kapazitaet. Wenn der Host noch
-        # keine EVCC-Werte veroeffentlicht hat, nutzen Remotes die normalen
-        # Fahrzeugdaten als sinnvollen Fallback.
-        if not evcc_cfg.get('evcc_name'):
-            evcc_cfg['evcc_name'] = label
-        if not evcc_cfg.get('evcc_title'):
-            evcc_cfg['evcc_title'] = label
-        if not evcc_cfg.get('evcc_capacity_kwh') and metrics.get('capacityKwh') not in (None, ''):
-            evcc_cfg['evcc_capacity_kwh'] = str(metrics.get('capacityKwh'))
-            evcc_cfg['capacity_kwh'] = str(metrics.get('capacityKwh'))
         key = (manufacturer, plate)
         # allow remote duplicate even if same plate exists locally but from other server
         card_id = f"remote::{manufacturer}::{plate}::{server_name}"
@@ -649,7 +508,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
                 'capacityKwh': metrics.get('capacityKwh'),
                 'fuelLevel': metrics.get('fuelLevel'),
                 'fuelRange': metrics.get('fuelRange'),
-                'vehicleType': metrics.get('vehicleType') or ('ev' if manufacturer in {'gwm','acconia'} else None),
+                'vehicleType': metrics.get('vehicleType') or ('ev' if manufacturer == 'gwm' else None),
                 'latitude': metrics.get('latitude'),
                 'longitude': metrics.get('longitude'),
                 'latitude_ts': metrics.get('latitude_ts'),
@@ -663,13 +522,12 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
                 'append_vin': False,
             },
             'vin': str(meta.get('vin') or meta.get('vehicle_vin') or ''),
-            'last_update': str(meta.get('last_update') or ''),
+            'last_update': _best_remote_last_update(meta, metrics),
             'enabled': True,
             'manufacturer_note': f'Remote Server: {server_name}',
             'source_topic_base': '',
             'remote': True,
             'remote_server_name': server_name,
-            'evcc_config': evcc_cfg,
         })
     cards.sort(key=lambda c: (str(c.get('label','')).lower(), str(c.get('license_plate','')).lower(), str(c.get('remote_server_name','')).lower()))
     return cards
@@ -699,57 +557,6 @@ def _remote_vehicle_payload_from_card(card: dict[str, Any]) -> dict[str, Any]:
         'remote_server_name': card.get('remote_server_name',''),
     }
 
-
-
-def _evcc_mqtt_values(provider_config: dict[str, Any] | None, *, fallback_title: str = "", fallback_capacity: Any = "") -> dict[str, Any]:
-    cfg = _evcc_cfg_from_provider(provider_config or {})
-    identifiers = _normalize_evcc_identifier_list(cfg.get("evcc_identifiers") or "")
-    title = str(cfg.get("evcc_title") or fallback_title or "").strip()
-    name = str(cfg.get("evcc_name") or title or "").strip()
-    capacity = str(cfg.get("evcc_capacity_kwh") or cfg.get("capacity_kwh") or fallback_capacity or "").strip()
-    # Wichtig: evcc_ref / EVCC-ID und onIdentify werden absichtlich NICHT per MQTT veröffentlicht.
-    # Beide Werte sind lokale Zuordnungen je car2mqtt-Instanz. Remote-Instanzen
-    # lesen nur die fachliche Fahrzeugkonfiguration über MQTT und pflegen ihre eigene EVCC-ID/onIdentify.
-    return {
-        "evcc/name": name,
-        "evcc/title": title,
-        "evcc/capacity_kwh": capacity,
-        "evcc/phases": cfg.get("evcc_phases") or "",
-        "evcc/identifiers": identifiers,
-        "evcc/identifiers_csv": ",".join(identifiers),
-    }
-
-
-def _publish_evcc_vehicle_config_to_mqtt(card_or_vehicle: Any, mqtt_settings, provider_config: dict[str, Any] | None = None) -> int:
-    if not getattr(mqtt_settings, 'host', ''):
-        return 0
-    fallback_title = ""
-    fallback_capacity = ""
-    if isinstance(card_or_vehicle, VehicleConfig):
-        manufacturer = str(card_or_vehicle.manufacturer or '').lower()
-        plate = str(card_or_vehicle.license_plate or '')
-        root = mapped_topic(mqtt_settings.base_topic, manufacturer, plate)
-        cfg = provider_config if provider_config is not None else (card_or_vehicle.provider_config or {})
-        fallback_title = str(card_or_vehicle.label or card_or_vehicle.license_plate or '').strip()
-        fallback_capacity = (cfg or {}).get('capacity_kwh') or (cfg or {}).get('capacityKwh') or ''
-    else:
-        card = dict(card_or_vehicle or {})
-        manufacturer = str(card.get('manufacturer') or '').lower()
-        plate = str(card.get('license_plate') or '')
-        root = str(card.get('mapped_topic') or mapped_topic(mqtt_settings.base_topic, manufacturer, plate)).rstrip('/')
-        cfg = provider_config or {}
-        fallback_title = str(card.get('label') or card.get('license_plate') or '').strip()
-        fallback_capacity = ((card.get('metrics') or {}).get('capacityKwh') or '')
-    client = LocalMqttClient(mqtt_settings)
-    count = 0
-    try:
-        client.connect()
-        for key, value in _evcc_mqtt_values(cfg, fallback_title=fallback_title, fallback_capacity=fallback_capacity).items():
-            client.publish(f"{root}/{key}", value)
-            count += 1
-    finally:
-        client.disconnect()
-    return count
 
 
 
@@ -785,6 +592,30 @@ def _device_tracker_token(card: dict[str, Any]) -> str:
         'label': card.get('label') or '',
         'plate': card.get('license_plate') or '',
     }, sort_keys=True, ensure_ascii=False)
+
+
+def _parse_iso_ts(value: Any) -> datetime | None:
+    text = str(value or '').strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace('Z', '+00:00'))
+    except Exception:
+        return None
+
+
+def _best_remote_last_update(meta: dict[str, Any], metrics: dict[str, Any]) -> str:
+    best_raw = str(meta.get('last_update') or '').strip()
+    best_dt = _parse_iso_ts(best_raw)
+    for key, value in (metrics or {}).items():
+        if not str(key).endswith('_ts'):
+            continue
+        cand_raw = str(value or '').strip()
+        cand_dt = _parse_iso_ts(cand_raw)
+        if cand_dt and (best_dt is None or cand_dt > best_dt):
+            best_dt = cand_dt
+            best_raw = cand_raw
+    return best_raw
 
 
 def _publish_device_trackers(cards: list[dict[str, Any]], mqtt_settings, enabled: bool) -> None:
@@ -918,19 +749,8 @@ def create_app() -> FastAPI:
         cards = [_vehicle_card(vehicle, runtime_states.get(vehicle.id), mqtt_settings.base_topic) for vehicle in config.vehicles]
         remote_cards = _discover_remote_vehicle_snapshots(mqtt_settings, worker_manager._resolve_server_name(), config.vehicles)
         cards.extend(remote_cards)
-        remote_links = getattr(config.ui_settings, "evcc_vehicle_links", {}) or {}
         for card in cards:
             card['device_tracker_enabled'] = _card_device_tracker_enabled(card, config)
-            if card.get('remote'):
-                mqtt_evcc_cfg = _evcc_cfg_from_provider(card.get('evcc_config') or {})
-                local_link_cfg = _evcc_cfg_from_provider(remote_links.get(str(card.get('id') or ''), {}) or {})
-                # Die EVCC-ID/Ref ist eine lokale Zuordnung je car2mqtt-Instanz und wird nicht per MQTT geteilt.
-                # Alle fachlichen EVCC-Fahrzeugwerte kommen bei Remote-Fahrzeugen vom Host über MQTT.
-                mqtt_evcc_cfg['evcc_ref'] = local_link_cfg.get('evcc_ref') or ''
-                mqtt_evcc_cfg['evcc_managed'] = local_link_cfg.get('evcc_managed', True)
-                mqtt_evcc_cfg['evcc_auto_sync'] = local_link_cfg.get('evcc_auto_sync', True)
-                mqtt_evcc_cfg['evcc_onidentify_mode'] = _normalize_evcc_onidentify_mode(local_link_cfg.get('evcc_onidentify_mode') or 'off')
-                card['evcc_config'] = mqtt_evcc_cfg
         cards.sort(key=lambda c: (str(c.get('label','')).lower(), str(c.get('license_plate','')).lower(), 1 if c.get('remote') else 0))
         return cards, mqtt_settings.model_dump(mode="json")
 
@@ -948,7 +768,19 @@ def create_app() -> FastAPI:
 
     def build_mqtt_clients() -> list[dict[str, Any]]:
         cfg = store.load()
-        return [dict(client.model_dump(mode="json"), status=mqtt_client_status(client)) for client in cfg.mqtt_clients]
+        status_map = worker_manager._load_forward_status()
+        now = datetime.now(timezone.utc)
+        result = []
+        for client in cfg.mqtt_clients:
+            status = "disabled" if not client.enabled else mqtt_client_status(client)
+            status_info = dict(status_map.get(client.id, {}) or {})
+            last_ok = _parse_iso_ts(status_info.get('last_ok'))
+            if client.enabled and last_ok and (now - last_ok).total_seconds() <= 900:
+                status = 'online'
+            elif client.enabled and status_info.get('last_error') and not last_ok:
+                status = 'offline'
+            result.append(dict(client.model_dump(mode="json"), status=status, status_info=status_info))
+        return result
 
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request):
@@ -962,7 +794,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.2.24",
+                "version": "1.2.25",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -996,18 +828,6 @@ def create_app() -> FastAPI:
         cfg = store.load()
         cfg.ui_settings.helper_home_zone_entity_id = str(payload.helper_home_zone_entity_id or '').strip()
         cfg.ui_settings.device_tracker_enabled = bool(payload.device_tracker_enabled)
-        cfg.ui_settings.ha_discovery_enabled = bool(payload.ha_discovery_enabled)
-        cfg.ui_settings.ha_discovery_prefix = str(payload.ha_discovery_prefix or 'homeassistant').strip() or 'homeassistant'
-        cfg.ui_settings.ha_discovery_retain = bool(payload.ha_discovery_retain)
-        # EVCC API/DB-Sync ist deaktiviert. car2mqtt erzeugt nur noch den YAML-Helper zum Kopieren.
-        cfg.ui_settings.evcc_enabled = False
-        cfg.ui_settings.evcc_url = str(payload.evcc_url or '').strip() or 'http://localhost:7070'
-        if payload.evcc_password:
-            cfg.ui_settings.evcc_password = str(payload.evcc_password)
-        cfg.ui_settings.evcc_auto_create = False
-        cfg.ui_settings.evcc_auto_update = False
-        cfg.ui_settings.evcc_auto_delete = False
-        cfg.ui_settings.evcc_db_path = ''
         store.save(cfg)
         try:
             cards, _ = build_cards()
@@ -1094,155 +914,6 @@ def create_app() -> FastAPI:
         except Exception:
             pass
         return {'status':'ok','vehicle_id':vehicle_id,'device_tracker_enabled': enabled}
-
-    @app.post("/api/ha-discovery/publish")
-    async def publish_ha_discovery_all():
-        cfg = store.load()
-        settings = load_runtime_mqtt_settings()
-        if not settings.host:
-            raise HTTPException(status_code=400, detail="MQTT Host ist nicht gesetzt")
-        try:
-            count = publish_all_discovery(cfg, settings)
-            return {"status": "ok", "published": count}
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    def _find_remote_card(vehicle_id: str):
-        cards, _ = build_cards()
-        return next((c for c in cards if str(c.get("id")) == str(vehicle_id) and c.get("remote")), None)
-
-    def _remote_link_cfg(vehicle_id: str) -> dict:
-        cfg = store.load()
-        links = getattr(cfg.ui_settings, "evcc_vehicle_links", {}) or {}
-        return dict(links.get(str(vehicle_id), {}) or {})
-
-    def _save_remote_link_cfg(vehicle_id: str, link_cfg: dict) -> None:
-        cfg = store.load()
-        links = dict(getattr(cfg.ui_settings, "evcc_vehicle_links", {}) or {})
-        links[str(vehicle_id)] = dict(link_cfg or {})
-        cfg.ui_settings.evcc_vehicle_links = links
-        store.save(cfg)
-
-    @app.post("/api/vehicles/{vehicle_id}/ha-discovery/publish")
-    async def publish_ha_discovery_vehicle(vehicle_id: str):
-        vehicle = store.get_vehicle(vehicle_id)
-        remote_card = None
-        if not vehicle:
-            remote_card = _find_remote_card(vehicle_id)
-            if remote_card:
-                vehicle = VehicleConfig(
-                    id=str(remote_card.get("id") or vehicle_id),
-                    label=str(remote_card.get("label") or remote_card.get("license_plate") or "Remote Fahrzeug"),
-                    manufacturer=str(remote_card.get("manufacturer") or "").lower(),
-                    license_plate=str(remote_card.get("license_plate") or ""),
-                    enabled=True,
-                    provider_config={"model": "Remote Vehicle"},
-                    device_tracker_enabled=bool(remote_card.get("device_tracker_enabled", False)),
-                )
-        if not vehicle:
-            raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
-        cfg = store.load()
-        settings = load_runtime_mqtt_settings()
-        if not settings.host:
-            raise HTTPException(status_code=400, detail="MQTT Host ist nicht gesetzt")
-        try:
-            count = publish_vehicle_discovery(vehicle, settings, discovery_prefix=cfg.ui_settings.ha_discovery_prefix, retain=cfg.ui_settings.ha_discovery_retain)
-            log_store.append(vehicle_id, f"Home Assistant Discovery veröffentlicht: {count} Entitäten")
-            return {"status": "ok", "published": count}
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    @app.get("/api/evcc/vehicles")
-    async def evcc_list_vehicles():
-        return {"vehicles": [], "disabled": True, "message": "EVCC API/DB-Sync ist deaktiviert. Nutze den EVCC YAML-Helper zum Kopieren."}
-
-    @app.post("/api/evcc/test")
-    async def evcc_test():
-        return {"ok": True, "disabled": True, "message": "EVCC wird nicht mehr direkt beschrieben. Der YAML-Helper bleibt verfügbar."}
-
-    @app.post("/api/evcc/db/check")
-    async def evcc_db_check():
-        return {"exists": False, "disabled": True, "message": "Direkter EVCC-DB-Zugriff wurde entfernt. Nutze den EVCC YAML-Helper."}
-
-    @app.post("/api/evcc/db/backup")
-    async def evcc_db_backup():
-        return {"status": "disabled", "message": "Direkter EVCC-DB-Zugriff wurde entfernt."}
-
-    @app.post("/api/vehicles/{vehicle_id}/evcc/link")
-    async def evcc_link_vehicle(vehicle_id: str, payload: EvccLinkPayload):
-        vehicle = store.get_vehicle(vehicle_id)
-        if not vehicle:
-            remote_card = _find_remote_card(vehicle_id)
-            if not remote_card:
-                raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
-            link_cfg = _remote_link_cfg(vehicle_id)
-            # Remote-Fahrzeuge speichern lokal nur ihre eigene EVCC-ID/Ref.
-            # Name/Titel/Kapazität/Phasen/Identifiers/onIdentify kommen vom Host per MQTT.
-            link_cfg = {
-                "evcc_ref": str(payload.evcc_ref or "").strip(),
-                "evcc_managed": bool(payload.evcc_managed),
-                "evcc_auto_sync": bool(payload.evcc_auto_sync),
-            }
-            _save_remote_link_cfg(vehicle_id, link_cfg)
-            log_store.append(vehicle_id, f"EVCC Remote-Verknüpfung gespeichert: {link_cfg.get('evcc_ref') or 'neu'}")
-            return {"status": "ok", "vehicle_id": vehicle_id, "provider_config": link_cfg, "remote": True}
-        vehicle.provider_config["evcc_ref"] = str(payload.evcc_ref or "").strip()
-        vehicle.provider_config["evcc_managed"] = bool(payload.evcc_managed)
-        vehicle.provider_config["evcc_auto_sync"] = bool(payload.evcc_auto_sync)
-        if payload.evcc_name:
-            vehicle.provider_config["evcc_name"] = str(payload.evcc_name).strip()
-        if payload.evcc_title:
-            vehicle.provider_config["evcc_title"] = str(payload.evcc_title).strip()
-        if payload.evcc_capacity_kwh:
-            vehicle.provider_config["capacity_kwh"] = str(payload.evcc_capacity_kwh).strip()
-        store.upsert_vehicle(vehicle)
-        log_store.append(vehicle_id, f"EVCC Verknüpfung gespeichert: {vehicle.provider_config.get('evcc_ref') or 'neu'}")
-        return {"status": "ok", "vehicle_id": vehicle_id, "provider_config": vehicle.provider_config}
-
-    @app.post("/api/vehicles/{vehicle_id}/evcc/config")
-    async def evcc_save_vehicle_config(vehicle_id: str, payload: EvccVehicleConfigPayload):
-        cfg_values = _evcc_cfg_from_payload(payload)
-        vehicle = store.get_vehicle(vehicle_id)
-        remote_card = None
-        if not vehicle:
-            remote_card = _find_remote_card(vehicle_id)
-            if not remote_card:
-                raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
-            # Bei Remote-Fahrzeugen werden EVCC-ID und onIdentify-Modus lokal gepflegt.
-            # Name/Titel/Kapazität/Phasen/Identifiers kommen vom Host per MQTT.
-            existing_link_cfg = _evcc_cfg_from_provider((getattr(store.load().ui_settings, "evcc_vehicle_links", {}) or {}).get(vehicle_id, {}) or {})
-            link_cfg = {
-                "evcc_ref": str(cfg_values.get("evcc_ref") or existing_link_cfg.get("evcc_ref") or "").strip(),
-                "evcc_managed": bool(cfg_values.get("evcc_managed", existing_link_cfg.get("evcc_managed", True))),
-                "evcc_auto_sync": bool(cfg_values.get("evcc_auto_sync", existing_link_cfg.get("evcc_auto_sync", True))),
-                "evcc_onidentify_mode": _normalize_evcc_onidentify_mode(cfg_values.get("evcc_onidentify_mode") or existing_link_cfg.get("evcc_onidentify_mode") or "off"),
-            }
-            log_store.append(vehicle_id, "Lokale EVCC Remote-Zuordnung gespeichert. Fahrzeugwerte werden vom Host per MQTT gelesen.")
-            _save_remote_link_cfg(vehicle_id, link_cfg)
-            return {"status": "ok", "vehicle_id": vehicle_id, "provider_config": link_cfg, "published": 0, "remote": True}
-        vehicle.provider_config.update(cfg_values)
-        store.upsert_vehicle(vehicle)
-        published = _publish_evcc_vehicle_config_to_mqtt(vehicle, load_runtime_mqtt_settings())
-        log_store.append(vehicle_id, f"EVCC Konfiguration gespeichert und MQTT veröffentlicht: {published} Topics")
-        return {"status": "ok", "vehicle_id": vehicle_id, "provider_config": vehicle.provider_config, "published": published}
-
-    @app.post("/api/vehicles/{vehicle_id}/evcc/sync")
-    async def evcc_sync_vehicle(vehicle_id: str):
-        # EVCC API/DB-Sync wurde bewusst entfernt. Dieser Endpunkt liefert nur noch
-        # den generierten YAML-Block zurück, damit alte UI-Aufrufe nicht fehlschlagen.
-        vehicle = store.get_vehicle(vehicle_id)
-        if not vehicle:
-            remote_card = _find_remote_card(vehicle_id)
-            if not remote_card:
-                raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
-            payload = build_evcc_custom_vehicle_payload_from_card(remote_card, load_runtime_mqtt_settings(), _remote_link_cfg(vehicle_id))
-            return {"status": "ok", "disabled": True, "payload": payload, "yaml": evcc_payload_to_yaml(payload), "remote": True}
-        payload = build_evcc_custom_vehicle_payload(vehicle, load_runtime_mqtt_settings())
-        return {"status": "ok", "disabled": True, "payload": payload, "yaml": evcc_payload_to_yaml(payload)}
-
-    @app.delete("/api/vehicles/{vehicle_id}/evcc")
-    async def evcc_delete_vehicle(vehicle_id: str):
-        return {"status": "disabled", "message": "EVCC API/DB-Löschen wurde entfernt. Entferne das Fahrzeug bei Bedarf manuell in EVCC."}
 
     @app.get("/api/providers")
     async def get_providers():
@@ -1378,16 +1049,6 @@ def create_app() -> FastAPI:
         existing = store.get_vehicle(vehicle_id_to_replace or payload.id)
         if existing:
             vehicle.provider_state = existing.provider_state
-            # Preserve EVCC/UI fields unless the edit form explicitly submitted them.
-            for key in EVCC_PROVIDER_CONFIG_KEYS:
-                if key in (payload.provider_config or {}):
-                    vehicle.provider_config[key] = payload.provider_config.get(key)
-                elif key in (existing.provider_config or {}):
-                    vehicle.provider_config[key] = existing.provider_config.get(key)
-        else:
-            for key in EVCC_PROVIDER_CONFIG_KEYS:
-                if key in (payload.provider_config or {}):
-                    vehicle.provider_config[key] = payload.provider_config.get(key)
 
         if payload.manufacturer == "bmw":
             if payload.auth_session_id:
@@ -1447,31 +1108,6 @@ def create_app() -> FastAPI:
                 vehicle.provider_config["source_topic_base"] = "GWM"
             log_store.append(vehicle.id, "ORA Konfiguration erzeugt: providers/%s/ora2mqtt.yml" % vehicle.id)
 
-        if payload.manufacturer == "acconia":
-            vehicle.provider_config["license_plate"] = vehicle.license_plate
-            vehicle.provider_config["vehicle_id"] = _normalize_vehicle_id(vehicle.license_plate)
-            vehicle.provider_config.pop("source_topic_base", None)
-            vehicle.provider_state.auth_state = "authorized"
-            vehicle.provider_state.auth_message = "Acconia/Silence API vorbereitet"
-            log_store.append(vehicle.id, "Acconia/Silence API-Konfiguration gespeichert")
-
-        if payload.manufacturer in {"byd", "citroen", "hyundai", "kia", "lucid", "mercedes", "mg", "nissan", "opel", "peugeot", "renault", "tesla", "toyota", "volvo"}:
-            vehicle.provider_config["license_plate"] = vehicle.license_plate
-            vehicle.provider_config["vehicle_id"] = _normalize_vehicle_id(vehicle.license_plate)
-            vehicle.provider_config["brand"] = payload.manufacturer
-            vehicle.provider_config.pop("source_topic_base", None)
-            vehicle.provider_state.auth_state = "authorized"
-            vehicle.provider_state.auth_message = "Hersteller-Grundstruktur vorbereitet - API-Connector folgt im nächsten Schritt"
-            log_store.append(vehicle.id, "Hersteller-Grundstruktur gespeichert")
-
-        if payload.manufacturer in {"vag", "vw", "vwcv", "audi", "skoda", "seat", "cupra"}:
-            vehicle.provider_config["license_plate"] = vehicle.license_plate
-            vehicle.provider_config["vehicle_id"] = _normalize_vehicle_id(vehicle.license_plate)
-            vehicle.provider_config.pop("source_topic_base", None)
-            vehicle.provider_state.auth_state = "authorized"
-            vehicle.provider_state.auth_message = "Marken-Grundstruktur vorbereitet - API-Connector folgt im nächsten Schritt"
-            log_store.append(vehicle.id, "Marken-Grundstruktur gespeichert")
-
         if vehicle_id_to_replace and vehicle_id_to_replace != vehicle.id:
             if payload.manufacturer == "gwm":
                 src_cfg = Path(data_dir) / "providers" / vehicle_id_to_replace / "ora2mqtt.yml"
@@ -1486,22 +1122,7 @@ def create_app() -> FastAPI:
             worker_manager.stop_vehicle(vehicle_id_to_replace)
             log_store.append(vehicle.id, f"Fahrzeug-ID geändert von {vehicle_id_to_replace} auf {vehicle.id}")
         store.upsert_vehicle(vehicle)
-        try:
-            cfg_now = store.load()
-            if getattr(cfg_now.ui_settings, "ha_discovery_enabled", True):
-                publish_vehicle_discovery(vehicle, load_runtime_mqtt_settings(), discovery_prefix=cfg_now.ui_settings.ha_discovery_prefix, retain=cfg_now.ui_settings.ha_discovery_retain)
-                log_store.append(vehicle.id, "Home Assistant MQTT Discovery automatisch veröffentlicht")
-        except Exception as exc:
-            log_store.append(vehicle.id, f"Home Assistant Discovery konnte nicht veröffentlicht werden: {exc}")
-        try:
-            published_evcc_cfg = _publish_evcc_vehicle_config_to_mqtt(vehicle, load_runtime_mqtt_settings())
-            if published_evcc_cfg:
-                log_store.append(vehicle.id, f"EVCC MQTT-Konfiguration veröffentlicht: {published_evcc_cfg} Topics")
-        except Exception as exc:
-            log_store.append(vehicle.id, f"EVCC MQTT-Konfiguration konnte nicht veröffentlicht werden: {exc}")
-        # EVCC Auto-Sync entfernt: car2mqtt stellt nur noch den YAML-Helper zum Kopieren bereit.
         worker_manager.publish_vehicle_saved_meta(vehicle.id)
-
         worker_manager.sync_vehicle_to_forward_clients(vehicle.id)
         try:
             cards, _ = build_cards()
@@ -1516,19 +1137,6 @@ def create_app() -> FastAPI:
 
         if payload.manufacturer == "bmw" and mqtt_settings.host and vehicle.provider_state.auth_state == "authorized":
             worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
-        if payload.manufacturer == "acconia":
-            if vehicle.enabled and mqtt_settings.host:
-                log_store.append(vehicle.id, "Acconia/Silence Fahrzeug gespeichert - API Polling gestartet")
-                worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
-            else:
-                log_store.append(vehicle.id, "Acconia/Silence Fahrzeug gespeichert - kein automatischer Start")
-                worker_manager.publish_vehicle_saved_meta(vehicle.id)
-        if payload.manufacturer in {"byd", "citroen", "hyundai", "kia", "lucid", "mercedes", "mg", "nissan", "opel", "peugeot", "renault", "tesla", "toyota", "volvo"}:
-            log_store.append(vehicle.id, f"{payload.manufacturer.upper()} Fahrzeug gespeichert - noch kein Live-Login in dieser Grundversion")
-            worker_manager.publish_vehicle_saved_meta(vehicle.id)
-        if payload.manufacturer in {"vag", "vw", "vwcv", "audi", "skoda", "seat", "cupra"}:
-            log_store.append(vehicle.id, "Marken-Fahrzeug gespeichert - noch kein Live-Login in dieser Grundversion")
-            worker_manager.publish_vehicle_saved_meta(vehicle.id)
         if payload.manufacturer == "gwm":
             if vehicle.enabled and mqtt_settings.host:
                 log_store.append(vehicle.id, "ORA Fahrzeug gespeichert - automatischer Start aktiviert")
@@ -1655,18 +1263,10 @@ def create_app() -> FastAPI:
         vehicle = store.get_vehicle(vehicle_id)
         if not vehicle:
             raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
-        cfg_before = store.load()
-        try:
-            clear_vehicle_discovery(vehicle, load_runtime_mqtt_settings(), discovery_prefix=cfg_before.ui_settings.ha_discovery_prefix)
-            log_store.append(vehicle_id, "Home Assistant Discovery entfernt")
-        except Exception as exc:
-            log_store.append(vehicle_id, f"Home Assistant Discovery konnte nicht entfernt werden: {exc}")
-        # EVCC Auto-Delete entfernt: EVCC-Konfiguration wird nur noch als YAML-Helper bereitgestellt.
         config = store.load()
         config.vehicles = [v for v in config.vehicles if v.id != vehicle_id]
         store.save(config)
         worker_manager.delete_vehicle(vehicle_id)
-
         provider_dir = Path(data_dir) / "providers" / vehicle_id
         if provider_dir.exists():
             shutil.rmtree(provider_dir, ignore_errors=True)

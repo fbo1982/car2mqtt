@@ -3,11 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
-Manufacturer = Literal[
-    "bmw", "gwm", "acconia", "byd", "hyundai", "mg",
-    "citroen", "kia", "lucid", "mercedes", "nissan", "opel", "peugeot", "renault", "tesla", "toyota", "volvo",
-    "vag", "vw", "vwcv", "audi", "skoda", "seat", "cupra"
-]
+Manufacturer = Literal["bmw", "gwm"]
 AuthState = Literal["not_started", "pending", "authorized", "error"]
 
 
@@ -49,17 +45,6 @@ class UiSettings(BaseModel):
     helper_home_zone_entity_id: str = ""
     device_tracker_enabled: bool = False
     remote_device_tracker_ids: List[str] = Field(default_factory=list)
-    ha_discovery_enabled: bool = True
-    ha_discovery_prefix: str = "homeassistant"
-    ha_discovery_retain: bool = True
-    evcc_enabled: bool = False
-    evcc_url: str = "http://localhost:7070"
-    evcc_password: str = ""
-    evcc_auto_create: bool = False
-    evcc_auto_update: bool = False
-    evcc_auto_delete: bool = False
-    evcc_db_path: str = ""
-    evcc_vehicle_links: Dict[str, Any] = Field(default_factory=dict)
 
 
 class MqttForwardClientConfig(BaseModel):

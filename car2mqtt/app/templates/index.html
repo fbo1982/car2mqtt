@@ -31,14 +31,14 @@
   #editDialog .dialog-narrow .grid.two{grid-template-columns:minmax(0,1fr)}
 }
 .toggle-field{display:flex;gap:12px;align-items:flex-start}.toggle-field input[type=checkbox]{margin-top:4px;transform:scale(1.25);accent-color:var(--ok)}.toggle-field .toggle-copy{min-width:0}.gwm-edit-box{display:grid;gap:16px}.gwm-edit-box .field,.gwm-edit-box .grid,.gwm-edit-box .toggle-field{min-width:0}
-#gwmCreateSection,#editGwmSection,#acconiaCreateSection,#editAcconiaSection,#vagCreateSection,#editVagSection{min-width:0}
-#gwmCreateSection .grid.two,#editGwmSection .grid.two,#acconiaCreateSection .grid.two,#editAcconiaSection .grid.two,#vagCreateSection .grid.two,#editVagSection .grid.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
-#gwmCreateSection .field,#editGwmSection .field,#acconiaCreateSection .field,#editAcconiaSection .field,#vagCreateSection .field,#editVagSection .field{min-width:0}
-#gwmCreateSection input,#gwmCreateSection select,#editGwmSection input,#editGwmSection select,#acconiaCreateSection input,#acconiaCreateSection select,#editAcconiaSection input,#editAcconiaSection select,#vagCreateSection input,#vagCreateSection select,#editVagSection input,#editVagSection select{width:100%;max-width:100%;box-sizing:border-box}
+#gwmCreateSection,#editGwmSection{min-width:0}
+#gwmCreateSection .grid.two,#editGwmSection .grid.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+#gwmCreateSection .field,#editGwmSection .field{min-width:0}
+#gwmCreateSection input,#gwmCreateSection select,#editGwmSection input,#editGwmSection select{width:100%;max-width:100%;box-sizing:border-box}
 #gwmCreateSection .btn-row,#editGwmSection .btn-row{display:flex;flex-wrap:wrap;gap:12px}
 #gwmCreateSection .muted,#editGwmSection .muted{max-width:100%}
 @media (max-width: 900px){
-  #gwmCreateSection .grid.two,#editGwmSection .grid.two,#acconiaCreateSection .grid.two,#editAcconiaSection .grid.two,#vagCreateSection .grid.two,#editVagSection .grid.two{grid-template-columns:minmax(0,1fr)}
+  #gwmCreateSection .grid.two,#editGwmSection .grid.two{grid-template-columns:minmax(0,1fr)}
 }.provider-card.selected{border-color:var(--accent)}.provider-card strong{display:block;font-size:20px;margin:8px 0}.provider-card span{color:var(--muted)}.info-box,.auth-box,.log-box{background:rgba(0,0,0,.14);border:1px solid var(--line);border-radius:22px;padding:18px}.auth-box{margin-top:18px}.auth-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.auth-link{word-break:break-all;color:#8ad7ff}.howto-btn{padding:10px 14px;border-radius:12px;font-size:14px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
 #bmwHowtoDialog[open]{display:flex}
 #evccConfigDialog[open]{display:flex}.howto-content{display:grid;gap:14px}.howto-card{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:18px;padding:16px}.howto-card h4{margin:0 0 10px;font-size:16px}.howto-card ol,.howto-card ul{margin:8px 0 0 18px;padding:0}.howto-card li{margin:6px 0}.howto-note{color:var(--muted);font-size:14px}.log-viewer{background:#0a1024;border:1px solid rgba(138,215,255,.18);border-radius:18px;padding:16px;min-height:220px;max-height:360px;overflow:auto;white-space:pre-wrap;color:#d9f2ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.7;box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}
@@ -169,41 +169,7 @@ select, option {
             </div>
           </div>
         </div>
-      <div id="acconiaCreateSection" class="grid hidden">
-        <div class="info-box dialog-narrow">
-          <div class="eyebrow">Acconia / Silence S04 Setup</div>
-          <div class="muted" style="margin-top:10px">Read-only Cloud-Login nach dem Home-Assistant-Projekt <code>homeassistant-silence</code>. Car2MQTT pollt die Silence API und normalisiert GPS, Ladestand und Ladezustand.</div>
-          <div class="field" style="margin-top:14px"><label>Benutzerkonto / E-Mail</label><input id="acconiaAccount" placeholder="mail@example.com" /></div>
-          <div class="field" style="margin-top:16px"><label>Passwort</label><input id="acconiaPassword" type="password" /></div>
-          <div class="field" style="margin-top:16px"><label>Firebase API-Key</label><input id="acconiaApiKey" type="password" /></div>
-          <div class="grid two" style="margin-top:16px">
-            <div class="field"><label>Batterieanzahl</label><select id="acconiaBatteryCount"><option value="1">1 Batterie</option><option value="2" selected>2 Batterien</option></select></div>
-            <div class="field"><label>Polling-Intervall (Sekunden)</label><input id="acconiaPollInterval" type="number" min="30" value="60" /></div>
-          </div>
-          <div class="field" style="margin-top:16px"><label>Akkukapazität gesamt (kWh)</label><input id="acconiaCapacity" type="number" step="0.1" placeholder="optional" /></div>
-          <div class="muted" style="margin-top:10px">MQTT Quell-Topic und Vehicle ID werden automatisch aus dem Kennzeichen erzeugt.</div>
-        </div>
       </div>
-      <div id="vagCreateSection" class="grid hidden">
-        <div class="info-box dialog-narrow">
-          <div class="eyebrow">Hersteller-spezifisches Setup</div>
-          <div class="muted" style="margin-top:10px">Der ausgewählte Hersteller wird direkt verwendet. Login-Daten sind optional und können später im Fahrzeug nachgetragen werden. Powertrain-Mapping ist für Elektro, Hybrid und Verbrenner vorbereitet; der jeweilige API-Connector folgt schrittweise.</div>
-          <div class="grid two" style="margin-top:16px">
-            <div class="field"><label>API-Modus</label><select id="vagApiMode"><option value="brand_app" selected>Marken-App API</option><option value="byd_cloud">BYD Cloud / Diplus</option><option value="bluelink">Hyundai Bluelink</option><option value="kia_connect">Kia Connect / UVO</option><option value="ismart">MG iSMART</option><option value="lucid_community">Lucid Motors Community API</option><option value="mercedes_me">Mercedes me</option><option value="nissanconnect">NissanConnect Services</option><option value="myrenault">MyRenault / Kamereon</option><option value="stellantis_connected_car">Stellantis Connected Car / PSA</option><option value="tesla_fleet_api">Tesla Fleet API</option><option value="mytoyota">MyToyota</option><option value="volvo_connected_vehicle">Volvo Cars Connected Vehicle API</option><option value="official_fleet">Official Fleet Interface Data</option></select></div>
-          </div>
-          <div class="field" style="margin-top:14px"><label>Benutzerkonto / E-Mail <span class="muted">optional</span></label><input id="vagAccount" placeholder="Kann später im Fahrzeug eingetragen werden" /></div>
-          <div class="field" style="margin-top:16px"><label>Passwort <span class="muted">optional</span></label><input id="vagPassword" type="password" /></div>
-          <div class="field" style="margin-top:16px"><label>PIN / App-Code <span class="muted">optional</span></label><input id="vagPin" type="password" placeholder="falls vom Anbieter benötigt" /></div>
-          <div class="grid two" style="margin-top:16px">
-            <div class="field"><label>Land</label><input id="vagCountry" value="DE" /></div>
-            <div class="field"><label>Antrieb</label><select id="vagPowertrain"><option value="unknown">Unbekannt / automatisch</option><option value="electric">Elektro</option><option value="hybrid">Hybrid</option><option value="combustion">Verbrenner</option></select></div>
-          </div>
-          <div class="grid two" style="margin-top:16px">
-            <div class="field"><label>Polling-Intervall (Sekunden)</label><input id="vagPollInterval" type="number" min="30" value="60" /></div>
-            <div class="field"><label>Akkukapazität (kWh)</label><input id="vagCapacity" type="number" step="0.1" placeholder="optional" /></div>
-          </div>
-          <div class="muted" style="margin-top:10px">Vehicle ID und MQTT Topics werden automatisch aus dem Kennzeichen erzeugt.</div>
-
     </div>
     <div class="modal-foot"><button id="cancelWizardBtn" class="ghost-btn">Abbrechen</button><div class="spacer"></div><button id="saveCreateBtn" class="primary-btn">Überprüfen &amp; speichern</button></div>
   </div>
@@ -213,7 +179,7 @@ select, option {
   <div class="panel">
     <div class="modal-head"><div><div class="eyebrow">Fahrzeug</div><h3>Fahrzeug bearbeiten</h3></div><button id="closeEditBtn" class="icon-btn">✕</button></div>
     <div id="editError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyConfigsBtn" type="button" class="ghost-btn">EVCC YAML / Copy Configs</button><button id="publishVehicleDiscoveryBtn" type="button" class="ghost-btn">HA Discovery</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyConfigsBtn" type="button" class="ghost-btn">Copy Configs</button></div>
     <div class="modal-body grid">
       <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
@@ -321,56 +287,6 @@ select, option {
             </div>
           </div>
         </div>
-      </div>
-
-      <div id="editAcconiaSection" class="grid hidden">
-        <div class="field" style="grid-column:1/-1"><div class="eyebrow">Acconia / Silence S04-spezifische Einstellungen</div></div>
-        <div class="info-box dialog-narrow">
-          <div class="field" style="margin-top:14px"><label>Benutzerkonto / E-Mail</label><input id="editAcconiaAccount" /></div>
-          <div class="field" style="margin-top:16px"><label>Passwort</label><input id="editAcconiaPassword" type="password" /></div>
-          <div class="field" style="margin-top:16px"><label>Firebase API-Key</label><input id="editAcconiaApiKey" type="password" /></div>
-          <div class="grid two" style="margin-top:16px">
-            <div class="field"><label>Batterieanzahl</label><select id="editAcconiaBatteryCount"><option value="1">1 Batterie</option><option value="2">2 Batterien</option></select></div>
-            <div class="field"><label>Polling-Intervall (Sekunden)</label><input id="editAcconiaPollInterval" type="number" min="30" /></div>
-          </div>
-          <div class="field" style="margin-top:16px"><label>Akkukapazität gesamt (kWh)</label><input id="editAcconiaCapacity" type="number" step="0.1" /></div>
-          <div class="muted" style="margin-top:10px">MQTT Quell-Topic und Vehicle ID werden automatisch aus dem Kennzeichen erzeugt. Bestehende BMW- und GWM-Konfigurationen bleiben unverändert.</div>
-        </div>
-      </div>
-      <div id="editVagSection" class="grid hidden">
-        <div class="field" style="grid-column:1/-1"><div class="eyebrow">Hersteller-spezifische Einstellungen</div></div>
-        <div class="info-box dialog-narrow">
-          <div class="grid two" style="margin-top:16px">
-            <div class="field"><label>API-Modus</label><select id="editVagApiMode"><option value="brand_app">Marken-App API</option><option value="byd_cloud">BYD Cloud / Diplus</option><option value="bluelink">Hyundai Bluelink</option><option value="kia_connect">Kia Connect / UVO</option><option value="ismart">MG iSMART</option><option value="lucid_community">Lucid Motors Community API</option><option value="mercedes_me">Mercedes me</option><option value="nissanconnect">NissanConnect Services</option><option value="myrenault">MyRenault / Kamereon</option><option value="stellantis_connected_car">Stellantis Connected Car / PSA</option><option value="tesla_fleet_api">Tesla Fleet API</option><option value="mytoyota">MyToyota</option><option value="volvo_connected_vehicle">Volvo Cars Connected Vehicle API</option><option value="official_fleet">Official Fleet Interface Data</option></select></div>
-          </div>
-          <div class="field" style="margin-top:14px"><label>Benutzerkonto / E-Mail</label><input id="editVagAccount" placeholder="Login hier nachtragen" /></div>
-          <div class="field" style="margin-top:16px"><label>Passwort</label><input id="editVagPassword" type="password" /></div>
-          <div class="field" style="margin-top:16px"><label>PIN / App-Code <span class="muted">optional</span></label><input id="editVagPin" type="password" placeholder="falls vom Anbieter benötigt" /></div>
-          <div class="grid two" style="margin-top:16px">
-            <div class="field"><label>Land</label><input id="editVagCountry" /></div>
-            <div class="field"><label>Antrieb</label><select id="editVagPowertrain"><option value="unknown">Unbekannt / automatisch</option><option value="electric">Elektro</option><option value="hybrid">Hybrid</option><option value="combustion">Verbrenner</option></select></div>
-          </div>
-          <div class="grid two" style="margin-top:16px">
-            <div class="field"><label>Polling-Intervall (Sekunden)</label><input id="editVagPollInterval" type="number" min="30" /></div>
-            <div class="field"><label>Akkukapazität (kWh)</label><input id="editVagCapacity" type="number" step="0.1" /></div>
-          </div>
-          <div class="muted" style="margin-top:10px">Die Hersteller-Grundstruktur ist vorbereitet. Login-Daten können hier später nachgetragen werden. Live-Daten kommen, sobald der jeweilige Connector ergänzt ist.</div>
-        </div>
-      </div>
-
-
-      <div id="editEvccVehicleSection" class="info-box dialog-narrow" style="margin-top:18px">
-        <div class="eyebrow">EVCC Helper-Konfiguration</div>
-        <div id="evccRemoteConfigHint" class="muted hidden" style="margin-top:10px">Remote-Fahrzeug: EVCC Name, Titel, Akkukapazität, Phasen und Identifiers kommen vom Host per MQTT und werden hier nicht bearbeitet. Lokal wird nur der onIdentify-Modus gespeichert.</div>
-        <div class="grid two evcc-host-only" style="margin-top:14px">
-          <div class="field"><label>EVCC Name</label><input id="editEvccName" placeholder="optional" /></div>
-          <div class="field"><label>EVCC Titel</label><input id="editEvccTitle" placeholder="optional" /></div>
-          <div class="field"><label>Akkukapazität (kWh)</label><input id="editEvccCapacity" type="number" step="0.1" /></div>
-          <div class="field"><label>Phases</label><select id="editEvccPhases"><option value="">Nicht setzen</option><option value="1">1 Phase</option><option value="3">3 Phasen</option></select></div>
-          <div class="field"><label>Identifiers</label><input id="editEvccIdentifiers" placeholder="z. B. RFID1, RFID2" /></div>
-        </div>
-        <div class="field" style="margin-top:14px"><label>onIdentify Modus</label><select id="editEvccOnIdentifyMode"><option value="off">Aus (off)</option><option value="pv">PV (pv)</option><option value="minpv">Min+PV (minpv)</option><option value="now">Schnell (now)</option></select></div>
-        <div class="muted" style="margin-top:10px">Diese Werte werden nur für den EVCC YAML-Block verwendet. car2mqtt legt keine Fahrzeuge in EVCC an, ändert keine EVCC-Fahrzeuge und löscht keine EVCC-Fahrzeuge.</div>
       </div>
 
       <div class="info-box dialog-narrow" style="margin-top:18px">
@@ -483,17 +399,6 @@ select, option {
             </label>
             <div class="muted" style="margin-top:10px">Erstellt für lokale und remote Fahrzeuge automatisch MQTT Device Tracker Entitäten.</div>
           </div>
-        </div>
-        <div class="howto-card">
-          <h4>Home Assistant MQTT Discovery</h4>
-          <div class="field" style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px"><input id="settingsHaDiscoveryEnabled" type="checkbox"><span>Fahrzeug-Entitäten automatisch erstellen</span></label><div class="muted">Veröffentlicht Sensoren, Binary-Sensoren, Numbers, Buttons und Device Tracker über MQTT Discovery.</div></div>
-          <div class="grid two" style="margin-top:14px"><div class="field"><label>Discovery Prefix</label><input id="settingsHaDiscoveryPrefix" placeholder="homeassistant" /></div><div class="field"><label style="display:flex;align-items:center;gap:10px"><input id="settingsHaDiscoveryRetain" type="checkbox"><span>Retained</span></label></div></div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button id="publishHaDiscoveryBtn" type="button" class="ghost-btn">Discovery neu senden</button></div>
-        </div>
-        <div class="howto-card">
-          <h4>EVCC Helper</h4>
-          <div class="muted" style="margin-top:10px">car2mqtt schreibt nicht mehr direkt in EVCC und verwendet keine EVCC-DB/API-Synchronisation mehr. Die EVCC-Konfiguration wird ausschließlich als benutzerdefiniertes Fahrzeug/YAML-Block zum Kopieren bereitgestellt.</div>
-          <div id="settingsEvccStatus" class="muted" style="margin-top:10px">EVCC Direktzugriff deaktiviert.</div>
         </div>
       </div>
     </div>
@@ -615,89 +520,21 @@ function manufacturerTopicPrefix(manufacturer){
 function getCurrentEditCard(){
   return cards.find(card => card.id === editState.vehicleId) || null;
 }
-function normalizeEvccOnIdentifyMode(value){
-  const mode = String(value || '').trim().toLowerCase();
-  if(mode === 'aus' || mode === 'off') return 'off';
-  if(mode === 'pv') return 'pv';
-  if(mode === 'min+pv' || mode === 'minpv' || mode === 'min_pv' || mode === 'min-pv') return 'minpv';
-  if(mode === 'schnell' || mode === 'now') return 'now';
-  return 'off';
-}
-function evccCfgFromCardOrVehicle(obj){
-  const cfg = (obj && obj.evcc_config) || (obj && obj.provider_config) || {};
-  const fallbackTitle = (obj && (obj.label || obj.title || obj.license_plate)) || '';
-  const fallbackCapacity = (obj && obj.metrics && obj.metrics.capacityKwh != null) ? obj.metrics.capacityKwh : '';
-  const cap = cfg.evcc_capacity_kwh ?? cfg.capacity_kwh ?? fallbackCapacity ?? '';
-  const title = cfg.evcc_title || fallbackTitle || '';
-  return {
-    evcc_ref: cfg.evcc_ref || '',
-    evcc_managed: cfg.evcc_managed !== false,
-    evcc_auto_sync: cfg.evcc_auto_sync !== false,
-    evcc_name: cfg.evcc_name || title,
-    evcc_title: title,
-    evcc_capacity_kwh: cap || '',
-    evcc_phases: cfg.evcc_phases || '',
-    evcc_identifiers: Array.isArray(cfg.evcc_identifiers) ? cfg.evcc_identifiers.join(', ') : (cfg.evcc_identifiers || ''),
-    evcc_onidentify_mode: normalizeEvccOnIdentifyMode(cfg.evcc_onidentify_mode || 'off'),
-  };
-}
-function fillEvccVehicleConfigFields(obj){
-  const cfg = evccCfgFromCardOrVehicle(obj || {});
-  const isRemote = !!(obj && obj.remote);
-  if(field('editEvccRef')) field('editEvccRef').value = cfg.evcc_ref || '';
-  field('editEvccName').value = cfg.evcc_name || '';
-  field('editEvccTitle').value = cfg.evcc_title || '';
-  field('editEvccCapacity').value = cfg.evcc_capacity_kwh || '';
-  field('editEvccPhases').value = cfg.evcc_phases || '';
-  field('editEvccIdentifiers').value = cfg.evcc_identifiers || '';
-  field('editEvccOnIdentifyMode').value = normalizeEvccOnIdentifyMode(cfg.evcc_onidentify_mode || 'off');
-  setEvccRemoteFieldMode(isRemote);
-}
-function setEvccRemoteFieldMode(isRemote){
-  ["editEvccName","editEvccTitle","editEvccCapacity","editEvccPhases","editEvccIdentifiers","editEvccOnIdentifyMode"].forEach(id => { const el = field(id); if(el) el.disabled = false; });
-  document.querySelectorAll(".evcc-host-only").forEach(el => { el.style.display = isRemote ? "none" : ""; });
-  field("evccRemoteConfigHint")?.classList.toggle("hidden", !isRemote);
-}
-function collectEvccVehicleConfigPayload(){
-  return {
-    evcc_ref: '',
-    evcc_managed: false,
-    evcc_auto_sync: false,
-    evcc_name: field('editEvccName')?.value?.trim() || '',
-    evcc_title: field('editEvccTitle')?.value?.trim() || '',
-    evcc_capacity_kwh: field('editEvccCapacity')?.value?.trim() || '',
-    evcc_phases: field('editEvccPhases')?.value || '',
-    evcc_identifiers: field('editEvccIdentifiers')?.value?.trim() || '',
-    evcc_onidentify_mode: normalizeEvccOnIdentifyMode(field('editEvccOnIdentifyMode')?.value || 'off'),
-  };
-}
 function setEditRemoteMode(enabled, card=null){
   field('editRemoteSection')?.classList.toggle('hidden', !enabled);
   field('editBmwSection')?.classList.toggle('hidden', true);
   field('editGwmSection')?.classList.toggle('hidden', true);
-  field('editAcconiaSection')?.classList.toggle('hidden', true);
   field('gwmVerifyPanel')?.classList.toggle('hidden', true);
   field('editLocalMainFields')?.classList.toggle('hidden', !!enabled);
   const mqttAssign = field('editMqttClientsAssign')?.closest('.info-box');
   if(mqttAssign) mqttAssign.style.display = enabled ? 'none' : '';
   const logBox = field('vehicleLogViewer')?.closest('.log-box');
   if(logBox) logBox.style.display = enabled ? 'none' : '';
-  const keepOpenBtn = field('saveEditKeepOpenBtn');
-  const saveCloseBtn = field('saveEditBtn');
-  if(keepOpenBtn){
-    keepOpenBtn.style.display = '';
-    keepOpenBtn.textContent = enabled ? 'Speichern' : 'Speichern';
-  }
-  if(saveCloseBtn){
-    saveCloseBtn.style.display = '';
-    saveCloseBtn.textContent = enabled ? 'Speichern & schließen' : 'Speichern & schließen';
-  }
+  field('saveEditBtn').style.display = enabled ? 'none' : '';
+  field('saveEditKeepOpenBtn').style.display = enabled ? 'none' : '';
   field('editReauthQuickBtn').style.display = enabled ? 'none' : '';
   const cancelBtn = field('cancelEditBtn');
-  if(cancelBtn){
-    cancelBtn.style.display = '';
-    cancelBtn.textContent = enabled ? 'Schließen' : 'Abbrechen';
-  }
+  if(cancelBtn) cancelBtn.style.display = enabled ? 'none' : '';
   const enabledWrap = field('editEnabled')?.closest('.field');
   if(enabledWrap) enabledWrap.style.display = enabled ? 'none' : '';
   const manWrap = field('editManufacturer')?.closest('.field');
@@ -736,14 +573,7 @@ function getCopyConfigContext(){
   const topicBase = `car/${manufacturerPrefix}/${id}/mapped`;
   const entityBase = `car_${manufacturerPrefix}_${id.toLowerCase()}`;
   const varPrefix = `${id.toLowerCase()}_`;
-  const evccCfg = evccCfgFromCardOrVehicle(current || {});
-  const onIdentifyMode = normalizeEvccOnIdentifyMode(field('editEvccOnIdentifyMode')?.value || evccCfg.evcc_onidentify_mode || 'off');
-  const evccName = field('editEvccName')?.value?.trim() || evccCfg.evcc_name || title;
-  const evccTitle = field('editEvccTitle')?.value?.trim() || evccCfg.evcc_title || title;
-  const evccCapacity = field('editEvccCapacity')?.value?.trim() || evccCfg.evcc_capacity_kwh || capacity;
-  const evccPhases = field('editEvccPhases')?.value || evccCfg.evcc_phases || '3';
-  const evccIdentifiers = field('editEvccIdentifiers')?.value?.trim() || evccCfg.evcc_identifiers || id;
-  return { manufacturer, manufacturerPrefix, id, rawPlate, title, current, capacity, topicBase, entityBase, varPrefix, onIdentifyMode, evccName, evccTitle, evccCapacity, evccPhases, evccIdentifiers };
+  return { manufacturer, manufacturerPrefix, id, rawPlate, title, current, capacity, topicBase, entityBase, varPrefix };
 }
 function getHelperCards(){
   return (cards || []).filter(card => card && card.license_plate && card.manufacturer);
@@ -936,17 +766,6 @@ function renderSettingsDialog(data){
   });
   if(info) info.textContent = describeHomezone(data?.effective_homezone || helperHomezoneJson);
   if(trackerToggle) trackerToggle.checked = !!(data?.ui_settings?.device_tracker_enabled);
-  const ui = data?.ui_settings || {};
-  if(field("settingsHaDiscoveryEnabled")) field("settingsHaDiscoveryEnabled").checked = ui.ha_discovery_enabled !== false;
-  if(field("settingsHaDiscoveryPrefix")) field("settingsHaDiscoveryPrefix").value = ui.ha_discovery_prefix || "homeassistant";
-  if(field("settingsHaDiscoveryRetain")) field("settingsHaDiscoveryRetain").checked = ui.ha_discovery_retain !== false;
-  if(field("settingsEvccEnabled")) field("settingsEvccEnabled").checked = !!ui.evcc_enabled;
-  if(field("settingsEvccUrl")) field("settingsEvccUrl").value = ui.evcc_url || "http://localhost:7070";
-  if(field("settingsEvccPassword")) field("settingsEvccPassword").value = "";
-  if(field("settingsEvccDbPath")) field("settingsEvccDbPath").value = ui.evcc_db_path || "/data/evcc.db";
-  if(field("settingsEvccAutoCreate")) field("settingsEvccAutoCreate").checked = !!ui.evcc_auto_create;
-  if(field("settingsEvccAutoUpdate")) field("settingsEvccAutoUpdate").checked = ui.evcc_auto_update !== false;
-  if(field("settingsEvccAutoDelete")) field("settingsEvccAutoDelete").checked = !!ui.evcc_auto_delete;
 }
 async function openSettingsDialog(){
   const dlg = field('settingsDialog');
@@ -1155,26 +974,27 @@ daheimladen_force_evcc_vehicle:
 }
 
 function buildEvccCustomTemplate(){
-  const { id, topicBase, onIdentifyMode, evccTitle, evccCapacity, evccPhases, evccIdentifiers } = getCopyConfigContext();
-  const identifiers = String(evccIdentifiers || id).split(/[\n,;]+/).map(x => x.trim()).filter(Boolean);
-  const identifierBlock = identifiers.length ? identifiers.map(x => `  - ${yamlEscape(x)}`).join('\n') : `  - ${id}`;
+  const { id, title, capacity, topicBase } = getCopyConfigContext();
   return `###########################################
 ###### CAR2MQTT Custom EVCC Template ######
 ###########################################
 
-title: ${yamlEscape(evccTitle)} #<- Angezeigter Fahrzeugname
-capacity: ${evccCapacity || '0'} #<- Auf die Batteriekapazität anpassen
-phases: ${evccPhases || '3'} #<- Wieviele Phasen werden verwendet 1,3 zulässig
+title: ${yamlEscape(title)} #<- Angezeigter Fahrzeugname
+capacity: ${capacity || '0'} #<- Auf die Batteriekapazität anpassen
+phases: 3 #<- Wieviele Phasen werden verwendet 1,3 zulässig
 icon: car
 identifiers:
-${identifierBlock}
+  - ${id}
 soc:
   source: mqtt
   topic: ${topicBase}/soc
   timeout: 24h
 
-onIdentify: #<- genau ein Lademodus aktiv
-  mode: ${onIdentifyMode} # off=Aus, pv=PV, minpv=Min+PV, now=Schnell
+onIdentify: #<- es darf nur eine Lademodus aktiv sein.
+  mode: pv # PV Only
+  #mode: now # Schnell
+  #mode: minpv # Minimum + PV
+  #mode: off # Aus
 
 range:
   source: mqtt
@@ -1379,21 +1199,14 @@ function cardHtml(card){
 function renderCards(){ field('cardsGrid').innerHTML = cards.map(cardHtml).join('') + `<button class="add-card" id="openWizardBtn"><span>＋</span><strong>Fahrzeug hinzufügen</strong></button>`; field('openWizardBtn').onclick = openWizard; }
 function renderProviderList(){ const select = field('createManufacturer'); select.innerHTML = `<option value="">Bitte Hersteller wählen</option>` + providers.map(provider => `<option value="${provider.id}">${provider.name}</option>`).join(''); select.value = createState.manufacturer || ''; }
 function fillManufacturerSelect(){ field('editManufacturer').innerHTML = providers.map(p => `<option value="${p.id}">${p.name}</option>`).join(''); }
-const VAG_MANUFACTURERS = ['vw','vwcv','audi','skoda','seat','cupra','vag','byd','hyundai','mg','citroen','kia','lucid','mercedes','nissan','opel','peugeot','renault','tesla','toyota','volvo'];
-function isVagManufacturer(manufacturer){ return VAG_MANUFACTURERS.includes(String(manufacturer || '').toLowerCase()); }
 
 function setCreateManufacturerLayout(manufacturer){
   const note = field('createManufacturerNote');
   const isBmw = manufacturer === 'bmw';
   const isGwm = manufacturer === 'gwm';
-  const isAcconia = manufacturer === 'acconia';
-  const isVag = isVagManufacturer(manufacturer);
-  if(isVag){ const api = field('vagApiMode'); if(api){ const defaults = {byd:'byd_cloud', hyundai:'bluelink', mg:'ismart', kia:'kia_connect', lucid:'lucid_community', mercedes:'mercedes_me', citroen:'stellantis_connected_car', opel:'stellantis_connected_car', peugeot:'stellantis_connected_car', renault:'myrenault', tesla:'tesla_fleet_api', toyota:'mytoyota', volvo:'volvo_connected_vehicle', nissan:'nissanconnect'}; const wanted = defaults[manufacturer] || 'brand_app'; if(api.value !== wanted) api.value = wanted; } }
   field('bmwHowtoCreateBtn')?.classList.toggle('hidden', !isBmw);
   field('bmwCreateSection').classList.toggle('hidden', !isBmw);
   field('gwmCreateSection').classList.toggle('hidden', !isGwm);
-  field('acconiaCreateSection').classList.toggle('hidden', !isAcconia);
-  field('vagCreateSection')?.classList.toggle('hidden', !isVag);
   if(note){
     if(!manufacturer){ note.textContent = ''; }
     else{
@@ -1408,17 +1221,12 @@ function toggleCreateSections(){ createState.manufacturer = field('createManufac
 function setEditManufacturerLayout(manufacturer){
   const isBmw = manufacturer === 'bmw';
   const isGwm = manufacturer === 'gwm';
-  const isAcconia = manufacturer === 'acconia';
-  const isVag = isVagManufacturer(manufacturer);
-  if(isVag){ const api = field('editVagApiMode'); if(api){ const defaults = {byd:'byd_cloud', hyundai:'bluelink', mg:'ismart', kia:'kia_connect', lucid:'lucid_community', mercedes:'mercedes_me', citroen:'stellantis_connected_car', opel:'stellantis_connected_car', peugeot:'stellantis_connected_car', renault:'myrenault', tesla:'tesla_fleet_api', toyota:'mytoyota', volvo:'volvo_connected_vehicle', nissan:'nissanconnect'}; const wanted = defaults[manufacturer] || 'brand_app'; if(api.value !== wanted) api.value = wanted; } }
   const editLabelWrap = field('editLabel')?.closest('.field');
   const editPlateWrap = field('editPlate')?.closest('.field');
   if(editLabelWrap) editLabelWrap.style.display = '';
   if(editPlateWrap) editPlateWrap.style.display = '';
   field('editBmwSection')?.classList.toggle('hidden', !isBmw);
   field('editGwmSection')?.classList.toggle('hidden', !isGwm);
-  field('editAcconiaSection')?.classList.toggle('hidden', !isAcconia);
-  field('editVagSection')?.classList.toggle('hidden', !isVag);
   field('bmwHowtoBtn')?.classList.toggle('hidden', !isBmw);
   const verifyPanel = field('gwmVerifyPanel');
   if(verifyPanel){
@@ -1445,21 +1253,10 @@ function toggleEditGwmOptions(){
   field('editGwmPollIntervalWrap')?.classList.toggle('hidden', !pollingEnabled);
   field('editGwmRetryDelayWrap')?.classList.toggle('hidden', !delayedRetryEnabled);
 }
-function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity','gwmVerificationCode','acconiaAccount','acconiaPassword','acconiaApiKey','acconiaCapacity','vagAccount','vagPassword','vagPin','vagCapacity'].forEach(id=>field(id).value=''); field('gwmSourceTopicBase').value='GWM'; field('acconiaBatteryCount').value='2'; field('acconiaPollInterval').value='60'; field('vagApiMode').value='brand_app'; field('vagCountry').value='DE'; field('vagPowertrain').value='unknown'; field('vagPollInterval').value='60'; field('bmwRegion').value='EU'; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('gwmPollingEnabled').checked=true; field('gwmAutoReconnect').checked=true; field('gwmDelayedRetryEnabled').checked=true; field('gwmRetryDelayMinutes').value='55'; field('gwmFallbackOnSilence').checked=true; field('createDeviceTrackerEnabled').checked=false; toggleCreateGwmOptions(); field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; setCreateManufacturerLayout(null); }
+function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity','gwmVerificationCode'].forEach(id=>field(id).value=''); field('gwmSourceTopicBase').value='GWM'; field('bmwRegion').value='EU'; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('gwmPollingEnabled').checked=true; field('gwmAutoReconnect').checked=true; field('gwmDelayedRetryEnabled').checked=true; field('gwmRetryDelayMinutes').value='55'; field('gwmFallbackOnSilence').checked=true; field('createDeviceTrackerEnabled').checked=false; toggleCreateGwmOptions(); field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; setCreateManufacturerLayout(null); }
 function openWizard(){ resetCreate(); field('wizardDialog').showModal(); }
 async function loadDashboard(){ const res = await fetch('./api/dashboard'); const data = await res.json(); cards = data.vehicles || []; renderCards(); }
-function errorTextFromResponsePayload(data){
-  const detail = data && Object.prototype.hasOwnProperty.call(data, 'detail') ? data.detail : data;
-  if(typeof detail === 'string') return detail;
-  if(Array.isArray(detail)) return detail.map(x => (typeof x === 'string' ? x : (x && x.msg) ? x.msg : JSON.stringify(x))).join('\n');
-  if(detail && typeof detail === 'object'){
-    if(detail.message) return String(detail.message);
-    if(detail.error) return String(detail.error);
-    try{ return JSON.stringify(detail, null, 2); }catch{ return String(detail); }
-  }
-  return 'Unbekannter Fehler';
-}
-async function postJson(url,payload,method='POST'){ const res = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})}); const text = await res.text(); let data={}; try{ data = text ? JSON.parse(text) : {}; }catch{ data = { detail: text }; } if(!res.ok) throw new Error(errorTextFromResponsePayload(data)); return data; }
+async function postJson(url,payload,method='POST'){ const res = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})}); const text = await res.text(); let data={}; try{ data = text ? JSON.parse(text) : {}; }catch{ data = { detail: text }; } if(!res.ok) throw new Error(data.detail || 'Unbekannter Fehler'); return data; }
 async function fetchText(url){ const res = await fetch(url); const text = await res.text(); if(!res.ok) throw new Error(text || 'Unbekannter Fehler'); return text; }
 
 field('closeWizardBtn').onclick = field('cancelWizardBtn').onclick = () => field('wizardDialog').close();
@@ -1518,7 +1315,7 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
   try{
     const select = field('settingsHomeZoneSelect');
     const trackerToggle = field('settingsDeviceTrackerEnabled');
-    const resp = await postJson('api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '', device_tracker_enabled: !!(trackerToggle && trackerToggle.checked), ha_discovery_enabled: !!field('settingsHaDiscoveryEnabled')?.checked, ha_discovery_prefix: field('settingsHaDiscoveryPrefix')?.value || 'homeassistant', ha_discovery_retain: !!field('settingsHaDiscoveryRetain')?.checked, evcc_enabled: false, evcc_url: '', evcc_password: '', evcc_auto_create: false, evcc_auto_update: false, evcc_auto_delete: false, evcc_db_path: '' });
+    const resp = await postJson('api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '', device_tracker_enabled: !!(trackerToggle && trackerToggle.checked) });
     uiSettings = resp.ui_settings || {};
     helperHomezoneJson = resp.effective_homezone || helperHomezoneJson;
     const info = field('settingsHomeZoneInfo');
@@ -1528,119 +1325,6 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
     alert(err.message || 'Einstellungen konnten nicht gespeichert werden.');
   }
 };
-async function publishAllHaDiscovery(){
-  try{
-    const data = await postJson('./api/ha-discovery/publish', {});
-    const el = field('settingsEvccStatus'); if(el) el.textContent = `Home Assistant Discovery veröffentlicht: ${data.published || 0} Entitäten.`;
-  }catch(err){ alert(err.message || 'Discovery konnte nicht veröffentlicht werden.'); }
-}
-async function testEvccConnection(){
-  try{
-    const data = await postJson('./api/evcc/test', {});
-    const el = field('settingsEvccStatus'); if(el) el.textContent = `EVCC OK. Fahrzeuge gefunden: ${(data.vehicles || []).length}${data.version ? ' · Version: '+data.version : ''}`;
-  }catch(err){ const el = field('settingsEvccStatus'); if(el) el.textContent = err.message || 'EVCC Test fehlgeschlagen.'; }
-}
-async function loadEvccVehiclesStatus(){
-  try{
-    const res = await fetch('./api/evcc/vehicles'); const data = await res.json(); if(!res.ok) throw new Error(errorTextFromResponsePayload(data));
-    const names = (data.vehicles || []).map(v => `${v.title || v.name || v.ref} (${v.ref || v.name || '-'})`).join(', ');
-    const el = field('settingsEvccStatus'); if(el) el.textContent = names ? `EVCC Fahrzeuge: ${names}` : 'Keine EVCC Fahrzeuge gefunden.';
-  }catch(err){ const el = field('settingsEvccStatus'); if(el) el.textContent = err.message || 'EVCC Fahrzeuge konnten nicht geladen werden.'; }
-}
-async function checkEvccDbStatus(){
-  try{
-    const data = await postJson('./api/evcc/db/check', {});
-    const tableNames = (data.tables || []).map(t => `${t.name}(${t.count ?? '?'})`).join(', ');
-    const candidateNames = (data.candidates || []).map(t => t.name).join(', ');
-    const el = field('settingsEvccStatus');
-    if(el){
-      const auto = data.used_auto_path ? ` · Auto-Pfad genutzt statt ${data.requested_path || ''}` : '';
-      const found = (data.found_paths || []).length ? ` · Gefunden: ${(data.found_paths || []).join(', ')}` : '';
-      const docker = data.docker_snapshot && data.docker_snapshot.snapshot_path ? ` · Docker-Snapshot aus EVCC-Container: ${data.docker_snapshot.snapshot_path}` : (data.docker_snapshot && data.docker_snapshot.error ? ` · Docker-Fallback: ${data.docker_snapshot.error}` : "");
-      const seen = data.docker_snapshot && data.docker_snapshot.containers_seen ? ` · Docker-Container gesehen: ${data.docker_snapshot.containers_seen.map(c => `${(c.names||[]).join("/") || c.id}:${c.image}`).join(", ") || "-"}` : "";
-      const tried = data.docker_snapshot && data.docker_snapshot.remote_paths_tried ? ` · Pfade versucht: ${data.docker_snapshot.remote_paths_tried.join(", ")}` : "";
-      if(data.exists){
-        el.textContent = `EVCC DB OK: ${data.path}${auto}${docker} · Tabellen: ${tableNames || "keine"}${candidateNames ? " · Kandidaten: " + candidateNames : ""}`;
-      } else {
-        const noAccess = ' · Kein direkter DB-Zugriff möglich. /data/evcc.db liegt nur im EVCC-Add-on. Bitte EVCC-DB nach /share/evcc.db legen oder API/YAML-Helper verwenden.';
-        el.textContent = `EVCC DB nicht gefunden: ${data.path}${found}${docker}${seen}${tried}${noAccess}`;
-      }
-    }
-  }catch(err){ const el = field('settingsEvccStatus'); if(el) el.textContent = err.message || 'EVCC DB Prüfung fehlgeschlagen.'; }
-}
-async function backupEvccDbStatus(){
-  try{
-    const data = await postJson('./api/evcc/db/backup', {});
-    const el = field('settingsEvccStatus'); if(el) el.textContent = `EVCC DB Backup erstellt: ${data.backup || 'ok'}${data.used_auto_path ? ' · Quelle automatisch gefunden: '+data.source : ''}`;
-  }catch(err){ const el = field('settingsEvccStatus'); if(el) el.textContent = err.message || 'EVCC DB Backup fehlgeschlagen.'; }
-}
-async function syncCurrentVehicleToEvcc(){
-  if(!editState.vehicleId) return;
-  try{
-    await postJson(`./api/vehicles/${editState.vehicleId}/evcc/config`, collectEvccVehicleConfigPayload());
-    await loadDashboard();
-    const data = await postJson(`./api/vehicles/${editState.vehicleId}/evcc/sync`, {});
-    alert(`EVCC Sync erfolgreich: ${data.result?.action || 'ok'} ${data.result?.ref || ''}`);
-    await loadDashboard(); await refreshVehicleLogs();
-  }catch(err){ alert(err.message || 'EVCC Sync fehlgeschlagen.'); }
-}
-async function publishCurrentVehicleDiscovery(){
-  if(!editState.vehicleId) return;
-  try{
-    const data = await postJson(`./api/vehicles/${editState.vehicleId}/ha-discovery/publish`, {});
-    alert(`Home Assistant Discovery veröffentlicht: ${data.published || 0} Entitäten.`);
-  }catch(err){ alert(err.message || 'Discovery fehlgeschlagen.'); }
-}
-async function saveCurrentEvccVehicleConfig(closeAfter=false){
-  if(!editState.vehicleId) return false;
-  try{
-    await postJson(`./api/vehicles/${editState.vehicleId}/evcc/config`, collectEvccVehicleConfigPayload());
-    await loadDashboard();
-    const updated = getCurrentEditCard();
-    if(updated) fillEvccVehicleConfigFields(updated);
-    await refreshVehicleLogs();
-    if(closeAfter){ stopLiveLogs(); field("editDialog").close(); }
-    else showNotice("editError", "Gespeichert.");
-    return true;
-  }catch(err){ showNotice("editError", err.message || "EVCC Helper konnte nicht gespeichert werden."); return false; }
-}
-async function linkCurrentVehicleToEvcc(){
-  if(!editState.vehicleId) return;
-  let options = [];
-  try{ const res = await fetch('./api/evcc/vehicles'); const data = await res.json(); if(res.ok) options = data.vehicles || []; }catch(err){}
-  const hint = options.length ? '\n\nGefundene EVCC Fahrzeuge:\n' + options.map(v => `${v.ref || v.name || '-'} = ${v.title || v.name || ''}`).join('\n') : '\n\nKeine bestehenden EVCC-Fahrzeuge per API gefunden.';
-  const ref = prompt('EVCC Fahrzeug-ID/Ref eintragen, z. B. db:19. Leer lassen bedeutet: keine ID-Zuordnung ändern.' + hint, field('editEvccRef')?.value || '');
-  if(ref === null) return;
-  if(!ref.trim()){ return; }
-  const card = getCurrentEditCard();
-  try{
-    field('editEvccRef').value = ref.trim();
-    const linkPayload = { evcc_ref: ref.trim(), evcc_managed: true, evcc_auto_sync: true };
-    if(!(card && card.remote)){
-      linkPayload.evcc_title = card?.label || '';
-      linkPayload.evcc_capacity_kwh = card?.metrics?.capacityKwh || '';
-    }
-    await postJson(`./api/vehicles/${editState.vehicleId}/evcc/link`, linkPayload);
-    alert('EVCC Zuordnung gespeichert. Danach kann EVCC Sync ausgeführt werden.');
-    await refreshVehicleLogs();
-  }catch(err){ alert(err.message || 'EVCC Zuordnung konnte nicht gespeichert werden.'); }
-}
-const publishHaDiscoveryBtn = field('publishHaDiscoveryBtn');
-if(publishHaDiscoveryBtn) publishHaDiscoveryBtn.onclick = (ev)=>{ ev.preventDefault(); publishAllHaDiscovery(); };
-const testEvccBtn = field('testEvccBtn');
-if(testEvccBtn) testEvccBtn.onclick = (ev)=>{ ev.preventDefault(); testEvccConnection(); };
-const loadEvccVehiclesBtn = field('loadEvccVehiclesBtn');
-if(loadEvccVehiclesBtn) loadEvccVehiclesBtn.onclick = (ev)=>{ ev.preventDefault(); loadEvccVehiclesStatus(); };
-const checkEvccDbBtn = field('checkEvccDbBtn');
-if(checkEvccDbBtn) checkEvccDbBtn.onclick = (ev)=>{ ev.preventDefault(); checkEvccDbStatus(); };
-const backupEvccDbBtn = field('backupEvccDbBtn');
-if(backupEvccDbBtn) backupEvccDbBtn.onclick = (ev)=>{ ev.preventDefault(); backupEvccDbStatus(); };
-const evccSyncBtn = field('evccSyncBtn');
-if(evccSyncBtn) evccSyncBtn.onclick = (ev)=>{ ev.preventDefault(); openEvccConfigDialog(); };
-const publishVehicleDiscoveryBtn = field('publishVehicleDiscoveryBtn');
-if(publishVehicleDiscoveryBtn) publishVehicleDiscoveryBtn.onclick = (ev)=>{ ev.preventDefault(); publishCurrentVehicleDiscovery(); };
-const evccLinkBtn = field('evccLinkBtn');
-if(evccLinkBtn) evccLinkBtn.onclick = (ev)=>{ ev.preventDefault(); openEvccConfigDialog(); };
 const helperConfigBtn = field('copyHelperBtn');
 if(helperConfigBtn) helperConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openHelperConfigDialog(); };
 const closeHelperConfigBtn = field('closeHelperConfigBtn');
@@ -1747,14 +1431,6 @@ field('saveCreateBtn').onclick = async()=>{
       if(!createState.authReady) throw new Error('Bitte BMW Authentifizierung abschließen.');
       payload.provider_config = { client_id: field('bmwClientId').value.trim(), mqtt_username: field('bmwClientId').value.trim(), vin: field('bmwVin').value.trim(), region: field('bmwRegion').value.trim(), auto_reconnect: true, manual_reconnect_minutes: 15 };
     }
-    if(createState.manufacturer === 'acconia'){
-      payload.provider_config = { account: field("acconiaAccount").value.trim(), password: field("acconiaPassword").value, api_key: field("acconiaApiKey").value.trim(), vehicle_id: derivedId, battery_count: field("acconiaBatteryCount").value, poll_interval: field("acconiaPollInterval").value.trim() || "60", capacity_kwh: field("acconiaCapacity").value.trim() };
-      if(!payload.provider_config.account || !payload.provider_config.password || !payload.provider_config.api_key) throw new Error("Bitte Acconia/Silence Benutzerkonto, Passwort und Firebase API-Key eintragen.");
-    }
-    if(isVagManufacturer(createState.manufacturer)){
-      payload.provider_config = { brand: createState.manufacturer, api_mode: field('vagApiMode').value, account: field('vagAccount').value.trim(), password: field('vagPassword').value, country: field('vagCountry').value.trim() || 'DE', pin: field('vagPin')?.value || '', powertrain: field('vagPowertrain').value, poll_interval: field('vagPollInterval').value.trim() || '60', capacity_kwh: field('vagCapacity').value.trim(), vehicle_id: derivedId };
-     
-    }
     if(createState.manufacturer === 'gwm'){
       payload.provider_config = { account: field('gwmAccount').value.trim(), password: field('gwmPassword').value.trim(), country: field('gwmCountry').value.trim(), language: field('gwmLanguage').value.trim(), polling_enabled: field('gwmPollingEnabled').checked, poll_interval: field('gwmPollInterval').value.trim(), vehicle_id: field('gwmVehicleId').value.trim() || derivedId, capacity_kwh: field('gwmCapacity').value.trim(), source_topic_base: field('gwmSourceTopicBase')?.value?.trim() || 'GWM', auto_reconnect: field('gwmAutoReconnect').checked, delayed_retry_enabled: field('gwmDelayedRetryEnabled').checked, retry_delay_minutes: field('gwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('gwmFallbackOnSilence').checked };
       if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.');
@@ -1790,14 +1466,12 @@ async function editVehicle(vehicleId){
   setEditRemoteMode(!!vehicle.remote, currentCard);
   if(vehicle.remote){
     setEditManufacturerLayout('');
-    fillEvccVehicleConfigFields(currentCard || vehicle);
     field('editDialog').showModal();
     return;
   }
   field('editBmwClientId').value = vehicle.provider_config.client_id || ''; field('editBmwMqttUsername').value = vehicle.provider_config.client_id || vehicle.provider_config.mqtt_username || ''; field('editBmwVin').value = vehicle.provider_config.vin || ''; field('editBmwRegion').value = vehicle.provider_config.region || 'EU'; field('editBmwAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editBmwManualReconnectMinutes').value = vehicle.provider_config.manual_reconnect_minutes || 15; toggleBmwReconnectMode();
   field('editGwmAccount').value = vehicle.provider_config.account || ''; field('editGwmPassword').value = vehicle.provider_config.password || ''; field('editGwmCountry').value = vehicle.provider_config.country || 'DE'; field('editGwmLanguage').value = vehicle.provider_config.language || 'de'; field('editGwmPollInterval').value = vehicle.provider_config.poll_interval || 60; field('editGwmVehicleId').value = vehicle.provider_config.vehicle_id || vehicle.id; field('editGwmCapacity').value = vehicle.provider_config.capacity_kwh || ''; const gwmSourceBase = vehicle.provider_config.source_topic_base || 'GWM';
-  field('editGwmSourceTopicBase').value = (String(gwmSourceBase).startsWith('GWM/')) ? 'GWM' : gwmSourceBase;
-  field("editAcconiaAccount").value = vehicle.provider_config.account || ""; field("editAcconiaPassword").value = vehicle.provider_config.password || ""; field("editAcconiaApiKey").value = vehicle.provider_config.api_key || ""; field("editAcconiaBatteryCount").value = String(vehicle.provider_config.battery_count || 2); field("editAcconiaPollInterval").value = String(vehicle.provider_config.poll_interval || 60); field("editAcconiaCapacity").value = vehicle.provider_config.capacity_kwh || ""; field("editVagApiMode").value = vehicle.provider_config.api_mode || "brand_app"; field("editVagAccount").value = vehicle.provider_config.account || ""; field("editVagPassword").value = vehicle.provider_config.password || ""; field("editVagPin").value = vehicle.provider_config.pin || ""; field("editVagCountry").value = vehicle.provider_config.country || "DE"; field("editVagPowertrain").value = vehicle.provider_config.powertrain || "unknown"; field("editVagPollInterval").value = String(vehicle.provider_config.poll_interval || 60); field("editVagCapacity").value = vehicle.provider_config.capacity_kwh || ""; field("editGwmVerificationCode").value = ""; field("editGwmPollingEnabled").checked = vehicle.provider_config.polling_enabled !== false; field("editGwmAutoReconnect").checked = vehicle.provider_config.auto_reconnect !== false; field("editGwmDelayedRetryEnabled").checked = vehicle.provider_config.delayed_retry_enabled !== false; field("editGwmRetryDelayMinutes").value = String(vehicle.provider_config.retry_delay_minutes || 55); field("editGwmFallbackOnSilence").checked = vehicle.provider_config.fallback_on_silence !== false; fillEvccVehicleConfigFields(vehicle); toggleEditGwmOptions();
+  field('editGwmSourceTopicBase').value = (String(gwmSourceBase).startsWith('GWM/')) ? 'GWM' : gwmSourceBase; field('editGwmVerificationCode').value = ''; field('editGwmPollingEnabled').checked = vehicle.provider_config.polling_enabled !== false; field('editGwmAutoReconnect').checked = vehicle.provider_config.auto_reconnect !== false; field('editGwmDelayedRetryEnabled').checked = vehicle.provider_config.delayed_retry_enabled !== false; field('editGwmRetryDelayMinutes').value = String(vehicle.provider_config.retry_delay_minutes || 55); field('editGwmFallbackOnSilence').checked = vehicle.provider_config.fallback_on_silence !== false; toggleEditGwmOptions();
   const gwmNeedsReauth = vehicle.manufacturer === 'gwm' && (/refresh token abgelaufen|reauth erforderlich/i.test(vehicle.status || '') || /refresh token abgelaufen|reauth erforderlich/i.test(vehicle.status_detail || '') || /refresh token/i.test(vehicle.provider_state?.last_error || '') || /reauth erforderlich/i.test(vehicle.provider_state?.auth_message || ''));
   field('editReauthTitle').textContent = vehicle.manufacturer === 'gwm' ? 'ORA ReAuth' : 'BMW Re-Auth';
   field('editAuthState').textContent = vehicle.enabled === false ? 'Fahrzeug ist inaktiv.' : (vehicle.manufacturer === 'gwm' ? (gwmNeedsReauth ? 'ReAuth erforderlich - gespeicherte Anmeldung ist abgelaufen.' : (vehicle.status === 'waiting_for_code' ? 'Verifikationscode erforderlich.' : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'Anmeldung prüfen.'))) : (vehicle.provider_state?.auth_state === 'authorized' ? 'Bestehende Anmeldung aktiv.' : 'Anmeldung prüfen.'));
@@ -1857,7 +1531,7 @@ async function runOraTestMap(){
   try{
     const res = await fetch(`./api/vehicles/${editState.vehicleId}/gwm/test-map`, {method:'POST'});
     const data = await res.json();
-    if(!res.ok) throw new Error(errorTextFromResponsePayload(data));
+    if(!res.ok) throw new Error(data.detail || JSON.stringify(data));
     await loadDashboard();
     await refreshVehicleLogs();
     alert(`Test-Mapping abgeschlossen. Verarbeitete Nachrichten: ${data.processed}`);
@@ -1895,21 +1569,10 @@ field('editPollAuthBtn').onclick = async()=>{ if(!editState.reauthSessionId) ret
 async function saveEdit(closeAfter){ try{ const manufacturer = field('editManufacturer').value; const derivedId = normalizeVehicleIdFromPlate(field('editPlate').value.trim()); const payload = { id: derivedId, label: field('editLabel').value.trim(), manufacturer, license_plate: field('editPlate').value.trim(), enabled: field('editEnabled').checked, provider_config: {}, auth_session_id: editState.reauthSessionId || null, mqtt_client_ids: Array.from(document.querySelectorAll('.edit-mqtt-client-check:checked')).map(el=>el.value), device_tracker_enabled: !!field('editDeviceTrackerEnabled')?.checked };
   if(!payload.label || !payload.license_plate || !derivedId) throw new Error('Bitte Titel und Kennzeichen ausfüllen.');
   if(manufacturer === 'bmw'){ payload.provider_config = { client_id: field('editBmwClientId').value.trim(), mqtt_username: field('editBmwClientId').value.trim(), vin: field('editBmwVin').value.trim(), region: field('editBmwRegion').value.trim(), auto_reconnect: field('editBmwAutoReconnect').checked, manual_reconnect_minutes: Math.max(15, Math.min(60, parseInt(field('editBmwManualReconnectMinutes').value || '15', 10))) }; if(!payload.provider_config.client_id || !payload.provider_config.vin) throw new Error('Bitte BMW Client ID und VIN eintragen.'); }
-  if(manufacturer === 'acconia'){ payload.provider_config = { account: field("editAcconiaAccount").value.trim(), password: field("editAcconiaPassword").value, api_key: field("editAcconiaApiKey").value.trim(), vehicle_id: derivedId, battery_count: field("editAcconiaBatteryCount").value, poll_interval: field("editAcconiaPollInterval").value.trim() || "60", capacity_kwh: field("editAcconiaCapacity").value.trim() }; if(!payload.provider_config.account || !payload.provider_config.password || !payload.provider_config.api_key) throw new Error("Bitte Acconia/Silence Benutzerkonto, Passwort und Firebase API-Key eintragen."); }
-  if(isVagManufacturer(manufacturer)){ payload.provider_config = { brand: manufacturer, api_mode: field('editVagApiMode').value, account: field('editVagAccount').value.trim(), password: field('editVagPassword').value, country: field('editVagCountry').value.trim() || 'DE', pin: field('editVagPin')?.value || '', powertrain: field('editVagPowertrain').value, poll_interval: field('editVagPollInterval').value.trim() || '60', capacity_kwh: field('editVagCapacity').value.trim(), vehicle_id: derivedId }; }
   if(manufacturer === 'gwm'){ payload.provider_config = { account: field('editGwmAccount').value.trim(), password: field('editGwmPassword').value.trim(), country: field('editGwmCountry').value.trim(), language: field('editGwmLanguage').value.trim(), polling_enabled: field('editGwmPollingEnabled').checked, poll_interval: field('editGwmPollInterval').value.trim(), vehicle_id: field('editGwmVehicleId').value.trim() || derivedId, capacity_kwh: field('editGwmCapacity').value.trim(), source_topic_base: field('editGwmSourceTopicBase').value.trim(), auto_reconnect: field('editGwmAutoReconnect').checked, delayed_retry_enabled: field('editGwmDelayedRetryEnabled').checked, retry_delay_minutes: field('editGwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('editGwmFallbackOnSilence').checked }; if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.'); }
-  Object.assign(payload.provider_config, collectEvccVehicleConfigPayload());
   await postJson(`./api/vehicles/${editState.vehicleId}`, payload, 'PUT'); await loadDashboard(); if(closeAfter){ field('editDialog').close(); } } catch(err){ showNotice('editError', err.message); } }
-field('saveEditKeepOpenBtn').onclick = ()=>{
-  const card = getCurrentEditCard();
-  if(card && card.remote) return saveCurrentEvccVehicleConfig(false);
-  return saveEdit(false);
-};
-field('saveEditBtn').onclick = ()=>{
-  const card = getCurrentEditCard();
-  if(card && card.remote) return saveCurrentEvccVehicleConfig(true);
-  return saveEdit(true);
-};
+field('saveEditKeepOpenBtn').onclick = ()=>saveEdit(false);
+field('saveEditBtn').onclick = ()=>saveEdit(true);
 
 async function deleteVehicle(vehicleId){ if(!confirm('Fahrzeug wirklich löschen?')) return; await fetch(`./api/vehicles/${vehicleId}`,{method:'DELETE'}); await loadDashboard(); }
 window.deleteVehicle = deleteVehicle;
