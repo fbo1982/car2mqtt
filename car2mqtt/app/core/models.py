@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 Manufacturer = str
 AuthState = Literal["not_started", "pending", "authorized", "error"]
@@ -39,6 +39,11 @@ class VehicleConfig(BaseModel):
     provider_state: ProviderState = Field(default_factory=ProviderState)
     mqtt_client_ids: List[str] = Field(default_factory=list)
     device_tracker_enabled: bool = False
+
+    @field_validator("manufacturer", mode="before")
+    @classmethod
+    def _normalize_manufacturer(cls, v: Any) -> str:
+        return str(v or "").strip().lower()
 
 
 class UiSettings(BaseModel):

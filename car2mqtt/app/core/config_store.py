@@ -16,6 +16,10 @@ class ConfigStore:
         if not self.config_file.exists():
             return AppConfig()
         raw = json.loads(self.config_file.read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            for vehicle in raw.get("vehicles", []) or []:
+                if isinstance(vehicle, dict) and "manufacturer" in vehicle:
+                    vehicle["manufacturer"] = str(vehicle.get("manufacturer") or "").strip().lower()
         return AppConfig.model_validate(raw)
 
     def save(self, config: AppConfig) -> AppConfig:
