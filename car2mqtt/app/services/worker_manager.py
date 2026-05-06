@@ -113,6 +113,10 @@ class WorkerManager:
         self.log_store = VehicleLogStore(data_dir)
         self.workers: dict[str, object] = {}
         self._bmw_raw_cache: dict[str, dict] = {}
+        self._gwm_buffers: dict[str, list[tuple[str, str]]] = {}
+        self._gwm_buffer_locks: dict[str, threading.Lock] = {}
+        self._gwm_buffer_timers: dict[str, threading.Timer] = {}
+        self._gwm_last_meta_publish: dict[str, float] = {}
         self.mqtt_client_status_file = self.data_dir / "mqtt_client_status.json"
 
     def start_all(self) -> None:
@@ -124,6 +128,7 @@ class WorkerManager:
     def stop_vehicle(self, vehicle_id: str) -> None:
         worker = self.workers.pop(vehicle_id, None)
         self._bmw_raw_cache.pop(vehicle_id, None)
+        self._clear_gwm_buffer(vehicle_id)
         if worker:
             worker.stop()
             self.log_store.append(vehicle_id, "Worker gestoppt")
@@ -550,11 +555,18 @@ class WorkerManager:
         self._publish_meta(vehicle, runtime, mqtt_settings)
 
 
-    def _handle_gwm_payload(self, vehicle_id: str, source_topic: str, payload: str, mqtt_settings) -> None:
-        vehicle = self.config_store.get_vehicle(vehicle_id)
-        if not vehicle:
-            return
+    def _clear_gwm_buffer(self, vehicle_id: str) -> None:
+        timer = self._gwm_buffer_timers.pop(vehicle_id, None)
+        if timer:
+            try:
+                timer.cancel()
+            except Exception:
+                pass
+        self._gwm_buffers.pop(vehicle_id, None)
+        self._gwm_buffer_locks.pop(vehicle_id, None)
+        self._gwm_last_meta_publish.pop(vehicle_id, None)
 
+    def _parse_gwm_topic(self, vehicle, source_topic: str, mqtt_settings) -> dict[str, Any] | None:
         raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
         root_parts = [
             str(getattr(mqtt_settings, "base_topic", "car") or "car").strip().strip("/") or "car",
@@ -564,7 +576,6 @@ class WorkerManager:
         topic_parts = source_topic.split("/")
         discovered_source_id = ""
         relative_parts: list[str] = []
-
         root_parts_lower = [part.lower() for part in root_parts]
 
         if len(topic_parts) >= 5 and [part.lower() for part in topic_parts[:3]] == root_parts_lower:
@@ -576,75 +587,145 @@ class WorkerManager:
         else:
             relative_parts = topic_parts
 
-        relative = "/".join(relative_parts)
         relative_parts_lower = [part.lower() for part in relative_parts]
         if "status" not in relative_parts_lower:
-            return
+            return None
         status_idx = relative_parts_lower.index("status")
         metric_parts = relative_parts[status_idx + 1:]
-        relative = "/".join(metric_parts)
         if not discovered_source_id and len(topic_parts) >= 4:
             discovered_source_id = topic_parts[3]
         source_root = f"{vehicle_root_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)}/{discovered_source_id}" if discovered_source_id else raw_topic_base
         is_meta_source = (discovered_source_id or "").lower() == "_meta"
         is_meta_status = is_meta_source and [part.lower() for part in metric_parts] == []
+        item_id = ""
+        field_name = metric_parts[-1] if metric_parts else ""
+        metric_parts_lower = [part.lower() for part in metric_parts]
+        if "items" in metric_parts_lower:
+            idx = metric_parts_lower.index("items")
+            if len(metric_parts) > idx + 1:
+                item_id = metric_parts[idx + 1]
+            if len(metric_parts) > idx + 2:
+                field_name = metric_parts[idx + 2]
+        return {
+            "raw_topic_base": raw_topic_base,
+            "mapped": mapped,
+            "source_root": source_root,
+            "is_meta_source": is_meta_source,
+            "is_meta_status": is_meta_status,
+            "item_id": item_id,
+            "field_name": field_name,
+            "relative": "/".join(metric_parts),
+        }
 
+    def _handle_gwm_payload(self, vehicle_id: str, source_topic: str, payload: str, mqtt_settings) -> None:
+        # ORA/GWM sends many single MQTT data points in bursts. Do not map/publish each
+        # point synchronously. Buffer briefly and process the burst as one snapshot.
+        vehicle = self.config_store.get_vehicle(vehicle_id)
+        if not vehicle:
+            return
+        parsed = self._parse_gwm_topic(vehicle, source_topic, mqtt_settings)
+        if not parsed:
+            return
+        lock = self._gwm_buffer_locks.setdefault(vehicle_id, threading.Lock())
+        with lock:
+            self._gwm_buffers.setdefault(vehicle_id, []).append((source_topic, payload))
+            if vehicle_id not in self._gwm_buffer_timers:
+                timer = threading.Timer(0.35, self._flush_gwm_buffer, args=(vehicle_id, mqtt_settings))
+                timer.daemon = True
+                self._gwm_buffer_timers[vehicle_id] = timer
+                timer.start()
+
+    def _flush_gwm_buffer(self, vehicle_id: str, mqtt_settings) -> None:
+        lock = self._gwm_buffer_locks.setdefault(vehicle_id, threading.Lock())
+        with lock:
+            messages = self._gwm_buffers.pop(vehicle_id, [])
+            self._gwm_buffer_timers.pop(vehicle_id, None)
+        if not messages:
+            return
+
+        vehicle = self.config_store.get_vehicle(vehicle_id)
+        if not vehicle:
+            return
+
+        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
         runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
         previous_metrics = dict(runtime.metrics or {})
         metrics = dict(previous_metrics)
         obsolete_present = {key for key in GWM_OBSOLETE_MAPPED_KEYS if key in metrics}
         for key in obsolete_present:
             metrics.pop(key, None)
-        item_id = ""
-        field_name = metric_parts[-1] if metric_parts else ""
-        if "items" in [part.lower() for part in metric_parts]:
-            idx = [part.lower() for part in metric_parts].index("items")
-            if len(metric_parts) > idx + 1:
-                item_id = metric_parts[idx + 1]
-            if len(metric_parts) > idx + 2:
-                field_name = metric_parts[idx + 2]
-        metrics = apply_gwm_metric(metrics, item_id, payload, field_name)
+
+        source_root = runtime.raw_topic or raw_topic_base
+        last_source_topic = ""
+        last_relative = ""
+        last_field_name = ""
+        raw_forward_messages: list[tuple[str, str]] = []
+        meta_status_seen = False
+
+        for source_topic, payload in messages:
+            parsed = self._parse_gwm_topic(vehicle, source_topic, mqtt_settings)
+            if not parsed:
+                continue
+            last_source_topic = source_topic
+            last_relative = str(parsed.get("relative") or "")
+            last_field_name = str(parsed.get("field_name") or "")
+            if parsed.get("is_meta_status"):
+                meta_status_seen = True
+            if not parsed.get("is_meta_source"):
+                source_root = str(parsed.get("source_root") or source_root)
+                raw_forward_messages.append((source_topic, payload))
+            metrics = apply_gwm_metric(metrics, str(parsed.get("item_id") or ""), payload, str(parsed.get("field_name") or ""))
+
+        changed_keys = {key for key, value in metrics.items() if previous_metrics.get(key) != value}
+        if not changed_keys and not obsolete_present and meta_status_seen and len(messages) == 1:
+            return
 
         runtime.connection_state = "connected"
         runtime.connection_detail = "ORA Stream aktiv"
         runtime.auth_state = vehicle.provider_state.auth_state
-        if not is_meta_source:
-            runtime.raw_topic = source_root
-        elif not runtime.raw_topic:
-            runtime.raw_topic = raw_topic_base
+        runtime.raw_topic = source_root
         runtime.mapped_topic = mapped
-        changed_keys = {key for key, value in metrics.items() if previous_metrics.get(key) != value}
         runtime.metrics = metrics
         runtime.provider_meta = {
             "vehicle_id": vehicle.provider_config.get("vehicle_id", vehicle.id),
-            "source_topic": source_topic,
+            "source_topic": last_source_topic,
             "source_root": source_root,
-            "relative_topic": "/".join(metric_parts),
+            "relative_topic": last_relative,
             "direct_source_enabled": True,
+            "buffered_messages": len(messages),
         }
-
         runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         self.state_store.upsert(runtime)
+
+        publish_items: list[tuple[str, Any, bool | None, int | None]] = []
+        for key in sorted(obsolete_present):
+            publish_items.append((f"{mapped}/{key}", "", True, None))
+        for key in sorted(changed_keys):
+            publish_items.append((f"{mapped}/{key}", metrics.get(key), None, None))
 
         client = LocalMqttClient(mqtt_settings)
         try:
             client.connect()
-            if not is_meta_source:
-                self._forward_publish(vehicle, mqtt_settings, source_topic, payload, is_raw=True)
-            for key in sorted(obsolete_present):
-                topic = f"{mapped}/{key}"
-                client.publish(topic, "", retain=True)
-                self._forward_publish(vehicle, mqtt_settings, topic, "", is_raw=False)
-            for key in sorted(changed_keys):
-                topic = f"{mapped}/{key}"
-                client.publish(topic, metrics.get(key))
-                self._forward_publish(vehicle, mqtt_settings, topic, metrics.get(key), is_raw=False)
+            if publish_items:
+                client.publish_many(publish_items, wait=False)
         finally:
             client.disconnect()
 
-        if not is_meta_status:
-            self.log_store.append(vehicle_id, f"ORA Datenpunkt empfangen: {source_topic} -> mapped aus {field_name or relative or 'status'} = {payload}")
-        self._publish_meta(vehicle, runtime, mqtt_settings)
+        for source_topic, payload in raw_forward_messages:
+            self._forward_publish(vehicle, mqtt_settings, source_topic, payload, is_raw=True)
+        for topic, value, _retain, _qos in publish_items:
+            self._forward_publish(vehicle, mqtt_settings, topic, value, is_raw=False)
+
+        if changed_keys or obsolete_present:
+            self.log_store.append(vehicle_id, f"ORA Snapshot verarbeitet: {len(messages)} Datenpunkte, {len(changed_keys)} mapped Änderungen")
+        elif not meta_status_seen:
+            self.log_store.append(vehicle_id, f"ORA Snapshot empfangen: {len(messages)} Datenpunkte ohne mapped Änderung ({last_field_name or last_relative or 'status'})")
+
+        now = time.monotonic()
+        last_meta = self._gwm_last_meta_publish.get(vehicle_id, 0)
+        if (now - last_meta) >= 10 or changed_keys or obsolete_present:
+            self._gwm_last_meta_publish[vehicle_id] = now
+            self._publish_meta(vehicle, runtime, mqtt_settings)
 
 
     def _handle_acconia_payload(self, vehicle_id: str, source_topic: str, payload: str, mqtt_settings) -> None:
