@@ -444,7 +444,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
         plate = ''.join(ch for ch in parts[2].upper().strip() if ch.isalnum())
         section = parts[3]
         key = '/'.join(parts[4:])
-        if manufacturer not in {'bmw', 'gwm'} or not plate:
+        if not manufacturer or not plate:
             return
         entry = grouped.setdefault((manufacturer, plate), {'manufacturer': manufacturer, 'license_plate': plate, 'meta': {}, 'metrics': {}})
         payload = msg.payload.decode('utf-8', errors='ignore')
@@ -794,7 +794,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.2.25",
+                "version": "1.2.26",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
