@@ -65,10 +65,10 @@ def apply_gwm_metric(mapped: dict[str, Any], item_id: str, value: Any, field_nam
     # Known/observed GWM ORA datapoints
     if item_id == "2013021" and num is not None:  # SoC
         _set_metric(mapped, "soc", num, ts)
-    elif item_id in {"2011501", "2210001"} and num is not None:  # range km
+    elif item_id == "2011501" and num is not None:  # range km
         if _set_metric(mapped, "range", num, ts):
             _set_metric(mapped, "lastUpdate", ts, ts)
-    elif item_id in {"2103010", "2210002"} and num is not None:  # odometer km
+    elif item_id == "2103010" and num is not None:  # odometer km
         _set_metric(mapped, "odometer", num, ts)
     elif item_id == "2041142":
         status_num = None

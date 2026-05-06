@@ -498,12 +498,6 @@ class WorkerManager:
         is_meta_source = (discovered_source_id or "").lower() == "_meta"
         is_meta_status = is_meta_source and [part.lower() for part in metric_parts] == []
 
-        runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
-        previous_metrics = dict(runtime.metrics or {})
-        metrics = dict(previous_metrics)
-        obsolete_present = {key for key in GWM_OBSOLETE_MAPPED_KEYS if key in metrics}
-        for key in obsolete_present:
-            metrics.pop(key, None)
         item_id = ""
         field_name = metric_parts[-1] if metric_parts else ""
         if "items" in [part.lower() for part in metric_parts]:
@@ -512,7 +506,25 @@ class WorkerManager:
                 item_id = metric_parts[idx + 1]
             if len(metric_parts) > idx + 2:
                 field_name = metric_parts[idx + 2]
+
+        # GWM unit topics do not influence mapped values and created avoidable publish load.
+        if str(field_name).strip().lower() == "unit":
+            return
+
+        runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
+        previous_metrics = dict(runtime.metrics or {})
+        metrics = dict(previous_metrics)
+        obsolete_present = {key for key in GWM_OBSOLETE_MAPPED_KEYS if key in metrics}
+        for key in obsolete_present:
+            metrics.pop(key, None)
         metrics = apply_gwm_metric(metrics, item_id, payload, field_name)
+
+        changed_keys = {key for key, value in metrics.items() if previous_metrics.get(key) != value}
+        meaningful_changed_keys = {
+            key for key in changed_keys
+            if not str(key).endswith("_ts") and key not in {"lastUpdate", "lastUpdateTimeRaw", "lastAcquisitionTime"}
+        }
+        metrics_changed = bool(meaningful_changed_keys or obsolete_present)
 
         runtime.connection_state = "connected"
         runtime.connection_detail = "ORA Stream aktiv"
@@ -522,7 +534,6 @@ class WorkerManager:
         elif not runtime.raw_topic:
             runtime.raw_topic = raw_topic_base
         runtime.mapped_topic = mapped
-        changed_keys = {key for key, value in metrics.items() if previous_metrics.get(key) != value}
         runtime.metrics = metrics
         runtime.provider_meta = {
             "vehicle_id": vehicle.provider_config.get("vehicle_id", vehicle.id),
@@ -532,28 +543,30 @@ class WorkerManager:
             "direct_source_enabled": True,
         }
 
-        runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+        if metrics_changed:
+            runtime.last_update = str(metrics.get("lastUpdate") or datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z'))
         self.state_store.upsert(runtime)
 
-        client = LocalMqttClient(mqtt_settings)
-        try:
-            client.connect()
-            if not is_meta_source:
-                self._forward_publish(vehicle, mqtt_settings, source_topic, payload, is_raw=True)
-            for key in sorted(obsolete_present):
-                topic = f"{mapped}/{key}"
-                client.publish(topic, "", retain=True)
-                self._forward_publish(vehicle, mqtt_settings, topic, "", is_raw=False)
-            for key in sorted(changed_keys):
-                topic = f"{mapped}/{key}"
-                client.publish(topic, metrics.get(key))
-                self._forward_publish(vehicle, mqtt_settings, topic, metrics.get(key), is_raw=False)
-        finally:
-            client.disconnect()
+        if metrics_changed:
+            client = LocalMqttClient(mqtt_settings)
+            try:
+                client.connect()
+                if not is_meta_source:
+                    self._forward_publish(vehicle, mqtt_settings, source_topic, payload, is_raw=True)
+                for key in sorted(obsolete_present):
+                    topic = f"{mapped}/{key}"
+                    client.publish(topic, "", retain=True)
+                    self._forward_publish(vehicle, mqtt_settings, topic, "", is_raw=False)
+                for key in sorted(changed_keys):
+                    topic = f"{mapped}/{key}"
+                    client.publish(topic, metrics.get(key))
+                    self._forward_publish(vehicle, mqtt_settings, topic, metrics.get(key), is_raw=False)
+            finally:
+                client.disconnect()
+            self._publish_meta(vehicle, runtime, mqtt_settings)
 
         if not is_meta_status:
             self.log_store.append(vehicle_id, f"ORA Datenpunkt empfangen: {source_topic} -> mapped aus {field_name or relative or 'status'} = {payload}")
-        self._publish_meta(vehicle, runtime, mqtt_settings)
 
     def publish_vehicle_saved_meta(self, vehicle_id: str) -> None:
         vehicle = self.config_store.get_vehicle(vehicle_id)
