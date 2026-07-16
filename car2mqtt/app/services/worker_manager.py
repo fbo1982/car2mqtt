@@ -419,44 +419,91 @@ class WorkerManager:
         vehicle = self.config_store.get_vehicle(vehicle_id)
         if not vehicle:
             return
-        client = LocalMqttClient(mqtt_settings)
+
+        # Safety net: BMW accounts can expose multiple VINs on the same GCID.
+        # A vehicle worker must never process a payload for another VIN, otherwise
+        # SoC/GPS/plugged timestamps are mixed and EVCC can select the wrong car.
+        expected_vin = str((vehicle.provider_config or {}).get("vin", "")).strip().upper()
+        topic_vin = str(callback_topic or "").strip().split("/")[-1].upper()
+        if expected_vin and topic_vin and topic_vin != expected_vin:
+            self.log_store.append(vehicle_id, f"BMW Payload ignoriert: Topic-VIN {topic_vin} gehört nicht zu {expected_vin}")
+            return
+
         raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings, callback_topic)
+        runtime_before = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
+        previous_metrics = dict(runtime_before.metrics or {})
+        previous_state = runtime_before.connection_state or ""
+        previous_detail = runtime_before.connection_detail or ""
+
+        mapped_delta: Dict[str, Any] = {}
+        full_metrics: Dict[str, Any] = dict(previous_metrics)
+        changed_keys: set[str] = set()
+        meaningful_changed_keys: set[str] = set()
+        data_points = (data or {}).get("data", {}) or {}
+        data_point_names = sorted(str(k) for k in data_points.keys())
+
+        client = LocalMqttClient(mqtt_settings)
         try:
             client.connect()
             nested = self._flatten_publish(client, raw_topic_base, data)
             self._forward_flatten_publish(vehicle, mqtt_settings, raw_topic_base, data)
+
             cached = self._bmw_raw_cache.get(vehicle_id, {})
             merged = self._deep_merge_dict(cached, nested)
             self._bmw_raw_cache[vehicle_id] = merged
-            mapped_payload = map_bmw_payload(merged)
-            for key, value in mapped_payload.items():
+
+            mapped_delta = map_bmw_payload(merged, previous_metrics)
+            full_metrics.update(mapped_delta)
+            changed_keys = {key for key, value in mapped_delta.items() if previous_metrics.get(key) != value}
+            meaningful_changed_keys = {
+                key for key in changed_keys
+                if not str(key).endswith("_ts") and key not in {"lastUpdate", "vehicleType_ts"}
+            }
+
+            # Publish BMW mapped values as diff only. Missing BMW datapoints do not
+            # overwrite earlier valid mapped values, which is essential because the
+            # BMW stream usually sends one changed datapoint per MQTT message.
+            for key in sorted(changed_keys):
                 topic = f"{mapped}/{key}"
+                value = full_metrics.get(key)
                 client.publish(topic, value)
                 self._forward_publish(vehicle, mqtt_settings, topic, value, is_raw=False)
+
+            if data_point_names:
+                preview = ", ".join(data_point_names[:8])
+                suffix = " ..." if len(data_point_names) > 8 else ""
+                self.log_store.append(vehicle_id, f"BMW Datenpunkte empfangen ({len(data_point_names)}): {preview}{suffix}")
+
             self.log_store.append(
                 vehicle_id,
-                f"BMW Mapping aktualisiert: soc={mapped_payload.get('soc')} range={mapped_payload.get('range')} odometer={mapped_payload.get('odometer')} capacityKwh={mapped_payload.get('capacityKwh')}"
+                f"BMW Mapping aktualisiert: {len(changed_keys)} Änderungen, "
+                f"soc={full_metrics.get('soc')} charging={full_metrics.get('charging')} "
+                f"plugged={full_metrics.get('plugged')} range={full_metrics.get('range')} "
+                f"odometer={full_metrics.get('odometer')} capacityKwh={full_metrics.get('capacityKwh')}"
             )
         finally:
             client.disconnect()
 
-        runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
+        runtime = runtime_before
         runtime.connection_state = "connected"
-        runtime.connection_detail = "Streaming aktiv"
+        runtime.connection_detail = "Mit BMW Streaming-Server verbunden"
         runtime.auth_state = vehicle.provider_state.auth_state
-        runtime.last_update = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
-        runtime.raw_topic = target_topic if "target_topic" in locals() else raw_topic_base
+        runtime.raw_topic = raw_topic_base
         runtime.mapped_topic = mapped
-        runtime.metrics = mapped_payload
+        runtime.metrics = full_metrics
         runtime.provider_meta = {
             "vin": vehicle.provider_config.get("vin", ""),
             "mqtt_username": vehicle.provider_state.mqtt_username or vehicle.provider_config.get("mqtt_username", ""),
             "gcid": vehicle.provider_state.mqtt_username or vehicle.provider_config.get("mqtt_username", ""),
         }
+        if meaningful_changed_keys:
+            runtime.last_update = str(full_metrics.get("lastUpdate") or datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z'))
         self.state_store.upsert(runtime)
-        count = len((data or {}).get("data", {}))
+
+        count = len(data_points)
         self.log_store.append(vehicle_id, f"Live-Daten empfangen: {count} Datenpunkte -> {callback_topic} (Mapping aus kumuliertem Snapshot)")
-        self._publish_meta(vehicle, runtime, mqtt_settings)
+        if meaningful_changed_keys or previous_state != runtime.connection_state or previous_detail != runtime.connection_detail:
+            self._publish_meta(vehicle, runtime, mqtt_settings)
 
 
     def _handle_gwm_payload(self, vehicle_id: str, source_topic: str, payload: str, mqtt_settings) -> None:

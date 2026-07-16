@@ -220,6 +220,9 @@ class BMWStreamWorker:
                 vin=self.vehicle.provider_config["vin"],
                 mqtt_username=self.vehicle.provider_state.mqtt_username or self.vehicle.provider_config.get("mqtt_username", ""),
                 token_file=str(token_file),
+                # Multiple BMWs can share one GCID. Subscribing only to the
+                # configured VIN avoids cross-vehicle data mixing.
+                subscribe_wildcard=False,
             )
             self.client.set_message_callback(self._handle_message)
             self.client.set_connect_callback(self._handle_connect)
@@ -271,8 +274,10 @@ class BMWStreamWorker:
             self._log(f"BMW MQTT Username/GCID: {self.client.mqtt_username}")
             if self.client.subscribe_topic:
                 self._log(f"BMW Subscribe Topic: {self.client.subscribe_topic}")
-            if self.client.wildcard_topic:
+            if self.client.subscribe_wildcard and self.client.wildcard_topic:
                 self._log(f"BMW Wildcard Topic: {self.client.wildcard_topic}")
+            elif self.client.wildcard_topic:
+                self._log(f"BMW Wildcard Subscribe deaktiviert: {self.client.wildcard_topic}")
         if self.on_connect_cb:
             self.on_connect_cb()
 
@@ -280,6 +285,11 @@ class BMWStreamWorker:
         if self.stop_event.is_set() and rc == 0:
             return
         self._log(f"BMW MQTT getrennt (rc={rc})")
+        # BMW CarData often closes the stream between burst updates. Do not flip
+        # the UI to disconnected for these short-lived technical reconnects; the
+        # worker reconnects automatically and will report a hard error if that fails.
+        if rc in {0, 141} and not self.stop_event.is_set():
+            return
         if self.on_disconnect_cb:
             self.on_disconnect_cb(rc)
 
