@@ -25,11 +25,12 @@ def test_front_service_profile_uses_pc_mygwm_identity():
     assert "eu-front-service.gwmcloud.com" in source
     assert "eu-official-commerce/eu-official-gateway/pc-api/api/v1.0/" in source
     assert 'SetHeader(_frontClient, "appid", "6")' in source
-    assert 'SetHeader(_frontClient, "brand", "6")' in source
-    assert 'SetHeader(_frontClient, "enterpriseid", "CC01")' in source
+    assert 'UseMyGwmEuFrontIdentity("pc_gwm", "GW_PC_GWM", "6", "CC01")' in source
+    assert 'SetHeader(_frontClient, "brand", brand)' in source
+    assert 'SetHeader(_frontClient, "enterpriseid", enterpriseId)' in source
     assert 'SetHeader(_frontClient, "rs", rs)' in source
     assert 'MyGwmEuFrontRsCandidates' in source
-    assert 'SetHeader(_frontClient, "terminal", "GW_PC_GWM")' in source
+    assert 'SetHeader(_frontClient, "terminal", terminal)' in source
 
 
 def test_front_service_login_body_matches_public_mygwm_shape():

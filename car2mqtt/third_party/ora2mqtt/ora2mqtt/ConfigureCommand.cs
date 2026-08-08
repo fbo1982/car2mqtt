@@ -212,6 +212,51 @@ namespace ora2mqtt
                                             continue;
                                         }
 
+                                        // 551008 proves that rs is accepted but the copied Brazilian
+                                        // PC identity does not match the EU service. Discover the client
+                                        // identity with loginAccount only; never request an SMS here.
+                                        if (IsIllegalFrontIdentity(rsException))
+                                        {
+                                            _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=rs_selected route={routeId} rs={rs} reason=identity_error ORA_GWM_ERROR_CODE={rsException.Code} message={rsException.Message} sms_sent=false");
+                                            _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=identity_discovery_start route={routeId} rs={rs} terminal={client.FrontTerminal} brand={client.FrontBrand} enterpriseId={client.FrontEnterpriseId} sms_sent=false");
+
+                                            GwmApiException lastIdentityException = rsException;
+                                            foreach (var identity in GwmApiClient.MyGwmEuFrontIdentityCandidates)
+                                            {
+                                                client.UseMyGwmEuFrontIdentity(identity.Label, identity.Terminal, identity.Brand, identity.EnterpriseId);
+                                                _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=identity_probe route={routeId} rs={rs} profile={identity.Label} terminal={identity.Terminal} brand={identity.Brand} enterpriseId={identity.EnterpriseId} endpoint=userAuth/loginAccount sms_sent=false");
+                                                try
+                                                {
+                                                    token = await client.LoginAccountMyGwmEuFrontAsync(frontRequest, cancellationToken);
+                                                    _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=identity_selected route={routeId} rs={rs} profile={identity.Label} terminal={identity.Terminal} brand={identity.Brand} enterpriseId={identity.EnterpriseId} reason=login_success sms_sent=false");
+                                                    break;
+                                                }
+                                                catch (GwmApiException identityException)
+                                                {
+                                                    lastIdentityException = identityException;
+                                                    if (IsIllegalFrontIdentity(identityException))
+                                                    {
+                                                        _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=identity_probe_rejected route={routeId} rs={rs} profile={identity.Label} terminal={identity.Terminal} brand={identity.Brand} enterpriseId={identity.EnterpriseId} ORA_GWM_ERROR_CODE={identityException.Code} message={identityException.Message} sms_sent=false");
+                                                        continue;
+                                                    }
+
+                                                    // Any other structured GWM response means the identity
+                                                    // tuple is accepted. Keep those headers for OTP request
+                                                    // and redemption and hand the actual account response to
+                                                    // the outer verification/credential handling.
+                                                    _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=identity_selected route={routeId} rs={rs} profile={identity.Label} terminal={identity.Terminal} brand={identity.Brand} enterpriseId={identity.EnterpriseId} reason=gwm_response ORA_GWM_ERROR_CODE={identityException.Code} message={identityException.Message} sms_sent=false");
+                                                    throw;
+                                                }
+                                            }
+
+                                            if (token is not null)
+                                            {
+                                                break;
+                                            }
+
+                                            throw lastIdentityException;
+                                        }
+
                                         // Any other structured GWM response means the rs value is
                                         // accepted. Preserve it and hand the response to the normal
                                         // verification/credential handling below.
@@ -281,7 +326,7 @@ namespace ora2mqtt
                         {
                             try
                             {
-                                _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=request_code transport=eu-front-service endpoint=userAuth/getSMSCode type=3 same_device=true route={client.FrontRouteId} rs={client.FrontRs}");
+                                _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=request_code transport=eu-front-service endpoint=userAuth/getSMSCode type=3 same_device=true route={client.FrontRouteId} rs={client.FrontRs} profile={client.FrontIdentityLabel} terminal={client.FrontTerminal} brand={client.FrontBrand} enterpriseId={client.FrontEnterpriseId}");
                                 await client.GetSmsCodeMyGwmEuFrontAsync(new GetSmsCode { Email = account }, cancellationToken);
                                 options.AuthFlow = "eu_mygwm_front";
                                 await SaveConfigAsync(options, cancellationToken);
@@ -379,7 +424,7 @@ namespace ora2mqtt
                         // Redeem the OTP on the same front-service identity and persistent device
                         // that requested it.  Do not send it to checkSMSCode/loginWithSMS first.
                         frontRequest.VerifyCode = code;
-                        _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service endpoint=userAuth/loginAccount verifyCode=present same_device=true route={client.FrontRouteId} rs={client.FrontRs}");
+                        _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service endpoint=userAuth/loginAccount verifyCode=present same_device=true route={client.FrontRouteId} rs={client.FrontRs} profile={client.FrontIdentityLabel} terminal={client.FrontTerminal} brand={client.FrontBrand} enterpriseId={client.FrontEnterpriseId}");
                         token = await client.LoginAccountMyGwmEuFrontAsync(frontRequest, cancellationToken);
                     }
                     else if (useMyGwm13)
@@ -471,6 +516,12 @@ namespace ora2mqtt
         {
             return String.Equals(exception.Code, "551005", StringComparison.OrdinalIgnoreCase) ||
                 exception.Message.Contains("Illegal rs", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsIllegalFrontIdentity(GwmApiException exception)
+        {
+            return String.Equals(exception.Code, "551008", StringComparison.OrdinalIgnoreCase) ||
+                exception.Message.Contains("Illegal terminal, brand or enterpriseId", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string Md5Lower(string value)

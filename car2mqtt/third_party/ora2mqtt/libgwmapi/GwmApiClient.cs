@@ -76,28 +76,55 @@ public partial class GwmApiClient
     public static IReadOnlyList<string> MyGwmEuFrontRsCandidates { get; } =
         new[] { "2", "1", "3", "4", "0", "6", "7", "8", "9" };
 
+    // Known GWM client identities from public implementations.  The EU front-service
+    // route accepted rs=2 but rejected the Brazilian PC identity with 551008. Probe
+    // these identities using loginAccount only; no SMS is requested during discovery.
+    public static IReadOnlyList<(string Label, string Terminal, string Brand, string EnterpriseId)> MyGwmEuFrontIdentityCandidates { get; } =
+        new (string Label, string Terminal, string Brand, string EnterpriseId)[]
+        {
+            ("mygwm_app", "GW_APP_GWM", "6", "CC01"),
+            ("legacy_ora", "GW_APP_ORA", "3", "CC01"),
+            ("haval_app", "GW_APP_Haval", "1", "CC01"),
+            ("haval_app_upper", "GW_APP_HAVAL", "1", "CC01"),
+            ("pc_gwm_brand3", "GW_PC_GWM", "3", "CC01"),
+            ("pc_gwm_brand1", "GW_PC_GWM", "1", "CC01"),
+        };
+
     public string FrontRouteId { get; private set; } = String.Empty;
     public string FrontRs { get; private set; } = "5";
+    public string FrontIdentityLabel { get; private set; } = "pc_gwm";
+    public string FrontTerminal { get; private set; } = "GW_PC_GWM";
+    public string FrontBrand { get; private set; } = "6";
+    public string FrontEnterpriseId { get; private set; } = "CC01";
 
     public void UseMyGwmEuFrontProfile(string country, string routeId = "eu_global_service_pc", string rs = "5")
     {
-        if (!MyGwmEuFrontRoutes.TryGetValue(routeId, out var baseUrl))
+        if (!MyGwmEuFrontRoutes.TryGetValue(routeId, out _))
         {
             throw new ArgumentException($"Unknown MyGWM EU front route: {routeId}", nameof(routeId));
         }
         FrontRouteId = routeId;
         FrontRs = rs;
         SetHeader(_frontClient, "appid", "6");
-        SetHeader(_frontClient, "brand", "6");
         SetHeader(_frontClient, "brandid", "CCZ001");
         SetHeader(_frontClient, "country", country);
         SetHeader(_frontClient, "devicetype", "0");
-        SetHeader(_frontClient, "enterpriseid", "CC01");
         _frontClient.DefaultRequestHeaders.Remove("gwid");
         _frontClient.DefaultRequestHeaders.TryAddWithoutValidation("gwid", String.Empty);
         SetHeader(_frontClient, "language", CountryToFrontLanguage(country));
         SetHeader(_frontClient, "rs", rs);
-        SetHeader(_frontClient, "terminal", "GW_PC_GWM");
+        UseMyGwmEuFrontIdentity("pc_gwm", "GW_PC_GWM", "6", "CC01");
+    }
+
+    public void UseMyGwmEuFrontIdentity(string label, string terminal, string brand, string enterpriseId)
+    {
+        FrontIdentityLabel = label;
+        FrontTerminal = terminal;
+        FrontBrand = brand;
+        FrontEnterpriseId = enterpriseId;
+        SetHeader(_frontClient, "terminal", terminal);
+        SetHeader(_frontClient, "brand", brand);
+        SetHeader(_frontClient, "enterpriseid", enterpriseId);
     }
 
     private static string CountryToFrontLanguage(string country)
