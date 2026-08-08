@@ -119,7 +119,7 @@ namespace ora2mqtt
                 }
                 catch (GwmApiException e)
                 {
-                    _logger.LogError($"Token refresh failed: {e.Message}");
+                    _logger.LogError($"Token refresh failed: GWM code={e.Code}; {e.Message}");
                 }
             }
             var request = new LoginAccountRequest
@@ -169,11 +169,20 @@ namespace ora2mqtt
                     PushToken = "",
                     SmsCode = code
                 };
-                var token = await client.LoginWithSmsAsync(loginRequest, cancellationToken);
-                options.Account.AccessToken = token.AccessToken;
-                options.Account.RefreshToken = token.RefreshToken;
-                options.Account.GwId = token.GwId;
-                options.Account.BeanId = token.BeanId;
+                try
+                {
+                    var token = await client.LoginWithSmsAsync(loginRequest, cancellationToken);
+                    options.Account.AccessToken = token.AccessToken;
+                    options.Account.RefreshToken = token.RefreshToken;
+                    options.Account.GwId = token.GwId;
+                    options.Account.BeanId = token.BeanId;
+                }
+                catch (GwmApiException e)
+                {
+                    // Machine-readable marker consumed by Car2MQTT. Never print credentials or OTP.
+                    _logger.LogError($"ORA_VERIFICATION_FAILED ORA_GWM_ERROR_CODE={e.Code} message={e.Message}");
+                    throw;
+                }
             }
         }
 

@@ -217,7 +217,7 @@ Der Fokus liegt auf:
 - einfacher Bedienung direkt in Home Assistant
 
 BMW und GWM/ORA sind derzeit die am besten verifizierten Integrationen.  
-ACCIONA/Silence ist ab Version 1.2.33 als MySilence-Integration für GPS, SoC und Restreichweite enthalten.
+ACCIONA/Silence ist ab Version 1.2.32 als MySilence-Integration für GPS, SoC und Restreichweite enthalten.
 
 ## Lizenz / Nutzung
 

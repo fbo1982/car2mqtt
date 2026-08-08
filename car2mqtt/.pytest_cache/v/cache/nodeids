@@ -1,0 +1,13 @@
+[
+  "tests/test_acconia_integration.py::AcconiaIntegrationTests::test_mapper_maps_soc_range_and_exact_gps_axes",
+  "tests/test_acconia_integration.py::AcconiaIntegrationTests::test_provider_is_registered",
+  "tests/test_acconia_integration.py::AcconiaIntegrationTests::test_provider_uses_default_api_key_and_clamps_polling",
+  "tests/test_acconia_integration.py::AcconiaIntegrationTests::test_runner_selects_requested_scooter",
+  "tests/test_acconia_integration.py::AcconiaIntegrationTests::test_template_contains_create_and_edit_fields",
+  "tests/test_acconia_integration.py::AcconiaIntegrationTests::test_worker_manager_updates_runtime_without_mqtt_broker",
+  "tests/test_gwm_reauth_regression.py::test_clear_tokens_preserves_device_identity",
+  "tests/test_gwm_reauth_regression.py::test_generic_refresh_failure_is_not_forced_reauth",
+  "tests/test_gwm_reauth_regression.py::test_incorrect_verification_code_is_discarded",
+  "tests/test_gwm_reauth_regression.py::test_success_consumes_verification_code",
+  "tests/test_gwm_reauth_regression.py::test_system_busy_consumes_verification_code_and_requests_fresh_one"
+]

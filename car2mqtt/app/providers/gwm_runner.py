@@ -170,9 +170,9 @@ class GwmIntegratedWorker:
         env["ORA_COUNTRY"] = str(self.vehicle.provider_config.get("country", "DE"))
         code_file = self.vehicle_dir / "verification_code.txt"
         verification_code = code_file.read_text(encoding="utf-8").strip() if code_file.exists() else ""
-        # Keep the code on disk until GWM has actually accepted the login.
-        # A transient "System busy" response must not consume the code because
-        # the same verification session/code can be retried a few seconds later.
+        # Pass the one-time code to ora2mqtt. Once GWM has attempted loginWithSMS,
+        # the code must be considered consumed/untrusted even if GWM answers with
+        # a generic error such as "System busy". It is therefore never retried.
         env["ORA_VERIFICATION_CODE"] = verification_code
         env["MQTT_HOST"] = self.settings.host
         env["MQTT_USERNAME"] = self.settings.username
@@ -206,19 +206,45 @@ class GwmIntegratedWorker:
             lowered = joined.lower()
             if icu_error:
                 raise RuntimeError("ora2mqtt configure fehlgeschlagen: ICU/libicu fehlt im Container")
-            if "system busy" in lowered or "please try later" in lowered:
-                # Keep verification_code.txt and retry quickly while the code is still valid.
-                raise RuntimeError("ORA_AUTH_TRANSIENT::GWM ist vorübergehend ausgelastet (System busy). Login mit demselben Code wird erneut versucht.")
+
+            # If this configure invocation actually submitted an OTP, never reuse it.
+            # GWM can consume the one-time code even when loginWithSMS answers with
+            # a generic backend error (observed as "System busy"). Retrying that
+            # same code merely produces "Incorrect verification code" afterwards.
+            submitted_code = bool(verification_code)
+            if submitted_code and code_file.exists():
+                try:
+                    code_file.unlink()
+                    self.log("ORA Verifikationscode nach Loginversuch verworfen (Einmalcode wird nicht wiederverwendet)")
+                except Exception:
+                    pass
+
+            gwm_code = ""
+            marker = "ORA_GWM_ERROR_CODE="
+            for line in combined:
+                if marker in line:
+                    gwm_code = line.split(marker, 1)[1].split()[0].strip().strip(';,:')
+                    break
+            code_suffix = f" [GWM-Code {gwm_code}]" if gwm_code else ""
+
+            if submitted_code and ("system busy" in lowered or "please try later" in lowered):
+                raise RuntimeError(
+                    "ORA_WAITING_FOR_CODE::GWM hat den frisch eingegebenen Verifikationscode beim Login mit "
+                    f"'System busy' abgelehnt{code_suffix}. Der Einmalcode wurde verworfen. "
+                    "Bitte nicht denselben Code erneut senden; über 'ReAuth starten' einen neuen Code anfordern."
+                )
+            if submitted_code and "incorrect verification code" in lowered:
+                raise RuntimeError(
+                    "ORA_WAITING_FOR_CODE::GWM hat den Verifikationscode als ungültig/abgelaufen abgelehnt"
+                    f"{code_suffix}. Bitte über 'ReAuth starten' einen neuen Code anfordern."
+                )
             if self._is_waiting_for_code(joined):
-                # If GWM explicitly rejected the code, remove the stale value so
-                # a fresh code can be entered without an automatic bad-code loop.
-                if "incorrect verification code" in lowered and code_file.exists():
-                    try:
-                        code_file.unlink()
-                        self.log("Ungültigen ORA Verifikationscode verworfen")
-                    except Exception:
-                        pass
                 raise RuntimeError("ORA_WAITING_FOR_CODE::Verifikationscode angefordert. Bitte Code eingeben und senden.")
+            if submitted_code and "ORA_VERIFICATION_FAILED" in joined:
+                raise RuntimeError(
+                    "ORA_WAITING_FOR_CODE::GWM hat den Verifikationscode beim Login abgelehnt"
+                    f"{code_suffix}. Der Einmalcode wurde verworfen. Bitte einen neuen Code anfordern."
+                )
             if self._is_permanent_auth_error(joined):
                 raise RuntimeError(f"ORA_AUTH_FATAL::{joined.splitlines()[0] if joined else 'Authentifizierungsfehler'}")
             raise RuntimeError(f"ora2mqtt configure fehlgeschlagen (rc={proc.returncode})")
@@ -315,7 +341,6 @@ class GwmIntegratedWorker:
 
     def _run(self) -> None:
         while not self._stop.is_set():
-            transient_auth_error = False
             auto_reconnect = self.vehicle.provider_config.get("auto_reconnect", True)
             delayed_retry_enabled = self.vehicle.provider_config.get("delayed_retry_enabled", True)
             retry_delay_minutes = int(self.vehicle.provider_config.get("retry_delay_minutes", 55) or 55)
@@ -359,7 +384,6 @@ class GwmIntegratedWorker:
 
             except Exception as exc:
                 message = str(exc)
-                transient_auth_error = message.startswith("ORA_AUTH_TRANSIENT::")
                 if "ORA_WAITING_FOR_CODE" in message or "ORA_AUTH_FATAL" in message:
                     try:
                         self._session_marker_path().unlink(missing_ok=True)
@@ -377,12 +401,7 @@ class GwmIntegratedWorker:
                     self.on_error(final_message)
                     self.log("ORA Fatalfehler erkannt - kein automatischer Retry")
                     break
-                if transient_auth_error:
-                    final_message = message.split("::", 1)[1]
-                    self.on_detail(final_message)
-                    self.log("ORA temporärer GWM-Loginfehler - erneuter Versuch in 30 Sekunden; Verifikationscode bleibt erhalten")
-                else:
-                    self.on_error(message)
+                self.on_error(message)
                 if not auto_reconnect:
                     self.log("ORA Auto-Reconnect ist deaktiviert - Worker wird beendet")
                     break
@@ -404,10 +423,8 @@ class GwmIntegratedWorker:
 
             if not auto_reconnect:
                 break
-            retry_wait = 30 if transient_auth_error else backoff
-            if retry_wait == 30:
-                self.log("ORA Retry nach temporärem Auth-Fehler in 30 Sekunden")
-            elif delayed_retry_enabled:
+            retry_wait = backoff
+            if delayed_retry_enabled:
                 self.log(f"ORA Retry mit Delay aktiv - nächster Versuch in {retry_delay_minutes} Minuten")
             else:
                 self.log("ORA Retry ohne Delay aktiv - nächster Versuch in 30 Sekunden")
