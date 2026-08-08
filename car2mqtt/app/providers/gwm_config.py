@@ -189,7 +189,10 @@ def restore_ora_tokens_from_mqtt(provider_config: Dict[str, Any], mqtt_settings,
 
 
 def clear_ora_token_bundle(provider_config: Dict[str, Any]) -> Dict[str, Any]:
-    for key in ORA_TOKEN_KEYS:
+    # Re-auth must keep the installation identity. GWM ties the verification
+    # flow to the device id used when the code was requested. Only remove the
+    # actual account/session tokens; keep device_id and country stable.
+    for key in ("access_token", "refresh_token", "gw_id", "bean_id"):
         provider_config.pop(key, None)
     return provider_config
 

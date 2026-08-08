@@ -1228,9 +1228,9 @@ def create_app() -> FastAPI:
         clear_ora_token_backup(settings, vehicle.id, lambda message: log_store.append(vehicle_id, message))
         vehicle.provider_state.auth_state = "error"
         vehicle.provider_state.auth_message = "ReAuth erforderlich - neue ORA Anmeldung wird aufgebaut"
-        vehicle.provider_state.last_error = "Refresh Token abgelaufen"
+        vehicle.provider_state.last_error = "Manuelle ORA ReAuth angefordert"
         store.upsert_vehicle(vehicle)
-        log_store.append(vehicle_id, "ORA ReAuth angefordert - gespeicherte Tokens entfernt")
+        log_store.append(vehicle_id, "ORA ReAuth angefordert - Sitzungstokens entfernt; bestehende Device-ID bleibt erhalten")
 
         if settings.host:
             worker_manager.start_or_restart_vehicle(vehicle.id, settings)
