@@ -26,6 +26,21 @@ public partial class GwmApiClient
         return PostH5Async<LoginAccountRequest, LoginAccountResponse>("userAuth/loginAccount", request, cancellationToken);
     }
 
+    public Task GetSmsCodeMyGwm13Async(MyGwm13GetSmsCode request, CancellationToken cancellationToken)
+    {
+        return PostH5Async("userAuth/getSMSCode", request, cancellationToken);
+    }
+
+    public Task CheckSmsCodeAsync(CheckSmsCode request, CancellationToken cancellationToken)
+    {
+        return PostH5Async("userAuth/checkSMSCode", request, cancellationToken);
+    }
+
+    public Task<LoginAccountResponse> LoginAccountMyGwm13Async(MyGwm13LoginAccountRequest request, CancellationToken cancellationToken)
+    {
+        return PostH5Async<MyGwm13LoginAccountRequest, LoginAccountResponse>("userAuth/loginAccount", request, cancellationToken);
+    }
+
     public Task CheckSecurityPasswordAsync(CheckSecurityPassword request, CancellationToken cancellationToken)
     {
         return PostH5Async("userAuth/checkSecurityPassword", request, cancellationToken);

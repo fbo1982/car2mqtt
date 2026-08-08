@@ -168,6 +168,7 @@ class GwmIntegratedWorker:
         env["ORA_ACCOUNT"] = str(self.vehicle.provider_config.get("account", ""))
         env["ORA_PASSWORD"] = str(self.vehicle.provider_config.get("password", ""))
         env["ORA_COUNTRY"] = str(self.vehicle.provider_config.get("country", "DE"))
+        env["ORA_AUTH_FLOW"] = str(self.vehicle.provider_config.get("auth_flow", "mygwm13") or "mygwm13")
         code_file = self.vehicle_dir / "verification_code.txt"
         verification_code = code_file.read_text(encoding="utf-8").strip() if code_file.exists() else ""
         # Pass the one-time code to ora2mqtt. Once GWM has attempted loginWithSMS,
@@ -179,7 +180,7 @@ class GwmIntegratedWorker:
         env["MQTT_PASSWORD"] = self.settings.password
         env["MQTT_TLS"] = "true" if self.settings.tls else "false"
         env["OPENSSL_CONF"] = "/opt/ora2mqtt/openssl.cnf"
-        self.log("ORA configure wird ausgeführt")
+        self.log(f"ORA configure wird ausgeführt (Auth-Flow: {env['ORA_AUTH_FLOW']})")
         proc = subprocess.run(
             [str(self._ora_bin()), "configure", "-c", str(config_path)],
             cwd="/opt/ora2mqtt",
@@ -229,7 +230,7 @@ class GwmIntegratedWorker:
 
             if submitted_code and ("system busy" in lowered or "please try later" in lowered):
                 raise RuntimeError(
-                    "ORA_WAITING_FOR_CODE::GWM hat den frisch eingegebenen Verifikationscode beim Login mit "
+                    "ORA_WAITING_FOR_CODE::GWM hat den frisch eingegebenen Verifikationscode beim Authentifizieren mit "
                     f"'System busy' abgelehnt{code_suffix}. Der Einmalcode wurde verworfen. "
                     "Bitte nicht denselben Code erneut senden; über 'ReAuth starten' einen neuen Code anfordern."
                 )

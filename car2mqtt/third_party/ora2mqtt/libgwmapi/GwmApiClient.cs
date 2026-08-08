@@ -37,6 +37,47 @@ public partial class GwmApiClient
         _appClient.BaseAddress = new Uri("https://eu-app-gateway.gwmcloud.com/app-api/api/v1.0/");
     }
 
+    /// <summary>
+    /// Switch request identity from the discontinued ORA app profile to the
+    /// current My GWM application profile.  Vehicle/API endpoints stay on the
+    /// EU GWM gateways; only the client identity headers are changed.
+    /// </summary>
+    public void UseMyGwm13Profile()
+    {
+        foreach (var client in new[] { _h5Client, _appClient })
+        {
+            SetHeader(client, "terminal", "GW_APP_GWM");
+            SetHeader(client, "brand", "6");
+            SetHeader(client, "enterpriseId", "CC01");
+            SetHeader(client, "appId", "1");
+            SetHeader(client, "channel", "APP");
+            SetHeader(client, "cver", "1.3.0");
+            SetHeader(client, "systemType", "1");
+        }
+    }
+
+    public void UseLegacyOraProfile()
+    {
+        foreach (var client in new[] { _h5Client, _appClient })
+        {
+            SetHeader(client, "terminal", "GW_APP_ORA");
+            SetHeader(client, "brand", "3");
+            client.DefaultRequestHeaders.Remove("enterpriseId");
+            client.DefaultRequestHeaders.Remove("appId");
+            client.DefaultRequestHeaders.Remove("channel");
+        }
+        SetHeader(_h5Client, "cver", String.Empty);
+        SetHeader(_h5Client, "systemType", "1");
+        _appClient.DefaultRequestHeaders.Remove("cver");
+        _appClient.DefaultRequestHeaders.Remove("systemType");
+    }
+
+    private static void SetHeader(HttpClient client, string name, string value)
+    {
+        client.DefaultRequestHeaders.Remove(name);
+        client.DefaultRequestHeaders.Add(name, value);
+    }
+
     public string Language
     {
         get => _h5Client.DefaultRequestHeaders.GetValues("language").FirstOrDefault();

@@ -20,6 +20,8 @@ namespace ora2mqtt
         private static bool HasEnv(string name) => !String.IsNullOrWhiteSpace(Env(name));
         private bool NonInteractive => HasEnv("ORA_ACCOUNT") && HasEnv("ORA_PASSWORD");
         private string? VerificationCode => Env("ORA_VERIFICATION_CODE");
+        private string AuthFlow(Ora2MqttOptions options) =>
+            (Env("ORA_AUTH_FLOW") ?? options.AuthFlow ?? "mygwm13").Trim().ToLowerInvariant();
 
         public async Task<int> Run(CancellationToken cancellationToken)
         {
@@ -122,6 +124,19 @@ namespace ora2mqtt
                     _logger.LogError($"Token refresh failed: GWM code={e.Code}; {e.Message}");
                 }
             }
+            var account = NonInteractive ? Env("ORA_ACCOUNT")! : Prompt.Input<string>("Please enter your mail address");
+            var password = NonInteractive ? Env("ORA_PASSWORD")! : Prompt.Password("Please enter your password");
+            var authFlow = AuthFlow(options);
+            var useMyGwm13 = !String.Equals(authFlow, "legacy", StringComparison.OrdinalIgnoreCase);
+            options.AuthFlow = useMyGwm13 ? "mygwm13" : "legacy";
+            if (useMyGwm13)
+            {
+                // Scope the My GWM identity to authentication only. ora2mqtt's established
+                // vehicle/polling API remains on the legacy ORA client profile until we have
+                // evidence that GWM also requires the My GWM profile for vehicle data calls.
+                client.UseMyGwm13Profile();
+            }
+
             var request = new LoginAccountRequest
             {
                 Country = options.Country,
@@ -129,58 +144,140 @@ namespace ora2mqtt
                 DeviceId = options.DeviceId,
                 Model = "ora2mqtt",
                 PushToken = "",
-                Account = NonInteractive ? Env("ORA_ACCOUNT")! : Prompt.Input<string>("Please enter your mail address"),
-                Password = NonInteractive ? Env("ORA_PASSWORD")! : Prompt.Password("Please enter your password")
+                Account = account,
+                Password = password
             };
             try
             {
-                var token = await client.LoginAccountAsync(request, cancellationToken);
+                LoginAccountResponse token;
+                if (useMyGwm13)
+                {
+                    _logger.LogError("ORA_AUTH_FLOW=mygwm13 ORA_AUTH_STEP=initial_login endpoint=loginAccount app=MyGWM-1.3.0");
+                    token = await client.LoginAccountMyGwm13Async(new MyGwm13LoginAccountRequest
+                    {
+                        Account = account,
+                        Password = password,
+                        Country = options.Country,
+                        DeviceId = options.DeviceId,
+                        LoginEmail = account
+                    }, cancellationToken);
+                }
+                else
+                {
+                    token = await client.LoginAccountAsync(request, cancellationToken);
+                }
                 options.Account.AccessToken = token.AccessToken;
                 options.Account.RefreshToken = token.RefreshToken;
                 options.Account.GwId = token.GwId;
                 options.Account.BeanId = token.BeanId;
+                _logger.LogError($"ORA_AUTH_SUCCESS ORA_AUTH_FLOW={options.AuthFlow}");
             }
-            catch (GwmApiException e) when (e.Code == "110641")
+            catch (GwmApiException e) when (e.Code == "110641" || e.Code == "309702" || e.Message.Contains("verification", StringComparison.OrdinalIgnoreCase))
             {
+
                 // SMS / mail verification login
                 string code;
-
                 if (NonInteractive)
                 {
                     if (String.IsNullOrWhiteSpace(VerificationCode))
                     {
-                        await client.GetSmsCodeAsync(new GetSmsCode { Email = request.Account }, cancellationToken);
+                        if (useMyGwm13)
+                        {
+                            try
+                            {
+                                _logger.LogError("ORA_AUTH_FLOW=mygwm13 ORA_AUTH_STEP=request_code endpoint=getSMSCode type=17 app=MyGWM-1.3.0");
+                                await client.GetSmsCodeMyGwm13Async(new MyGwm13GetSmsCode { Email = account }, cancellationToken);
+                                options.AuthFlow = "mygwm13";
+                                await SaveConfigAsync(options, cancellationToken);
+                                throw new Exception("ORA_WAITING_FOR_CODE: My GWM 1.3 verification code requested. Please provide the received code.");
+                            }
+                            catch (GwmApiException myGwmRequestException)
+                            {
+                                // Requesting a code is non-consuming. If GWM does not accept the
+                                // newer type=17 request/profile, safely fall back to the old ORA
+                                // request before any one-time code exists. Persist that choice so
+                                // the following configure invocation validates the same code using
+                                // the matching login flow.
+                                _logger.LogError($"ORA_AUTH_FLOW=mygwm13 ORA_AUTH_STEP=request_code_failed ORA_GWM_ERROR_CODE={myGwmRequestException.Code} message={myGwmRequestException.Message}; falling_back=legacy");
+                                options.AuthFlow = "legacy";
+                                client.UseLegacyOraProfile();
+                                await client.GetSmsCodeAsync(new GetSmsCode { Email = account }, cancellationToken);
+                                await SaveConfigAsync(options, cancellationToken);
+                                throw new Exception("ORA_WAITING_FOR_CODE: Legacy ORA verification code requested after My GWM 1.3 code request was rejected. Please provide the received code.");
+                            }
+                        }
+
+                        _logger.LogError("ORA_AUTH_FLOW=legacy ORA_AUTH_STEP=request_code endpoint=getSMSCode type=3 app=GWM-ORA");
+                        await client.GetSmsCodeAsync(new GetSmsCode { Email = account }, cancellationToken);
+                        options.AuthFlow = "legacy";
+                        await SaveConfigAsync(options, cancellationToken);
                         throw new Exception("ORA_WAITING_FOR_CODE: Verification code requested. Please provide the received code.");
                     }
-                    code = VerificationCode!;
+                    code = VerificationCode!.Trim();
                 }
                 else
                 {
-                    await client.GetSmsCodeAsync(new GetSmsCode { Email = request.Account }, cancellationToken);
-                    code = Prompt.Password("Code required. Please check your mail and enter the 4 digit code");
+                    if (useMyGwm13)
+                    {
+                        await client.GetSmsCodeMyGwm13Async(new MyGwm13GetSmsCode { Email = account }, cancellationToken);
+                    }
+                    else
+                    {
+                        await client.GetSmsCodeAsync(new GetSmsCode { Email = account }, cancellationToken);
+                    }
+                    code = Prompt.Password("Code required. Please check your mail and enter the verification code");
                 }
 
-                var loginRequest = new LoginWithSmsRequest
-                {
-                    Email = request.Account,
-                    Country = options.Country,
-                    DeviceId = options.DeviceId,
-                    Model = "ora2mqtt",
-                    PushToken = "",
-                    SmsCode = code
-                };
                 try
                 {
-                    var token = await client.LoginWithSmsAsync(loginRequest, cancellationToken);
+                    LoginAccountResponse token;
+                    if (useMyGwm13)
+                    {
+                        // My GWM 1.3-style flow: validate the OTP first, then perform a second
+                        // loginAccount call carrying verifyCode. This intentionally avoids the
+                        // legacy userAuth/loginWithSMS endpoint that currently returns 607198.
+                        _logger.LogError("ORA_AUTH_FLOW=mygwm13 ORA_AUTH_STEP=check_code endpoint=checkSMSCode type=17");
+                        await client.CheckSmsCodeAsync(new CheckSmsCode
+                        {
+                            Email = account,
+                            SmsCode = code
+                        }, cancellationToken);
+
+                        _logger.LogError("ORA_AUTH_FLOW=mygwm13 ORA_AUTH_STEP=verified_login endpoint=loginAccount verifyCode=present");
+                        token = await client.LoginAccountMyGwm13Async(new MyGwm13LoginAccountRequest
+                        {
+                            Account = account,
+                            Password = password,
+                            Country = options.Country,
+                            DeviceId = options.DeviceId,
+                            LoginEmail = account,
+                            VerifyCode = code
+                        }, cancellationToken);
+                    }
+                    else
+                    {
+                        var loginRequest = new LoginWithSmsRequest
+                        {
+                            Email = account,
+                            Country = options.Country,
+                            DeviceId = options.DeviceId,
+                            Model = "ora2mqtt",
+                            PushToken = "",
+                            SmsCode = code
+                        };
+                        token = await client.LoginWithSmsAsync(loginRequest, cancellationToken);
+                    }
+
                     options.Account.AccessToken = token.AccessToken;
                     options.Account.RefreshToken = token.RefreshToken;
                     options.Account.GwId = token.GwId;
                     options.Account.BeanId = token.BeanId;
+                    _logger.LogError($"ORA_AUTH_SUCCESS ORA_AUTH_FLOW={options.AuthFlow}");
                 }
                 catch (GwmApiException verificationException)
                 {
                     // Machine-readable marker consumed by Car2MQTT. Never print credentials or OTP.
-                    _logger.LogError($"ORA_VERIFICATION_FAILED ORA_GWM_ERROR_CODE={verificationException.Code} message={verificationException.Message}");
+                    _logger.LogError($"ORA_VERIFICATION_FAILED ORA_AUTH_FLOW={options.AuthFlow} ORA_GWM_ERROR_CODE={verificationException.Code} message={verificationException.Message}");
                     throw;
                 }
             }

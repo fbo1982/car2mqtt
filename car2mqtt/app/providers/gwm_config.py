@@ -37,6 +37,7 @@ def ensure_ora_runtime_config(provider_config: Dict[str, Any], mqtt_settings, li
     return {
         "DeviceId": device_id,
         "Country": country,
+        "AuthFlow": str(provider_config.get("auth_flow", "mygwm13") or "mygwm13"),
         "Account": account,
         "Mqtt": mqtt,
     }
@@ -53,6 +54,7 @@ def merge_ora_tokens(provider_config: Dict[str, Any], config_yaml_path) -> Dict[
     account = data.get("Account", {}) or {}
     provider_config["device_id"] = data.get("DeviceId", provider_config.get("device_id", ""))
     provider_config["country"] = data.get("Country", provider_config.get("country", "DE"))
+    provider_config["auth_flow"] = data.get("AuthFlow", provider_config.get("auth_flow", "mygwm13"))
     provider_config["access_token"] = account.get("AccessToken", provider_config.get("access_token", ""))
     provider_config["refresh_token"] = account.get("RefreshToken", provider_config.get("refresh_token", ""))
     provider_config["gw_id"] = account.get("GwId", provider_config.get("gw_id", ""))

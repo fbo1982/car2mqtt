@@ -6,6 +6,10 @@ public class Ora2MqttOptions
 
     public string Country { get; set; }
 
+    // "mygwm13" emulates the current My GWM 1.3 authentication path.
+    // "legacy" keeps the historical GWM ORA loginWithSMS flow for rollback/debugging.
+    public string AuthFlow { get; set; } = "mygwm13";
+
     public Ora2MqttAccountOptions Account { get; set; } = new();
 
     public Ora2MqttMqttOptions Mqtt { get; set; } = new();
