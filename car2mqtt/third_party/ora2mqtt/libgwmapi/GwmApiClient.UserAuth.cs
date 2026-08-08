@@ -1,4 +1,4 @@
-﻿using libgwmapi.DTO.User;
+using libgwmapi.DTO.User;
 using libgwmapi.DTO.UserAuth;
 
 namespace libgwmapi;
@@ -44,6 +44,16 @@ public partial class GwmApiClient
     public Task<LoginAccountResponse> LoginAccountMyGwm13Async(MyGwm13LoginAccountRequest request, CancellationToken cancellationToken)
     {
         return PostH5Async<MyGwm13LoginAccountRequest, LoginAccountResponse>("userAuth/loginAccount", request, cancellationToken);
+    }
+
+    public Task<LoginAccountResponse> LoginAccountMyGwmEuFrontAsync(MyGwmEuFrontLoginRequest request, CancellationToken cancellationToken)
+    {
+        return PostFrontAsync<MyGwmEuFrontLoginRequest, LoginAccountResponse>("userAuth/loginAccount", request, cancellationToken);
+    }
+
+    public Task GetSmsCodeMyGwmEuFrontAsync(GetSmsCode request, CancellationToken cancellationToken)
+    {
+        return PostFrontAsync("userAuth/getSMSCode", request, cancellationToken);
     }
 
     public Task CheckSecurityPasswordAsync(CheckSecurityPassword request, CancellationToken cancellationToken)

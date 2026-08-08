@@ -1,4 +1,4 @@
-﻿using CommandLine;
+using CommandLine;
 using libgwmapi;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
@@ -65,7 +65,23 @@ public abstract class BaseCommand
         {
             InnerHandler = httpHandler
         });
-        return new GwmApiClient(h5Client, appClient, LoggerFactory)
+        // Public MyGWM clients use the GWM client certificate on the front-service
+        // login as well. Reuse the same certificate handler so login and OTP share
+        // the expected TLS/device context, while keeping a distinct HttpClient.
+        var frontHttpHandler = new HttpClientHandler
+        {
+            ClientCertificateOptions = ClientCertificateOption.Manual
+        };
+        using (var cert = certHandler.CertificateWithPrivateKey)
+        {
+            var pkcs12 = new X509Certificate2(cert.Export(X509ContentType.Pkcs12));
+            frontHttpHandler.ClientCertificates.Add(pkcs12);
+        }
+        var frontClient = new HttpClient(new LoggingHttpMessageHandler(httpLogger, httpOptions)
+        {
+            InnerHandler = frontHttpHandler
+        });
+        return new GwmApiClient(h5Client, appClient, frontClient, LoggerFactory)
         {
             Country = options.Country
         };

@@ -6,76 +6,98 @@ from app.providers.gwm_config import ensure_ora_runtime_config, _normalize_auth_
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_runtime_config_defaults_to_eu_verifycode():
+def test_runtime_config_defaults_to_eu_mygwm_front():
     provider = {"country": "DE", "device_id": "stable"}
     mqtt = SimpleNamespace(host="mqtt", username="", password="", password_set=False, tls=False, base_topic="car")
     cfg = ensure_ora_runtime_config(provider, mqtt, "TEST")
-    assert cfg["AuthFlow"] == "eu_verifycode"
+    assert cfg["AuthFlow"] == "eu_mygwm_front"
 
 
-def test_v1238_experimental_flow_is_migrated():
-    assert _normalize_auth_flow("mygwm13") == "eu_verifycode"
-    assert _normalize_auth_flow("") == "eu_verifycode"
+def test_previous_experimental_flows_are_migrated_to_front_service():
+    assert _normalize_auth_flow("mygwm13") == "eu_mygwm_front"
+    assert _normalize_auth_flow("eu_verifycode") == "eu_mygwm_front"
+    assert _normalize_auth_flow("") == "eu_mygwm_front"
     assert _normalize_auth_flow("legacy") == "legacy"
 
 
-def test_eu_verifycode_keeps_known_good_eu_identity_and_code_request():
-    source = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
-    assert 'ORA_AUTH_FLOW=eu_verifycode ORA_AUTH_STEP=initial_login endpoint=loginAccount profile=EU_ORA' in source
-    assert 'ORA_AUTH_FLOW=eu_verifycode ORA_AUTH_STEP=request_code endpoint=getSMSCode type=3 profile=EU_ORA' in source
-    assert 'client.UseLegacyOraProfile()' in source
+def test_front_service_profile_uses_pc_mygwm_identity():
+    source = (ROOT / "third_party/ora2mqtt/libgwmapi/GwmApiClient.cs").read_text(encoding="utf-8")
+    assert "eu-front-service.gwmcloud.com" in source
+    assert "eu-official-commerce/eu-official-gateway/pc-api/api/v1.0/" in source
+    assert 'SetHeader(_frontClient, "appid", "6")' in source
+    assert 'SetHeader(_frontClient, "brand", "6")' in source
+    assert 'SetHeader(_frontClient, "enterpriseid", "CC01")' in source
+    assert 'SetHeader(_frontClient, "rs", "5")' in source
+    assert 'SetHeader(_frontClient, "terminal", "GW_PC_GWM")' in source
 
 
-def test_eu_verifycode_avoids_login_with_sms_for_otp_completion():
-    source = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
-    assert 'else if (useEuVerifyCode)' in source
-    assert 'CheckSmsCodeEuAsync' in source
-    assert 'request.VerifyCode = code;' in source
-    assert 'ORA_AUTH_FLOW=eu_verifycode ORA_AUTH_STEP=verified_login endpoint=loginAccount verifyCode=present profile=EU_ORA' in source
-    # legacy rollback still exists, but eu_verifycode finalizes with LoginAccountAsync(request).
-    eu_block = source.split('else if (useEuVerifyCode)', 1)[1].split('else\n                    {', 1)[0]
-    assert 'LoginWithSmsAsync' not in eu_block
-    assert 'LoginAccountAsync(request' in eu_block
-
-
-def test_eu_login_request_omits_verify_code_until_second_call():
-    dto = (ROOT / "third_party/ora2mqtt/libgwmapi/DTO/UserAuth/LoginAccountRequest.cs").read_text(encoding="utf-8")
+def test_front_service_login_body_matches_public_mygwm_shape():
+    dto = (ROOT / "third_party/ora2mqtt/libgwmapi/DTO/UserAuth/MyGwmEuFrontLoginRequest.cs").read_text(encoding="utf-8")
+    configure = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
+    assert '[JsonPropertyName("account")]' in dto
+    assert '[JsonPropertyName("password")]' in dto
+    assert '[JsonPropertyName("deviceid")]' in dto
     assert '[JsonPropertyName("verifyCode")]' in dto
     assert 'JsonIgnoreCondition.WhenWritingNull' in dto
+    assert 'Password = Md5Lower(password)' in configure
+    assert 'DeviceId = options.DeviceId' in configure
 
 
-def test_eu_check_sms_code_matches_type3_request():
-    dto = (ROOT / "third_party/ora2mqtt/libgwmapi/DTO/UserAuth/EuCheckSmsCode.cs").read_text(encoding="utf-8")
+def test_front_transport_uses_gwm_client_certificate():
+    base = (ROOT / "third_party/ora2mqtt/ora2mqtt/BaseCommand.cs").read_text(encoding="utf-8")
+    assert "frontHttpHandler" in base
+    assert "frontHttpHandler.ClientCertificates.Add(pkcs12)" in base
+    assert "new GwmApiClient(h5Client, appClient, frontClient" in base
+
+
+def test_front_flow_requests_and_redeems_code_on_same_transport():
+    source = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
+    assert 'ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=initial_login transport=eu-front-service' in source
+    assert 'ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=request_code transport=eu-front-service' in source
+    assert 'GetSmsCodeMyGwmEuFrontAsync' in source
+    assert 'ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service' in source
+    assert 'frontRequest.VerifyCode = code;' in source
+    assert source.count('LoginAccountMyGwmEuFrontAsync(frontRequest') >= 2
+
+
+def test_front_flow_does_not_send_otp_to_legacy_verification_endpoints():
+    source = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
+    start = source.index('if (useEuMyGwmFront)\n                    {', source.index('LoginAccountResponse token;', source.index('code = VerificationCode')))
+    end = source.index('else if (useMyGwm13)', start)
+    front_verify_block = source[start:end]
+    assert 'CheckSmsCode' not in front_verify_block
+    assert 'LoginWithSmsAsync' not in front_verify_block
+    assert 'LoginAccountMyGwmEuFrontAsync' in front_verify_block
+
+
+def test_front_api_methods_use_front_transport_not_h5():
     auth = (ROOT / "third_party/ora2mqtt/libgwmapi/GwmApiClient.UserAuth.cs").read_text(encoding="utf-8")
-    assert 'public int Type { get; set; } = 3;' in dto
-    assert 'CheckSmsCodeEuAsync' in auth
+    assert 'LoginAccountMyGwmEuFrontAsync' in auth
+    assert 'PostFrontAsync<MyGwmEuFrontLoginRequest, LoginAccountResponse>' in auth
+    assert 'GetSmsCodeMyGwmEuFrontAsync' in auth
+    assert 'return PostFrontAsync("userAuth/getSMSCode"' in auth
 
 
-def test_experimental_mygwm_profile_remains_non_default_for_debugging():
+def test_options_and_runner_default_to_front_service():
     options = (ROOT / "third_party/ora2mqtt/ora2mqtt/Ora2MqttOptions.cs").read_text(encoding="utf-8")
     configure = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
-    assert 'AuthFlow { get; set; } = "eu_verifycode"' in options
-    assert 'options.AuthFlow ?? "eu_verifycode"' in configure
-    assert 'String.Equals(authFlow, "mygwm13"' in configure
-    assert 'UseMyGwm13Profile' in configure
-    assert 'String.Equals(authFlow, "legacy"' not in configure or 'legacy' in configure
+    runner = (ROOT / "app/providers/gwm_runner.py").read_text(encoding="utf-8")
+    assert 'AuthFlow { get; set; } = "eu_mygwm_front"' in options
+    assert 'options.AuthFlow ?? "eu_mygwm_front"' in configure
+    assert 'provider_config.get("auth_flow", "eu_mygwm_front")' in runner
+    assert '{"mygwm13", "eu_verifycode"}' in runner
 
 
-def test_initial_login_non_verification_error_gets_machine_readable_code():
+def test_front_http_and_gwm_failures_have_machine_readable_markers():
     source = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
-    assert 'ORA_AUTH_INITIAL_FAILED' in source
-    assert 'ORA_GWM_ERROR_CODE={initialLoginException.Code}' in source
+    assert 'ORA_AUTH_FRONT_HTTP_FAILED' in source
+    assert 'ORA_AUTH_FRONT_REQUEST_FAILED' in source
+    assert 'ORA_GWM_ERROR_CODE={frontCodeRequestException.Code}' in source
+    assert 'route=inferred_eu_pc_api_v1' in source
 
 
-def test_eu_rate_limited_code_request_allows_external_mygwm_code():
+def test_legacy_flows_remain_available_for_rollback():
     source = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
-    assert 'ORA_AUTH_STEP=request_code_limited' in source
-    assert 'external_code=allowed' in source
-    assert 'official My GWM app' in source
-    assert 'codeRequestException.Message.Contains("too many"' in source
-
-
-def test_runner_preserves_external_code_instruction():
-    source = (ROOT / "app/providers/gwm_runner.py").read_text(encoding="utf-8")
-    assert 'legacy EU code-request endpoint is rate-limited' in source
-    assert 'offiziellen MyGWM-App genau einen neuen Verify-Code anfordern' in source
+    assert 'String.Equals(authFlow, "mygwm13"' in source
+    assert 'String.Equals(authFlow, "eu_verifycode"' in source
+    assert 'client.LoginWithSmsAsync' in source

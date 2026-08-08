@@ -1,4 +1,4 @@
-﻿namespace ora2mqtt;
+namespace ora2mqtt;
 
 public class Ora2MqttOptions
 {
@@ -6,10 +6,11 @@ public class Ora2MqttOptions
 
     public string Country { get; set; }
 
-    // "eu_verifycode" keeps the proven EU ORA identity/code request but completes OTP login via loginAccount+verifyCode.
+    // "eu_mygwm_front" authenticates through the dedicated My GWM EU front-service/PC identity.
+    // "eu_verifycode" is the previous H5 hybrid retained for rollback/debugging.
     // "legacy" keeps the historical GWM ORA loginWithSMS flow for rollback/debugging.
     // "mygwm13" is retained only as an experimental profile; it is not the EU default.
-    public string AuthFlow { get; set; } = "eu_verifycode";
+    public string AuthFlow { get; set; } = "eu_mygwm_front";
 
     public Ora2MqttAccountOptions Account { get; set; } = new();
 

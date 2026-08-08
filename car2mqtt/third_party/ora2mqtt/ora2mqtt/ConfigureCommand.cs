@@ -8,6 +8,8 @@ using Sharprompt.Fluent;
 using YamlDotNet.Serialization;
 using ora2mqtt.Logging;
 using Microsoft.Extensions.Logging;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace ora2mqtt
 {
@@ -21,7 +23,7 @@ namespace ora2mqtt
         private bool NonInteractive => HasEnv("ORA_ACCOUNT") && HasEnv("ORA_PASSWORD");
         private string? VerificationCode => Env("ORA_VERIFICATION_CODE");
         private string AuthFlow(Ora2MqttOptions options) =>
-            (Env("ORA_AUTH_FLOW") ?? options.AuthFlow ?? "eu_verifycode").Trim().ToLowerInvariant();
+            (Env("ORA_AUTH_FLOW") ?? options.AuthFlow ?? "eu_mygwm_front").Trim().ToLowerInvariant();
 
         public async Task<int> Run(CancellationToken cancellationToken)
         {
@@ -127,18 +129,24 @@ namespace ora2mqtt
             var account = NonInteractive ? Env("ORA_ACCOUNT")! : Prompt.Input<string>("Please enter your mail address");
             var password = NonInteractive ? Env("ORA_PASSWORD")! : Prompt.Password("Please enter your password");
             var authFlow = AuthFlow(options);
+            var useEuMyGwmFront = String.Equals(authFlow, "eu_mygwm_front", StringComparison.OrdinalIgnoreCase);
             var useMyGwm13 = String.Equals(authFlow, "mygwm13", StringComparison.OrdinalIgnoreCase);
             var useEuVerifyCode = String.Equals(authFlow, "eu_verifycode", StringComparison.OrdinalIgnoreCase);
-            options.AuthFlow = useMyGwm13 ? "mygwm13" : (useEuVerifyCode ? "eu_verifycode" : "legacy");
-            if (useMyGwm13)
+            options.AuthFlow = useEuMyGwmFront ? "eu_mygwm_front" :
+                (useMyGwm13 ? "mygwm13" : (useEuVerifyCode ? "eu_verifycode" : "legacy"));
+
+            // Vehicle traffic stays on the existing EU gateway profile for now.  The new
+            // My GWM authentication probe gets its own front-service transport so the OTP
+            // and device context never cross the legacy ORA H5 session.
+            client.UseLegacyOraProfile();
+            if (useEuMyGwmFront)
             {
-                // Experimental only: v1.2.38 showed EU rejecting this identity before OTP request.
-                client.UseMyGwm13Profile();
+                client.UseMyGwmEuFrontProfile(options.Country);
             }
-            else
+            else if (useMyGwm13)
             {
-                // EU hybrid and legacy both use the proven EU ORA client identity.
-                client.UseLegacyOraProfile();
+                // Experimental only: v1.2.38 showed EU rejecting this app-gateway identity.
+                client.UseMyGwm13Profile();
             }
 
             var request = new LoginAccountRequest
@@ -151,10 +159,21 @@ namespace ora2mqtt
                 Account = account,
                 Password = password
             };
+            var frontRequest = new MyGwmEuFrontLoginRequest
+            {
+                Account = account,
+                Password = Md5Lower(password),
+                DeviceId = options.DeviceId
+            };
             try
             {
                 LoginAccountResponse token;
-                if (useMyGwm13)
+                if (useEuMyGwmFront)
+                {
+                    _logger.LogError("ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=initial_login transport=eu-front-service endpoint=userAuth/loginAccount terminal=GW_PC_GWM brand=6 device_context=persistent route=inferred_eu_pc_api_v1");
+                    token = await client.LoginAccountMyGwmEuFrontAsync(frontRequest, cancellationToken);
+                }
+                else if (useMyGwm13)
                 {
                     _logger.LogError("ORA_AUTH_FLOW=mygwm13 ORA_AUTH_STEP=initial_login endpoint=loginAccount app=MyGWM-1.3.0");
                     token = await client.LoginAccountMyGwm13Async(new MyGwm13LoginAccountRequest
@@ -189,6 +208,23 @@ namespace ora2mqtt
                 {
                     if (String.IsNullOrWhiteSpace(VerificationCode))
                     {
+                        if (useEuMyGwmFront)
+                        {
+                            try
+                            {
+                                _logger.LogError("ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=request_code transport=eu-front-service endpoint=userAuth/getSMSCode type=3 same_device=true route=inferred_eu_pc_api_v1");
+                                await client.GetSmsCodeMyGwmEuFrontAsync(new GetSmsCode { Email = account }, cancellationToken);
+                                options.AuthFlow = "eu_mygwm_front";
+                                await SaveConfigAsync(options, cancellationToken);
+                                throw new Exception("ORA_WAITING_FOR_CODE: My GWM EU front-service verification code requested. Please provide the received code.");
+                            }
+                            catch (GwmApiException frontCodeRequestException)
+                            {
+                                _logger.LogError($"ORA_AUTH_FRONT_REQUEST_FAILED ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=request_code ORA_GWM_ERROR_CODE={frontCodeRequestException.Code} message={frontCodeRequestException.Message}");
+                                throw;
+                            }
+                        }
+
                         if (useMyGwm13)
                         {
                             try
@@ -251,7 +287,11 @@ namespace ora2mqtt
                 }
                 else
                 {
-                    if (useMyGwm13)
+                    if (useEuMyGwmFront)
+                    {
+                        await client.GetSmsCodeMyGwmEuFrontAsync(new GetSmsCode { Email = account }, cancellationToken);
+                    }
+                    else if (useMyGwm13)
                     {
                         await client.GetSmsCodeMyGwm13Async(new MyGwm13GetSmsCode { Email = account }, cancellationToken);
                     }
@@ -265,7 +305,15 @@ namespace ora2mqtt
                 try
                 {
                     LoginAccountResponse token;
-                    if (useMyGwm13)
+                    if (useEuMyGwmFront)
+                    {
+                        // Redeem the OTP on the same front-service identity and persistent device
+                        // that requested it.  Do not send it to checkSMSCode/loginWithSMS first.
+                        frontRequest.VerifyCode = code;
+                        _logger.LogError("ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service endpoint=userAuth/loginAccount verifyCode=present same_device=true route=inferred_eu_pc_api_v1");
+                        token = await client.LoginAccountMyGwmEuFrontAsync(frontRequest, cancellationToken);
+                    }
+                    else if (useMyGwm13)
                     {
                         // Experimental My GWM profile retained for diagnostics only.
                         _logger.LogError("ORA_AUTH_FLOW=mygwm13 ORA_AUTH_STEP=check_code endpoint=checkSMSCode type=17");
@@ -338,11 +386,22 @@ namespace ora2mqtt
                     throw;
                 }
             }
+            catch (HttpRequestException frontHttpException) when (useEuMyGwmFront)
+            {
+                _logger.LogError($"ORA_AUTH_FRONT_HTTP_FAILED ORA_AUTH_FLOW=eu_mygwm_front message={frontHttpException.Message} route=inferred_eu_pc_api_v1");
+                throw;
+            }
             catch (GwmApiException initialLoginException)
             {
                 _logger.LogError($"ORA_AUTH_INITIAL_FAILED ORA_AUTH_FLOW={options.AuthFlow} ORA_GWM_ERROR_CODE={initialLoginException.Code} message={initialLoginException.Message}");
                 throw;
             }
+        }
+
+        private static string Md5Lower(string value)
+        {
+            var bytes = MD5.HashData(Encoding.UTF8.GetBytes(value ?? String.Empty));
+            return Convert.ToHexString(bytes).ToLowerInvariant();
         }
 
 

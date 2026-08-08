@@ -14,10 +14,10 @@ import yaml
 
 def _normalize_auth_flow(value: Any) -> str:
     flow = str(value or "").strip().lower()
-    # v1.2.38 briefly persisted the experimental MyGWM profile as the default.
-    # Migrate it automatically: EU accounts reject that identity before OTP request.
-    if flow in ("", "mygwm13"):
-        return "eu_verifycode"
+    # Migrate all experimental 1.2.38-1.2.40 auth modes to the separated
+    # MyGWM EU front-service flow.  DeviceId is preserved across the migration.
+    if flow in ("", "mygwm13", "eu_verifycode"):
+        return "eu_mygwm_front"
     return flow
 
 

@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Json;
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
@@ -9,16 +9,24 @@ public partial class GwmApiClient
 {
     public static readonly string H5HttpClientName = "eu-h5-gateway";
     public static readonly string AppHttpClientName = "eu-app-gateway";
+    public static readonly string FrontHttpClientName = "eu-front-service";
     private readonly HttpClient _h5Client;
     private readonly HttpClient _appClient;
+    private readonly HttpClient _frontClient;
     private readonly ILogger<GwmApiClient> _logger;
 
     public GwmApiClient(IHttpClientFactory factory, ILoggerFactory loggerFactory)
-        : this(factory.CreateClient(H5HttpClientName), factory.CreateClient(AppHttpClientName), loggerFactory)
+        : this(factory.CreateClient(H5HttpClientName), factory.CreateClient(AppHttpClientName), factory.CreateClient(FrontHttpClientName), loggerFactory)
     {
     }
 
+    // Kept for unit tests and downstream callers that still construct the client with two transports.
     public GwmApiClient(HttpClient h5Client, HttpClient appClient, ILoggerFactory loggerFactory)
+        : this(h5Client, appClient, new HttpClient(), loggerFactory)
+    {
+    }
+
+    public GwmApiClient(HttpClient h5Client, HttpClient appClient, HttpClient frontClient, ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<GwmApiClient>();
         _h5Client = h5Client;
@@ -31,10 +39,49 @@ public partial class GwmApiClient
         _h5Client.BaseAddress = new Uri("https://eu-h5-gateway.gwmcloud.com/app-api/api/v1.0/");
         
         _appClient = appClient;
+        _frontClient = frontClient;
         _appClient.DefaultRequestHeaders.Add("rs", "2");
         _appClient.DefaultRequestHeaders.Add("terminal", "GW_APP_ORA");
         _appClient.DefaultRequestHeaders.Add("brand", "3");
         _appClient.BaseAddress = new Uri("https://eu-app-gateway.gwmcloud.com/app-api/api/v1.0/");
+    }
+
+    /// <summary>
+    /// Configure the dedicated My GWM EU front-service login transport.
+    /// The separation is intentional: public My GWM implementations authenticate
+    /// through a front-service/pc-api identity (GW_PC_GWM) and only use the app
+    /// gateway after tokens have been issued.  Keeping this on a third HttpClient
+    /// also prevents a My GWM OTP/challenge from being mixed with the legacy ORA
+    /// H5 client identity.
+    /// </summary>
+    public void UseMyGwmEuFrontProfile(string country)
+    {
+        _frontClient.BaseAddress = new Uri(
+            "https://eu-front-service.gwmcloud.com/eu-official-commerce/eu-official-gateway/pc-api/api/v1.0/");
+        SetHeader(_frontClient, "appid", "6");
+        SetHeader(_frontClient, "brand", "6");
+        SetHeader(_frontClient, "brandid", "CCZ001");
+        SetHeader(_frontClient, "country", country);
+        SetHeader(_frontClient, "devicetype", "0");
+        SetHeader(_frontClient, "enterpriseid", "CC01");
+        _frontClient.DefaultRequestHeaders.Remove("gwid");
+        _frontClient.DefaultRequestHeaders.TryAddWithoutValidation("gwid", String.Empty);
+        SetHeader(_frontClient, "language", CountryToFrontLanguage(country));
+        SetHeader(_frontClient, "rs", "5");
+        SetHeader(_frontClient, "terminal", "GW_PC_GWM");
+    }
+
+    private static string CountryToFrontLanguage(string country)
+    {
+        return (country ?? String.Empty).Trim().ToUpperInvariant() switch
+        {
+            "DE" => "de_DE",
+            "GB" => "en_GB",
+            "SE" => "sv_SE",
+            "IT" => "it_IT",
+            "ES" => "es_ES",
+            _ => "en_US"
+        };
     }
 
     /// <summary>
@@ -97,6 +144,8 @@ public partial class GwmApiClient
             _h5Client.DefaultRequestHeaders.Add("country", value);
             _appClient.DefaultRequestHeaders.Remove("country");
             _appClient.DefaultRequestHeaders.Add("country", value);
+            _frontClient.DefaultRequestHeaders.Remove("country");
+            _frontClient.DefaultRequestHeaders.Add("country", value);
         }
     }
 
@@ -117,6 +166,8 @@ public partial class GwmApiClient
 
         _appClient.DefaultRequestHeaders.Remove("accessToken");
         _appClient.DefaultRequestHeaders.Add("accessToken", accessToken);
+        _frontClient.DefaultRequestHeaders.Remove("accessToken");
+        _frontClient.DefaultRequestHeaders.Add("accessToken", accessToken);
     }
 
     private async Task PostH5Async<T>(string url, T body, CancellationToken cancellationToken)
@@ -134,6 +185,18 @@ public partial class GwmApiClient
     private async Task<TOut> PostH5Async<TIn, TOut>(string url, TIn body, CancellationToken cancellationToken)
     {
         var response = await _h5Client.PostAsJsonAsync(url, body, cancellationToken);
+        return await GetResponseAsync<TOut>(response, cancellationToken);
+    }
+
+    private async Task PostFrontAsync<T>(string url, T body, CancellationToken cancellationToken)
+    {
+        var response = await _frontClient.PostAsJsonAsync(url, body, cancellationToken);
+        await CheckResponseAsync(response, cancellationToken);
+    }
+
+    private async Task<TOut> PostFrontAsync<TIn, TOut>(string url, TIn body, CancellationToken cancellationToken)
+    {
+        var response = await _frontClient.PostAsJsonAsync(url, body, cancellationToken);
         return await GetResponseAsync<TOut>(response, cancellationToken);
     }
 
