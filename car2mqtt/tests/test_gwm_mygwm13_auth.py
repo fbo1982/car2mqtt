@@ -52,7 +52,8 @@ def test_front_transport_uses_gwm_client_certificate():
 
 def test_front_flow_requests_and_redeems_code_on_same_transport():
     source = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
-    assert 'ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=initial_login transport=eu-front-service' in source
+    assert 'ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=route_probe transport=eu-front-service' in source
+    assert 'ORA_AUTH_STEP=route_selected' in source
     assert 'ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=request_code transport=eu-front-service' in source
     assert 'GetSmsCodeMyGwmEuFrontAsync' in source
     assert 'ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service' in source
@@ -93,7 +94,8 @@ def test_front_http_and_gwm_failures_have_machine_readable_markers():
     assert 'ORA_AUTH_FRONT_HTTP_FAILED' in source
     assert 'ORA_AUTH_FRONT_REQUEST_FAILED' in source
     assert 'ORA_GWM_ERROR_CODE={frontCodeRequestException.Code}' in source
-    assert 'route=inferred_eu_pc_api_v1' in source
+    assert 'ORA_AUTH_STEP=route_probe_failed' in source
+    assert 'route={client.FrontRouteId}' in source
 
 
 def test_legacy_flows_remain_available_for_rollback():
@@ -101,3 +103,23 @@ def test_legacy_flows_remain_available_for_rollback():
     assert 'String.Equals(authFlow, "mygwm13"' in source
     assert 'String.Equals(authFlow, "eu_verifycode"' in source
     assert 'client.LoginWithSmsAsync' in source
+
+
+def test_front_route_discovery_probes_without_requesting_sms():
+    api = (ROOT / "third_party/ora2mqtt/libgwmapi/GwmApiClient.cs").read_text(encoding="utf-8")
+    configure = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
+    assert 'eu_global_service_pc' in api
+    assert 'eu_global_service_official_gateway_pc' in api
+    assert 'eu_official_commerce_official_gateway_pc' in api
+    probe_start = configure.index('foreach (var routeId in GwmApiClient.MyGwmEuFrontRouteIds)')
+    probe_end = configure.index('if (token is null)', probe_start)
+    probe_block = configure[probe_start:probe_end]
+    assert 'LoginAccountMyGwmEuFrontAsync' in probe_block
+    assert 'GetSmsCodeMyGwmEuFrontAsync' not in probe_block
+    assert 'sms_sent=false' in probe_block
+
+
+def test_front_route_is_kept_for_code_request_and_redemption():
+    configure = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
+    assert 'route={client.FrontRouteId}' in configure
+    assert 'same_device=true' in configure

@@ -54,10 +54,31 @@ public partial class GwmApiClient
     /// also prevents a My GWM OTP/challenge from being mixed with the legacy ORA
     /// H5 client identity.
     /// </summary>
-    public void UseMyGwmEuFrontProfile(string country)
+    private static readonly IReadOnlyDictionary<string, string> MyGwmEuFrontRoutes =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            // The public EU app exposes eu-front-service/eu-global-service for legal/protocol
+            // content.  The exact MyGWM 1.3 auth route is not publicly documented, so probe
+            // only loginAccount (never getSMSCode) across plausible front-service layouts.
+            ["eu_global_service_pc"] = "https://eu-front-service.gwmcloud.com/eu-global-service/pc-api/api/v1.0/",
+            ["eu_global_service_official_gateway_pc"] = "https://eu-front-service.gwmcloud.com/eu-global-service/eu-official-gateway/pc-api/api/v1.0/",
+            ["eu_global_service_global_gateway_pc"] = "https://eu-front-service.gwmcloud.com/eu-global-service/eu-global-gateway/pc-api/api/v1.0/",
+            ["eu_official_gateway_pc"] = "https://eu-front-service.gwmcloud.com/eu-official-gateway/pc-api/api/v1.0/",
+            ["eu_official_commerce_official_gateway_pc"] = "https://eu-front-service.gwmcloud.com/eu-official-commerce/eu-official-gateway/pc-api/api/v1.0/",
+        };
+
+    public static IReadOnlyList<string> MyGwmEuFrontRouteIds { get; } = MyGwmEuFrontRoutes.Keys.ToArray();
+
+    public string FrontRouteId { get; private set; } = String.Empty;
+
+    public void UseMyGwmEuFrontProfile(string country, string routeId = "eu_global_service_pc")
     {
-        _frontClient.BaseAddress = new Uri(
-            "https://eu-front-service.gwmcloud.com/eu-official-commerce/eu-official-gateway/pc-api/api/v1.0/");
+        if (!MyGwmEuFrontRoutes.TryGetValue(routeId, out var baseUrl))
+        {
+            throw new ArgumentException($"Unknown MyGWM EU front route: {routeId}", nameof(routeId));
+        }
+        FrontRouteId = routeId;
+        _frontClient.BaseAddress = new Uri(baseUrl);
         SetHeader(_frontClient, "appid", "6");
         SetHeader(_frontClient, "brand", "6");
         SetHeader(_frontClient, "brandid", "CCZ001");
