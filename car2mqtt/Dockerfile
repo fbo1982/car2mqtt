@@ -26,6 +26,9 @@ RUN apk add --no-cache bash curl ca-certificates icu-libs
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
+# Keep the runtime/UI version in sync with config.yaml.
+COPY VERSION ./VERSION
+
 COPY --from=ora2mqtt-builder /out /opt/ora2mqtt
 RUN chmod +x /opt/ora2mqtt/ora2mqtt && cp /opt/ora2mqtt/gwm_root.pem /etc/ssl/certs/gwm_root.pem || true
 

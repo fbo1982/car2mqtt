@@ -44,6 +44,20 @@ from app.services.worker_manager import WorkerManager
 logger = logging.getLogger("car2mqtt.server")
 
 
+def _read_app_version() -> str:
+    """Read the release version from the project VERSION file for the GUI."""
+    version_file = Path(__file__).resolve().parents[2] / "VERSION"
+    try:
+        version = version_file.read_text(encoding="utf-8").strip()
+        return version or "unknown"
+    except OSError:
+        logger.warning("VERSION file could not be read: %s", version_file)
+        return "unknown"
+
+
+APP_VERSION = _read_app_version()
+
+
 class VehiclePayload(BaseModel):
     id: str
     label: str
@@ -794,7 +808,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.2.32",
+                "version": APP_VERSION,
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
