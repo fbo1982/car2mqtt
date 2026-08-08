@@ -218,10 +218,27 @@ namespace ora2mqtt
                         if (useEuVerifyCode)
                         {
                             _logger.LogError("ORA_AUTH_FLOW=eu_verifycode ORA_AUTH_STEP=request_code endpoint=getSMSCode type=3 profile=EU_ORA");
-                            await client.GetSmsCodeAsync(new GetSmsCode { Email = account }, cancellationToken);
-                            options.AuthFlow = "eu_verifycode";
-                            await SaveConfigAsync(options, cancellationToken);
-                            throw new Exception("ORA_WAITING_FOR_CODE: EU verification code requested. Please provide the received code.");
+                            try
+                            {
+                                await client.GetSmsCodeAsync(new GetSmsCode { Email = account }, cancellationToken);
+                                options.AuthFlow = "eu_verifycode";
+                                await SaveConfigAsync(options, cancellationToken);
+                                throw new Exception("ORA_WAITING_FOR_CODE: EU verification code requested. Please provide the received code.");
+                            }
+                            catch (GwmApiException codeRequestException) when (
+                                codeRequestException.Message.Contains("too many", StringComparison.OrdinalIgnoreCase) ||
+                                codeRequestException.Message.Contains("acquired verification code", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // My GWM 1.3 can still request a fresh verification code for the
+                                // same account while the legacy EU getSMSCode/type=3 endpoint is
+                                // rate-limited. Do not turn this into a fatal error: let Car2MQTT
+                                // accept a code requested in the official My GWM app and continue
+                                // directly with the verification/token step on the next invocation.
+                                _logger.LogError($"ORA_AUTH_FLOW=eu_verifycode ORA_AUTH_STEP=request_code_limited ORA_GWM_ERROR_CODE={codeRequestException.Code} message={codeRequestException.Message}; external_code=allowed");
+                                options.AuthFlow = "eu_verifycode";
+                                await SaveConfigAsync(options, cancellationToken);
+                                throw new Exception("ORA_WAITING_FOR_CODE: The legacy EU code-request endpoint is rate-limited. Request one fresh verification code in the official My GWM app, do not submit it there, then enter that code in Car2MQTT.");
+                            }
                         }
 
                         _logger.LogError("ORA_AUTH_FLOW=legacy ORA_AUTH_STEP=request_code endpoint=getSMSCode type=3 app=GWM-ORA");

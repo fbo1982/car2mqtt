@@ -65,3 +65,17 @@ def test_initial_login_non_verification_error_gets_machine_readable_code():
     source = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
     assert 'ORA_AUTH_INITIAL_FAILED' in source
     assert 'ORA_GWM_ERROR_CODE={initialLoginException.Code}' in source
+
+
+def test_eu_rate_limited_code_request_allows_external_mygwm_code():
+    source = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
+    assert 'ORA_AUTH_STEP=request_code_limited' in source
+    assert 'external_code=allowed' in source
+    assert 'official My GWM app' in source
+    assert 'codeRequestException.Message.Contains("too many"' in source
+
+
+def test_runner_preserves_external_code_instruction():
+    source = (ROOT / "app/providers/gwm_runner.py").read_text(encoding="utf-8")
+    assert 'legacy EU code-request endpoint is rate-limited' in source
+    assert 'offiziellen MyGWM-App genau einen neuen Verify-Code anfordern' in source

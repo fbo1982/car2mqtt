@@ -241,6 +241,18 @@ class GwmIntegratedWorker:
                     f"{code_suffix}. Bitte über 'ReAuth starten' einen neuen Code anfordern."
                 )
             if self._is_waiting_for_code(joined):
+                wait_detail = ""
+                marker_wait = "ORA_WAITING_FOR_CODE:"
+                for line in combined:
+                    if marker_wait in line:
+                        wait_detail = line.split(marker_wait, 1)[1].strip()
+                        break
+                if "legacy EU code-request endpoint is rate-limited" in wait_detail:
+                    raise RuntimeError(
+                        "ORA_WAITING_FOR_CODE::Der alte EU-Code-Endpunkt ist für diesen Account derzeit begrenzt. "
+                        "Bitte in der offiziellen MyGWM-App genau einen neuen Verify-Code anfordern, ihn dort NICHT bestätigen "
+                        "und denselben frischen Code anschließend hier in Car2MQTT eingeben."
+                    )
                 raise RuntimeError("ORA_WAITING_FOR_CODE::Verifikationscode angefordert. Bitte Code eingeben und senden.")
             if submitted_code and "ORA_VERIFICATION_FAILED" in joined:
                 raise RuntimeError(
