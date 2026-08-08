@@ -185,9 +185,50 @@ namespace ora2mqtt
                         catch (GwmApiException routeGwmException)
                         {
                             // A structured GWM response proves that this route reached the auth
-                            // service. Keep this route selected and let the normal auth handling
-                            // decide whether verification is required or credentials were rejected.
-                            _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=route_selected route={routeId} reason=gwm_response ORA_GWM_ERROR_CODE={routeGwmException.Code} message={routeGwmException.Message}");
+                            // service. 551005/Illegal rs is even more specific: the route is valid,
+                            // but the regional rs selector copied from the Brazilian client is not.
+                            // Discover the EU rs value with loginAccount only; never request an SMS
+                            // while probing metadata.
+                            if (IsIllegalRs(routeGwmException))
+                            {
+                                _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=rs_discovery_start route={routeId} initial_rs={client.FrontRs} ORA_GWM_ERROR_CODE={routeGwmException.Code} message={routeGwmException.Message} sms_sent=false");
+                                GwmApiException lastRsException = routeGwmException;
+                                foreach (var rs in GwmApiClient.MyGwmEuFrontRsCandidates)
+                                {
+                                    client.UseMyGwmEuFrontProfile(options.Country, routeId, rs);
+                                    _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=rs_probe route={routeId} rs={rs} endpoint=userAuth/loginAccount sms_sent=false");
+                                    try
+                                    {
+                                        token = await client.LoginAccountMyGwmEuFrontAsync(frontRequest, cancellationToken);
+                                        _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=rs_selected route={routeId} rs={rs} reason=login_success sms_sent=false");
+                                        break;
+                                    }
+                                    catch (GwmApiException rsException)
+                                    {
+                                        lastRsException = rsException;
+                                        if (IsIllegalRs(rsException))
+                                        {
+                                            _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=rs_probe_rejected route={routeId} rs={rs} ORA_GWM_ERROR_CODE={rsException.Code} message={rsException.Message} sms_sent=false");
+                                            continue;
+                                        }
+
+                                        // Any other structured GWM response means the rs value is
+                                        // accepted. Preserve it and hand the response to the normal
+                                        // verification/credential handling below.
+                                        _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=rs_selected route={routeId} rs={rs} reason=gwm_response ORA_GWM_ERROR_CODE={rsException.Code} message={rsException.Message} sms_sent=false");
+                                        throw;
+                                    }
+                                }
+
+                                if (token is not null)
+                                {
+                                    break;
+                                }
+
+                                throw lastRsException;
+                            }
+
+                            _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=route_selected route={routeId} rs={client.FrontRs} reason=gwm_response ORA_GWM_ERROR_CODE={routeGwmException.Code} message={routeGwmException.Message}");
                             throw;
                         }
                         catch (HttpRequestException routeHttpException)
@@ -240,7 +281,7 @@ namespace ora2mqtt
                         {
                             try
                             {
-                                _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=request_code transport=eu-front-service endpoint=userAuth/getSMSCode type=3 same_device=true route={client.FrontRouteId}");
+                                _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=request_code transport=eu-front-service endpoint=userAuth/getSMSCode type=3 same_device=true route={client.FrontRouteId} rs={client.FrontRs}");
                                 await client.GetSmsCodeMyGwmEuFrontAsync(new GetSmsCode { Email = account }, cancellationToken);
                                 options.AuthFlow = "eu_mygwm_front";
                                 await SaveConfigAsync(options, cancellationToken);
@@ -338,7 +379,7 @@ namespace ora2mqtt
                         // Redeem the OTP on the same front-service identity and persistent device
                         // that requested it.  Do not send it to checkSMSCode/loginWithSMS first.
                         frontRequest.VerifyCode = code;
-                        _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service endpoint=userAuth/loginAccount verifyCode=present same_device=true route={client.FrontRouteId}");
+                        _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service endpoint=userAuth/loginAccount verifyCode=present same_device=true route={client.FrontRouteId} rs={client.FrontRs}");
                         token = await client.LoginAccountMyGwmEuFrontAsync(frontRequest, cancellationToken);
                     }
                     else if (useMyGwm13)
@@ -424,6 +465,12 @@ namespace ora2mqtt
                 _logger.LogError($"ORA_AUTH_INITIAL_FAILED ORA_AUTH_FLOW={options.AuthFlow} ORA_GWM_ERROR_CODE={initialLoginException.Code} message={initialLoginException.Message}");
                 throw;
             }
+        }
+
+        private static bool IsIllegalRs(GwmApiException exception)
+        {
+            return String.Equals(exception.Code, "551005", StringComparison.OrdinalIgnoreCase) ||
+                exception.Message.Contains("Illegal rs", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string Md5Lower(string value)

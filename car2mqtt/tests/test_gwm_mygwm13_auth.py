@@ -27,7 +27,8 @@ def test_front_service_profile_uses_pc_mygwm_identity():
     assert 'SetHeader(_frontClient, "appid", "6")' in source
     assert 'SetHeader(_frontClient, "brand", "6")' in source
     assert 'SetHeader(_frontClient, "enterpriseid", "CC01")' in source
-    assert 'SetHeader(_frontClient, "rs", "5")' in source
+    assert 'SetHeader(_frontClient, "rs", rs)' in source
+    assert 'MyGwmEuFrontRsCandidates' in source
     assert 'SetHeader(_frontClient, "terminal", "GW_PC_GWM")' in source
 
 

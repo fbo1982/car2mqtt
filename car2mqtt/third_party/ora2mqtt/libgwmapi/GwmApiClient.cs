@@ -69,15 +69,24 @@ public partial class GwmApiClient
 
     public static IReadOnlyList<string> MyGwmEuFrontRouteIds { get; } = MyGwmEuFrontRoutes.Keys.ToArray();
 
-    public string FrontRouteId { get; private set; } = String.Empty;
+    // rs is a region/service selector used by GWM. Public Brazilian MyGWM clients
+    // use rs=5 on their PC/front-service login route, but the EU global gateway
+    // rejects that value with GWM code 551005 (Illegal rs). Probe only loginAccount
+    // with these values before any SMS request is allowed.
+    public static IReadOnlyList<string> MyGwmEuFrontRsCandidates { get; } =
+        new[] { "2", "1", "3", "4", "0", "6", "7", "8", "9" };
 
-    public void UseMyGwmEuFrontProfile(string country, string routeId = "eu_global_service_pc")
+    public string FrontRouteId { get; private set; } = String.Empty;
+    public string FrontRs { get; private set; } = "5";
+
+    public void UseMyGwmEuFrontProfile(string country, string routeId = "eu_global_service_pc", string rs = "5")
     {
         if (!MyGwmEuFrontRoutes.TryGetValue(routeId, out var baseUrl))
         {
             throw new ArgumentException($"Unknown MyGWM EU front route: {routeId}", nameof(routeId));
         }
         FrontRouteId = routeId;
+        FrontRs = rs;
         SetHeader(_frontClient, "appid", "6");
         SetHeader(_frontClient, "brand", "6");
         SetHeader(_frontClient, "brandid", "CCZ001");
@@ -87,7 +96,7 @@ public partial class GwmApiClient
         _frontClient.DefaultRequestHeaders.Remove("gwid");
         _frontClient.DefaultRequestHeaders.TryAddWithoutValidation("gwid", String.Empty);
         SetHeader(_frontClient, "language", CountryToFrontLanguage(country));
-        SetHeader(_frontClient, "rs", "5");
+        SetHeader(_frontClient, "rs", rs);
         SetHeader(_frontClient, "terminal", "GW_PC_GWM");
     }
 
