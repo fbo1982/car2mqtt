@@ -22,12 +22,12 @@ Es bündelt mehrere Hersteller in einer Oberfläche, mappt Rohdaten auf ein einh
 - **BMW CarData (EU Data Act)** ✅
 - **GWM / ORA** ✅
 
-### Hinzugefügt, aber derzeit nicht vollständig getestet
-- **ACCIONA / Generic** ⚠️
+### Hinzugefügt, aber derzeit nicht mit einem produktiven Konto verifiziert
+- **ACCIONA / Silence über MySilence** ⚠️
 - Weitere Hersteller-/Topic-Strukturen, die als **Remote-Fahrzeug über MQTT** gespiegelt werden ⚠️
 
 > Hinweis: BMW und GWM/ORA sind die aktuell praktisch getesteten Integrationen.  
-> Weitere Hersteller sind vorbereitet bzw. als generische/remote Datenquelle nutzbar, aber noch nicht vollständig verifiziert.
+> Die MySilence-Anbindung ist vollständig in UI, Worker und Mapping integriert, benötigt aber noch einen Praxistest mit echten Zugangsdaten.
 
 ## Integrationen
 
@@ -36,6 +36,16 @@ Es bündelt mehrere Hersteller in einer Oberfläche, mappt Rohdaten auf ein einh
 - Home Assistant MQTT Discovery
 - optionaler Device Tracker
 - Home Zone Auswahl für EVCC-Automationen
+
+### ACCIONA / Silence (MySilence)
+- read-only Cloud-Abfrage mit den Zugangsdaten der MySilence App
+- GPS-Position als `latitude`, `longitude` und optional `altitude`
+- Ladezustand als `soc`
+- Restreichweite als `range`
+- optional feste Fahrzeugauswahl über FrameNo, IMEI oder Name
+- konfigurierbares Polling, standardmäßig alle 60 Sekunden
+
+Die MySilence-Schnittstelle ist nicht offiziell dokumentiert und kann sich durch App-/Backend-Änderungen ändern.
 
 ### MQTT
 - lokaler MQTT-Broker als Hauptziel
@@ -147,6 +157,9 @@ car/<manufacturer>/<plate>/...
 Beispiele:
 - `car/bmw/GGCA501E/mapped/soc`
 - `car/gwm/GGCA911E/mapped/range`
+- `car/acconia/SIL123/mapped/soc`
+- `car/acconia/SIL123/mapped/latitude`
+- `car/acconia/SIL123/mapped/longitude`
 - `car/bmw/GGCA1056/_meta/last_update`
 
 ## Wichtige Funktionen in der Oberfläche
@@ -181,7 +194,7 @@ Beispiele:
 |---|---|---|
 | BMW CarData (EU Data Act) | native Integration | getestet |
 | GWM / ORA | native Integration | getestet |
-| ACCIONA / Generic | generisch / Platzhalter | hinzugefügt, nicht vollständig getestet |
+| ACCIONA / Silence (MySilence) | native Cloud-Polling-Integration | integriert, Praxistest mit echtem Konto ausstehend |
 | Remote MQTT Fahrzeuge | generisch aus MQTT | funktioniert für Anzeige/Weitergabe, je Quelle abhängig |
 
 ## Sicherheit / Datenschutz
@@ -204,7 +217,7 @@ Der Fokus liegt auf:
 - einfacher Bedienung direkt in Home Assistant
 
 BMW und GWM/ORA sind derzeit die am besten verifizierten Integrationen.  
-Weitere Hersteller können ergänzt werden, ohne die bestehende Struktur zu entfernen.
+ACCIONA/Silence ist ab Version 1.2.32 als MySilence-Integration für GPS, SoC und Restreichweite enthalten.
 
 ## Lizenz / Nutzung
 
@@ -216,11 +229,3 @@ MIT License
 
 oder eine projektspezifische Lizenz.
 
----
-
-Wenn du willst, kannst du im nächsten Schritt noch
-- ein Logo,
-- Installationsschritte,
-- einen Abschnitt **„Repository einbinden“**,
-- oder eine **englische README**
-ergänzen.

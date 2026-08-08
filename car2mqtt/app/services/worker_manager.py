@@ -16,6 +16,7 @@ from app.core.models import VehicleRuntimeState, RuntimeMqttSettings
 from app.core.runtime_settings import load_runtime_mqtt_settings
 from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
+from app.mapping.acconia_mapper import apply_acconia_metric
 from app.mapping.bmw_mapper import map_bmw_payload
 from app.mapping.gwm_mapper import apply_gwm_metric
 
@@ -28,6 +29,7 @@ GWM_OBSOLETE_MAPPED_KEYS = {
 
 from app.mqtt.client import LocalMqttClient
 from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic, vehicle_root_topic
+from app.providers.acconia_runner import AcconiaPollingWorker
 from app.providers.bmw.streaming import BMWStreamWorker
 from app.providers.gwm_runner import GwmIntegratedWorker
 
@@ -45,7 +47,7 @@ class WorkerManager:
     def start_all(self) -> None:
         settings = load_runtime_mqtt_settings()
         for vehicle in self.config_store.load().vehicles:
-            if vehicle.manufacturer in {"bmw", "gwm"} and vehicle.enabled and vehicle.provider_state.auth_state == "authorized":
+            if vehicle.manufacturer in {"bmw", "gwm", "acconia"} and vehicle.enabled and vehicle.provider_state.auth_state == "authorized":
                 self.start_or_restart_vehicle(vehicle.id, settings)
 
     def stop_vehicle(self, vehicle_id: str) -> None:
@@ -58,13 +60,27 @@ class WorkerManager:
     def start_or_restart_vehicle(self, vehicle_id: str, mqtt_settings=None) -> None:
         mqtt_settings = mqtt_settings or load_runtime_mqtt_settings()
         vehicle = self.config_store.get_vehicle(vehicle_id)
-        if not vehicle or vehicle.manufacturer not in {"bmw", "gwm"}:
+        if not vehicle or vehicle.manufacturer not in {"bmw", "gwm", "acconia"}:
             return
         if not vehicle.enabled:
             self._set_runtime_state(vehicle_id, "inactive", "Fahrzeug ist inaktiv")
             self.log_store.append(vehicle_id, "Fahrzeug ist inaktiv - kein Remote-Login, kein Streaming")
             return
         self.stop_vehicle(vehicle_id)
+        if vehicle.manufacturer == "acconia":
+            self.workers[vehicle_id] = AcconiaPollingWorker(
+                vehicle=vehicle,
+                on_payload=lambda data, vid=vehicle_id: self._handle_acconia_payload(vid, data, mqtt_settings),
+                on_connect=lambda vid=vehicle_id: self._set_runtime_state(vid, "connected", "MySilence Polling aktiv"),
+                on_error=lambda message, vid=vehicle_id: self._handle_acconia_error(vid, message),
+                on_detail=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "starting", message),
+                log_callback=lambda message, vid=vehicle_id: self.log_store.append(vid, message),
+            )
+            self.log_store.append(vehicle_id, "MySilence Workerstart angefordert")
+            self._set_runtime_state(vehicle_id, "starting", "MySilence Worker startet")
+            self.workers[vehicle_id].start()
+            return
+
         if vehicle.manufacturer == "gwm":
             vehicle_dir = self.data_dir / 'providers' / vehicle.id
             self.workers[vehicle_id] = GwmIntegratedWorker(
@@ -295,6 +311,16 @@ class WorkerManager:
                 self._mark_forward_client_status(client_cfg.id, ok=False, error=str(exc))
                 self.log_store.append(vehicle.id, f"MQTT Client {client_cfg.name or client_cfg.id}: Publish fehlgeschlagen ({exc})")
 
+    def _handle_acconia_error(self, vehicle_id: str, message: str) -> None:
+        vehicle = self.config_store.get_vehicle(vehicle_id)
+        detail = str(message or "MySilence Fehler")
+        if vehicle and "login fehlgeschlagen" in detail.lower():
+            vehicle.provider_state.auth_state = "error"
+            vehicle.provider_state.auth_message = detail
+            vehicle.provider_state.last_error = detail
+            self.config_store.upsert_vehicle(vehicle)
+        self._set_runtime_state(vehicle_id, "error", detail)
+
     def _handle_gwm_error(self, vehicle_id: str, message: str) -> None:
         state = "reauth_required" if "reauth erforderlich" in (message or "").lower() else "error"
         vehicle = self.config_store.get_vehicle(vehicle_id)
@@ -414,6 +440,94 @@ class WorkerManager:
             else:
                 target[key] = value
         return target
+
+    @staticmethod
+    def _mqtt_segment(value: Any) -> str:
+        text = str(value or "value").strip().replace("/", "_").replace("#", "_").replace("+", "_")
+        return text or "value"
+
+    def _publish_json_tree(self, client: LocalMqttClient, vehicle, mqtt_settings, base_topic: str, value: Any, path: tuple[str, ...] = ()) -> None:
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                self._publish_json_tree(client, vehicle, mqtt_settings, base_topic, nested, path + (self._mqtt_segment(key),))
+            return
+        if isinstance(value, list):
+            for index, nested in enumerate(value):
+                self._publish_json_tree(client, vehicle, mqtt_settings, base_topic, nested, path + (str(index),))
+            return
+        topic = "/".join([base_topic.rstrip("/"), *path]) if path else base_topic.rstrip("/")
+        client.publish(topic, value)
+        self._forward_publish(vehicle, mqtt_settings, topic, value, is_raw=True)
+
+    def _handle_acconia_payload(self, vehicle_id: str, data: Dict[str, Any], mqtt_settings) -> None:
+        vehicle = self.config_store.get_vehicle(vehicle_id)
+        if not vehicle:
+            return
+
+        # A successful cloud response also clears a previous login/transient error.
+        # This keeps the saved provider state and the dashboard auth state in sync.
+        if vehicle.provider_state.auth_state != "authorized" or vehicle.provider_state.last_error:
+            vehicle.provider_state.auth_state = "authorized"
+            vehicle.provider_state.auth_message = "MySilence Login erfolgreich"
+            vehicle.provider_state.last_error = ""
+            self.config_store.upsert_vehicle(vehicle)
+
+        raw_topic_base, mapped = self._runtime_topics(vehicle, mqtt_settings)
+        runtime = self.state_store.get_all().get(vehicle_id) or VehicleRuntimeState(vehicle_id=vehicle_id)
+        previous_metrics = dict(runtime.metrics or {})
+        previous_state = runtime.connection_state or ""
+        previous_detail = runtime.connection_detail or ""
+        metrics = dict(previous_metrics)
+        apply_acconia_metric(
+            metrics,
+            "",
+            data,
+            capacity_kwh=(vehicle.provider_config or {}).get("capacity_kwh"),
+        )
+        changed_keys = {key for key, value in metrics.items() if previous_metrics.get(key) != value}
+        meaningful_changed_keys = {
+            key for key in changed_keys
+            if not str(key).endswith("_ts") and key not in {"lastUpdate", "vehicleType"}
+        }
+
+        runtime.connection_state = "connected"
+        runtime.connection_detail = "MySilence Polling aktiv"
+        runtime.auth_state = vehicle.provider_state.auth_state
+        runtime.raw_topic = raw_topic_base
+        runtime.mapped_topic = mapped
+        runtime.metrics = metrics
+        runtime.provider_meta = {
+            "frameNo": data.get("frameNo") or data.get("frame_no") or "",
+            "imei": data.get("imei") or "",
+            "name": data.get("name") or "",
+            "model": data.get("model") or data.get("version") or "",
+            "lastReportTime": data.get("lastReportTime") or data.get("lastUpdate") or "",
+        }
+        if meaningful_changed_keys:
+            runtime.last_update = str(metrics.get("lastUpdate") or datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"))
+        self.state_store.upsert(runtime)
+
+        if getattr(mqtt_settings, "host", ""):
+            client = LocalMqttClient(mqtt_settings)
+            try:
+                client.connect()
+                self._publish_json_tree(client, vehicle, mqtt_settings, raw_topic_base, data)
+                for key in sorted(changed_keys):
+                    topic = f"{mapped}/{key}"
+                    client.publish(topic, metrics.get(key))
+                    self._forward_publish(vehicle, mqtt_settings, topic, metrics.get(key), is_raw=False)
+            finally:
+                client.disconnect()
+
+        lat = metrics.get("latitude")
+        lon = metrics.get("longitude")
+        gps = f"{lat},{lon}" if lat is not None and lon is not None else "n/a"
+        self.log_store.append(
+            vehicle_id,
+            f"MySilence Daten aktualisiert: soc={metrics.get('soc')} range={metrics.get('range')} GPS={gps}",
+        )
+        if meaningful_changed_keys or previous_state != runtime.connection_state or previous_detail != runtime.connection_detail:
+            self._publish_meta(vehicle, runtime, mqtt_settings)
 
     def _handle_bmw_payload(self, vehicle_id: str, callback_topic: str, data: Dict[str, Any], mqtt_settings) -> None:
         vehicle = self.config_store.get_vehicle(vehicle_id)

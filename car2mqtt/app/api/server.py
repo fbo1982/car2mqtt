@@ -383,7 +383,7 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
             "capacityKwh": metrics.get("capacityKwh"),
             "fuelLevel": metrics.get("fuelLevel"),
             "fuelRange": metrics.get("fuelRange"),
-            "vehicleType": metrics.get("vehicleType") or ('ev' if vehicle.manufacturer == 'gwm' else None),
+            "vehicleType": metrics.get("vehicleType") or ('ev' if vehicle.manufacturer in {'gwm', 'acconia'} else None),
             "latitude": metrics.get("latitude"),
             "longitude": metrics.get("longitude"),
         },
@@ -396,7 +396,7 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         },
         "last_update": (runtime_state or {}).get("last_update", ""),
         "enabled": vehicle.enabled,
-        "manufacturer_note": "ORA Runner vorbereitet" if vehicle.manufacturer == "gwm" else "",
+        "manufacturer_note": ("ORA Runner vorbereitet" if vehicle.manufacturer == "gwm" else ("MySilence Cloud-Polling" if vehicle.manufacturer == "acconia" else "")),
         "source_topic_base": vehicle.provider_config.get("source_topic_base", "") if vehicle.manufacturer == "gwm" else "",
         "device_tracker_enabled": bool(getattr(vehicle, 'device_tracker_enabled', False)),
     }
@@ -508,7 +508,7 @@ def _discover_remote_vehicle_snapshots(mqtt_settings, local_server_name: str, lo
                 'capacityKwh': metrics.get('capacityKwh'),
                 'fuelLevel': metrics.get('fuelLevel'),
                 'fuelRange': metrics.get('fuelRange'),
-                'vehicleType': metrics.get('vehicleType') or ('ev' if manufacturer == 'gwm' else None),
+                'vehicleType': metrics.get('vehicleType') or ('ev' if manufacturer in {'gwm', 'acconia'} else None),
                 'latitude': metrics.get('latitude'),
                 'longitude': metrics.get('longitude'),
                 'latitude_ts': metrics.get('latitude_ts'),
@@ -794,7 +794,7 @@ def create_app() -> FastAPI:
             {
                 "cards": cards,
                 "providers": providers,
-                "version": "1.2.30",
+                "version": "1.2.32",
                 "mqtt_settings": mqtt_settings,
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
@@ -1077,6 +1077,13 @@ def create_app() -> FastAPI:
                     if src.resolve() != dst.resolve():
                         dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
 
+        if payload.manufacturer == "acconia":
+            vehicle.provider_state.auth_state = "authorized"
+            vehicle.provider_state.auth_message = "MySilence Zugangsdaten gespeichert"
+            vehicle.provider_state.provider_user = str(vehicle.provider_config.get("account", ""))
+            vehicle.provider_state.last_error = ""
+            log_store.append(vehicle.id, "MySilence Zugangsdaten gespeichert; Login wird durch den Worker geprüft")
+
         if payload.manufacturer == "gwm":
             vehicle.provider_config["license_plate"] = vehicle.license_plate
             # Preserve persisted ORA session/token data so saving the form does not trigger a new verify each time.
@@ -1144,6 +1151,9 @@ def create_app() -> FastAPI:
             else:
                 log_store.append(vehicle.id, "ORA Fahrzeug gespeichert - kein automatischer Start")
                 worker_manager.publish_vehicle_saved_meta(vehicle.id)
+        if payload.manufacturer == "acconia" and vehicle.enabled:
+            log_store.append(vehicle.id, "Silence Fahrzeug gespeichert - MySilence Polling wird gestartet")
+            worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
         return {"status": "ok", "vehicle_id": vehicle.id}
 
     @app.post("/api/vehicles")

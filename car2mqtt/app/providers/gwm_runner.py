@@ -44,11 +44,24 @@ class GwmIntegratedWorker:
 
     def _is_reauth_required(self, text: str) -> bool:
         lowered = (text or "").lower()
+        # Important: ora2mqtt also logs normal access-token expiration as
+        # "Access token expired ... Trying to refresh token". That is not a
+        # fatal ReAuth condition. Treat only explicit refresh-token / reauth
+        # failures as reauth_required, otherwise the worker stops although a
+        # simple restart would continue with the refreshed token.
+        if "trying to refresh token" in lowered:
+            return False
         markers = [
             "refresh token has expired",
-            "login token has expired",
-            "access token expired",
+            "refresh token expired",
+            "refresh token abgelaufen",
+            "reauth erforderlich",
+            "re-auth erforderlich",
+            "re authentication required",
+            "reauth required",
             "token refresh timed out",
+            "refresh failed",
+            "failed to refresh token",
         ]
         return any(m in lowered for m in markers)
 

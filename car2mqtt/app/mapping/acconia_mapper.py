@@ -44,13 +44,13 @@ def _to_bool(value: Any) -> bool | None:
 def _flatten(value: Any, prefix: str = "") -> list[tuple[str, Any]]:
     out: list[tuple[str, Any]] = []
     if isinstance(value, dict):
-        for k, v in value.items():
-            key = f"{prefix}.{k}" if prefix else str(k)
-            out.extend(_flatten(v, key))
+        for key, nested in value.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            out.extend(_flatten(nested, path))
     elif isinstance(value, list):
-        for i, v in enumerate(value, start=1):
-            key = f"{prefix}.{i}" if prefix else str(i)
-            out.extend(_flatten(v, key))
+        for index, nested in enumerate(value, start=1):
+            path = f"{prefix}.{index}" if prefix else str(index)
+            out.extend(_flatten(nested, path))
     else:
         out.append((prefix, value))
     return out
@@ -78,84 +78,108 @@ def _set_metric(mapped: dict[str, Any], key: str, value: Any, ts: str) -> bool:
     return True
 
 
+def _normalized_key(path: str) -> str:
+    leaf = str(path or "").split(".")[-1]
+    return re.sub(r"[^a-z0-9]+", "", leaf.lower())
+
+
 def _battery_index(path: str) -> int | None:
-    text = path.lower().replace("_", "-")
-    m = re.search(r"(?:battery|batt|akku|pack)[\-./ ]*([12])\b", text)
-    if m:
-        return int(m.group(1))
-    m = re.search(r"\b([12])[\-./ ]*(?:battery|batt|akku|pack)\b", text)
-    if m:
-        return int(m.group(1))
+    text = str(path or "").lower().replace("_", "-")
+    patterns = (
+        r"(?:battery|batteries|batt|akku|pack)[\-./ ]*([12])\b",
+        r"\b([12])[\-./ ]*(?:battery|batteries|batt|akku|pack)\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return int(match.group(1))
     return None
 
 
-def apply_acconia_metric(mapped: dict[str, Any], relative_topic: str, payload: Any, configured_battery_count: int = 0, capacity_kwh: Any = None) -> dict[str, Any]:
+def apply_acconia_metric(
+    mapped: dict[str, Any],
+    relative_topic: str,
+    payload: Any,
+    configured_battery_count: int = 0,
+    capacity_kwh: Any = None,
+) -> dict[str, Any]:
+    """Map MySilence data to the common Car2MQTT vehicle metric schema."""
+
     ts = _timestamp()
     parsed = _parse_payload(payload)
     paths = _flatten(parsed) if isinstance(parsed, (dict, list)) else [("", parsed)]
     topic_base = str(relative_topic or "").strip("/").replace("/", ".")
 
     for inner_path, value in paths:
-        path = ".".join(p for p in [topic_base, inner_path] if p).lower()
+        path = ".".join(part for part in (topic_base, inner_path) if part)
+        path_lower = path.lower()
+        key = _normalized_key(path)
         num = _to_number(value)
         boo = _to_bool(value)
 
-        if any(token in path for token in ["latitude", "lat"]):
+        if key in {"latitude", "lat", "locationlatitude"}:
             if num is not None and -90 <= float(num) <= 90:
                 _set_metric(mapped, "latitude", num, ts)
-                _set_metric(mapped, "lastUpdate", ts, ts)
             continue
-        if any(token in path for token in ["longitude", "lon", "lng"]):
+        if key in {"longitude", "lon", "lng", "locationlongitude"}:
             if num is not None and -180 <= float(num) <= 180:
                 _set_metric(mapped, "longitude", num, ts)
-                _set_metric(mapped, "lastUpdate", ts, ts)
             continue
-        if any(token in path for token in ["altitude", "height", "gpsalt"]):
+        if key in {"altitude", "height", "gpsalt", "locationaltitude"}:
             if num is not None:
                 _set_metric(mapped, "altitude", num, ts)
             continue
-        if any(token in path for token in ["odometer", "mileage", "km_total", "total_km"]):
+        if key in {"odometer", "mileage", "kmtotal", "totalkm"}:
             if num is not None:
                 _set_metric(mapped, "odometer", num, ts)
             continue
-        if "range" in path or "autonomy" in path or "reichweite" in path:
-            if num is not None:
+        if key in {"range", "autonomy", "reichweite", "remainingrange"}:
+            if num is not None and float(num) >= 0:
                 _set_metric(mapped, "range", num, ts)
             continue
-        if "charging" in path or "charge_state" in path or "is_charging" in path or "is-charging" in path:
+        if key in {"charging", "chargestate", "ischarging"}:
             if boo is not None:
                 _set_metric(mapped, "charging", boo, ts)
-                if boo:
-                    _set_metric(mapped, "plugged", True, ts)
+                _set_metric(mapped, "plugged", boo, ts)
             continue
-        if "plug" in path or "connected" in path or "charger" in path:
+        if key in {"plugged", "connected", "chargerconnected", "chargingconnected"}:
             if boo is not None:
                 _set_metric(mapped, "plugged", boo, ts)
             continue
 
-        looks_like_soc = any(token in path for token in ["soc", "stateofcharge", "state_of_charge", "battery.level", "battery_level", "battery.percent", "battery_percentage", "battery.percentage", "batterystatus", "akku"])
+        looks_like_soc = key in {
+            "soc",
+            "stateofcharge",
+            "batterysoc",
+            "batterylevel",
+            "batterypercent",
+            "batterypercentage",
+            "batterystatus",
+            "akkustand",
+        }
         if looks_like_soc and num is not None and 0 <= float(num) <= 100:
-            idx = _battery_index(path)
-            if idx in {1, 2}:
-                _set_metric(mapped, f"battery{idx}Soc", num, ts)
-            elif "battery2" not in mapped and configured_battery_count == 1:
-                _set_metric(mapped, "battery1Soc", num, ts)
-            elif path.endswith("soc") or "state" in path or "level" in path or "percent" in path or "akku" in path:
+            index = _battery_index(path_lower)
+            if index in {1, 2}:
+                _set_metric(mapped, f"battery{index}Soc", num, ts)
+            else:
                 _set_metric(mapped, "soc", num, ts)
             continue
 
-    b1 = _to_number(mapped.get("battery1Soc"))
-    b2 = _to_number(mapped.get("battery2Soc"))
-    count = configured_battery_count if configured_battery_count in {1, 2} else (2 if b2 is not None else (1 if b1 is not None else 0))
+    battery1 = _to_number(mapped.get("battery1Soc"))
+    battery2 = _to_number(mapped.get("battery2Soc"))
+    count = configured_battery_count if configured_battery_count in {1, 2} else (2 if battery2 is not None else (1 if battery1 is not None else 0))
     if count:
         _set_metric(mapped, "batteryCount", count, ts)
-    if b1 is not None and b2 is not None:
-        _set_metric(mapped, "soc", round((float(b1) + float(b2)) / 2, 1), ts)
-    elif b1 is not None and mapped.get("soc") in (None, ""):
-        _set_metric(mapped, "soc", b1, ts)
+    if battery1 is not None and battery2 is not None:
+        _set_metric(mapped, "soc", round((float(battery1) + float(battery2)) / 2, 1), ts)
+    elif battery1 is not None and mapped.get("soc") in (None, ""):
+        _set_metric(mapped, "soc", battery1, ts)
 
-    cap = _to_number(capacity_kwh)
-    if cap is not None:
-        _set_metric(mapped, "capacityKwh", cap, ts)
+    capacity = _to_number(capacity_kwh)
+    if capacity is not None and float(capacity) > 0:
+        _set_metric(mapped, "capacityKwh", capacity, ts)
+
     _set_metric(mapped, "vehicleType", "ev", ts)
+    if any(key in mapped for key in ("soc", "range", "latitude", "longitude", "charging", "odometer")):
+        _set_metric(mapped, "lastUpdate", ts, ts)
     return mapped
