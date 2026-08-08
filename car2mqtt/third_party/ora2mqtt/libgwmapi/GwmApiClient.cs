@@ -78,7 +78,6 @@ public partial class GwmApiClient
             throw new ArgumentException($"Unknown MyGWM EU front route: {routeId}", nameof(routeId));
         }
         FrontRouteId = routeId;
-        _frontClient.BaseAddress = new Uri(baseUrl);
         SetHeader(_frontClient, "appid", "6");
         SetHeader(_frontClient, "brand", "6");
         SetHeader(_frontClient, "brandid", "CCZ001");
@@ -209,15 +208,26 @@ public partial class GwmApiClient
         return await GetResponseAsync<TOut>(response, cancellationToken);
     }
 
+    private Uri GetFrontUri(string url)
+    {
+        var routeId = String.IsNullOrWhiteSpace(FrontRouteId) ? MyGwmEuFrontRouteIds[0] : FrontRouteId;
+        if (!MyGwmEuFrontRoutes.TryGetValue(routeId, out var baseUrl))
+        {
+            throw new InvalidOperationException($"Unknown MyGWM EU front route: {routeId}");
+        }
+
+        return new Uri(new Uri(baseUrl), url);
+    }
+
     private async Task PostFrontAsync<T>(string url, T body, CancellationToken cancellationToken)
     {
-        var response = await _frontClient.PostAsJsonAsync(url, body, cancellationToken);
+        var response = await _frontClient.PostAsJsonAsync(GetFrontUri(url), body, cancellationToken);
         await CheckResponseAsync(response, cancellationToken);
     }
 
     private async Task<TOut> PostFrontAsync<TIn, TOut>(string url, TIn body, CancellationToken cancellationToken)
     {
-        var response = await _frontClient.PostAsJsonAsync(url, body, cancellationToken);
+        var response = await _frontClient.PostAsJsonAsync(GetFrontUri(url), body, cancellationToken);
         return await GetResponseAsync<TOut>(response, cancellationToken);
     }
 
