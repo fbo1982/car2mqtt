@@ -12,6 +12,15 @@ import paho.mqtt.client as mqtt
 import yaml
 
 
+def _normalize_auth_flow(value: Any) -> str:
+    flow = str(value or "").strip().lower()
+    # v1.2.38 briefly persisted the experimental MyGWM profile as the default.
+    # Migrate it automatically: EU accounts reject that identity before OTP request.
+    if flow in ("", "mygwm13"):
+        return "eu_verifycode"
+    return flow
+
+
 def ensure_ora_runtime_config(provider_config: Dict[str, Any], mqtt_settings, license_plate: str = "") -> Dict[str, Any]:
     device_id = str(provider_config.get("device_id", "")).strip() or uuid.uuid4().hex
     provider_config["device_id"] = device_id
@@ -37,7 +46,7 @@ def ensure_ora_runtime_config(provider_config: Dict[str, Any], mqtt_settings, li
     return {
         "DeviceId": device_id,
         "Country": country,
-        "AuthFlow": str(provider_config.get("auth_flow", "mygwm13") or "mygwm13"),
+        "AuthFlow": _normalize_auth_flow(provider_config.get("auth_flow")),
         "Account": account,
         "Mqtt": mqtt,
     }
@@ -54,7 +63,7 @@ def merge_ora_tokens(provider_config: Dict[str, Any], config_yaml_path) -> Dict[
     account = data.get("Account", {}) or {}
     provider_config["device_id"] = data.get("DeviceId", provider_config.get("device_id", ""))
     provider_config["country"] = data.get("Country", provider_config.get("country", "DE"))
-    provider_config["auth_flow"] = data.get("AuthFlow", provider_config.get("auth_flow", "mygwm13"))
+    provider_config["auth_flow"] = _normalize_auth_flow(data.get("AuthFlow", provider_config.get("auth_flow")))
     provider_config["access_token"] = account.get("AccessToken", provider_config.get("access_token", ""))
     provider_config["refresh_token"] = account.get("RefreshToken", provider_config.get("refresh_token", ""))
     provider_config["gw_id"] = account.get("GwId", provider_config.get("gw_id", ""))

@@ -36,6 +36,11 @@ public partial class GwmApiClient
         return PostH5Async("userAuth/checkSMSCode", request, cancellationToken);
     }
 
+    public Task CheckSmsCodeEuAsync(EuCheckSmsCode request, CancellationToken cancellationToken)
+    {
+        return PostH5Async("userAuth/checkSMSCode", request, cancellationToken);
+    }
+
     public Task<LoginAccountResponse> LoginAccountMyGwm13Async(MyGwm13LoginAccountRequest request, CancellationToken cancellationToken)
     {
         return PostH5Async<MyGwm13LoginAccountRequest, LoginAccountResponse>("userAuth/loginAccount", request, cancellationToken);

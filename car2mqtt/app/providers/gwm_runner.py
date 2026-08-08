@@ -168,7 +168,8 @@ class GwmIntegratedWorker:
         env["ORA_ACCOUNT"] = str(self.vehicle.provider_config.get("account", ""))
         env["ORA_PASSWORD"] = str(self.vehicle.provider_config.get("password", ""))
         env["ORA_COUNTRY"] = str(self.vehicle.provider_config.get("country", "DE"))
-        env["ORA_AUTH_FLOW"] = str(self.vehicle.provider_config.get("auth_flow", "mygwm13") or "mygwm13")
+        raw_auth_flow = str(self.vehicle.provider_config.get("auth_flow", "eu_verifycode") or "eu_verifycode").strip().lower()
+        env["ORA_AUTH_FLOW"] = "eu_verifycode" if raw_auth_flow == "mygwm13" else raw_auth_flow
         code_file = self.vehicle_dir / "verification_code.txt"
         verification_code = code_file.read_text(encoding="utf-8").strip() if code_file.exists() else ""
         # Pass the one-time code to ora2mqtt. Once GWM has attempted loginWithSMS,

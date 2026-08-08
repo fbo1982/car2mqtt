@@ -33,4 +33,10 @@ public class LoginAccountRequest
 
     [JsonPropertyName("type")]
     public int Type { get; set; } = 1;
+
+    // Newer GWM app flows complete a new-device verification by repeating
+    // loginAccount with the OTP in verifyCode. Omitted on the first login.
+    [JsonPropertyName("verifyCode")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string VerifyCode { get; set; }
 }

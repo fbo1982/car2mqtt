@@ -6,9 +6,10 @@ public class Ora2MqttOptions
 
     public string Country { get; set; }
 
-    // "mygwm13" emulates the current My GWM 1.3 authentication path.
+    // "eu_verifycode" keeps the proven EU ORA identity/code request but completes OTP login via loginAccount+verifyCode.
     // "legacy" keeps the historical GWM ORA loginWithSMS flow for rollback/debugging.
-    public string AuthFlow { get; set; } = "mygwm13";
+    // "mygwm13" is retained only as an experimental profile; it is not the EU default.
+    public string AuthFlow { get; set; } = "eu_verifycode";
 
     public Ora2MqttAccountOptions Account { get; set; } = new();
 

@@ -21,7 +21,7 @@ namespace ora2mqtt
         private bool NonInteractive => HasEnv("ORA_ACCOUNT") && HasEnv("ORA_PASSWORD");
         private string? VerificationCode => Env("ORA_VERIFICATION_CODE");
         private string AuthFlow(Ora2MqttOptions options) =>
-            (Env("ORA_AUTH_FLOW") ?? options.AuthFlow ?? "mygwm13").Trim().ToLowerInvariant();
+            (Env("ORA_AUTH_FLOW") ?? options.AuthFlow ?? "eu_verifycode").Trim().ToLowerInvariant();
 
         public async Task<int> Run(CancellationToken cancellationToken)
         {
@@ -127,14 +127,18 @@ namespace ora2mqtt
             var account = NonInteractive ? Env("ORA_ACCOUNT")! : Prompt.Input<string>("Please enter your mail address");
             var password = NonInteractive ? Env("ORA_PASSWORD")! : Prompt.Password("Please enter your password");
             var authFlow = AuthFlow(options);
-            var useMyGwm13 = !String.Equals(authFlow, "legacy", StringComparison.OrdinalIgnoreCase);
-            options.AuthFlow = useMyGwm13 ? "mygwm13" : "legacy";
+            var useMyGwm13 = String.Equals(authFlow, "mygwm13", StringComparison.OrdinalIgnoreCase);
+            var useEuVerifyCode = String.Equals(authFlow, "eu_verifycode", StringComparison.OrdinalIgnoreCase);
+            options.AuthFlow = useMyGwm13 ? "mygwm13" : (useEuVerifyCode ? "eu_verifycode" : "legacy");
             if (useMyGwm13)
             {
-                // Scope the My GWM identity to authentication only. ora2mqtt's established
-                // vehicle/polling API remains on the legacy ORA client profile until we have
-                // evidence that GWM also requires the My GWM profile for vehicle data calls.
+                // Experimental only: v1.2.38 showed EU rejecting this identity before OTP request.
                 client.UseMyGwm13Profile();
+            }
+            else
+            {
+                // EU hybrid and legacy both use the proven EU ORA client identity.
+                client.UseLegacyOraProfile();
             }
 
             var request = new LoginAccountRequest
@@ -164,6 +168,10 @@ namespace ora2mqtt
                 }
                 else
                 {
+                    if (useEuVerifyCode)
+                    {
+                        _logger.LogError("ORA_AUTH_FLOW=eu_verifycode ORA_AUTH_STEP=initial_login endpoint=loginAccount profile=EU_ORA");
+                    }
                     token = await client.LoginAccountAsync(request, cancellationToken);
                 }
                 options.Account.AccessToken = token.AccessToken;
@@ -198,13 +206,22 @@ namespace ora2mqtt
                                 // request before any one-time code exists. Persist that choice so
                                 // the following configure invocation validates the same code using
                                 // the matching login flow.
-                                _logger.LogError($"ORA_AUTH_FLOW=mygwm13 ORA_AUTH_STEP=request_code_failed ORA_GWM_ERROR_CODE={myGwmRequestException.Code} message={myGwmRequestException.Message}; falling_back=legacy");
-                                options.AuthFlow = "legacy";
+                                _logger.LogError($"ORA_AUTH_FLOW=mygwm13 ORA_AUTH_STEP=request_code_failed ORA_GWM_ERROR_CODE={myGwmRequestException.Code} message={myGwmRequestException.Message}; falling_back=eu_verifycode");
+                                options.AuthFlow = "eu_verifycode";
                                 client.UseLegacyOraProfile();
                                 await client.GetSmsCodeAsync(new GetSmsCode { Email = account }, cancellationToken);
                                 await SaveConfigAsync(options, cancellationToken);
-                                throw new Exception("ORA_WAITING_FOR_CODE: Legacy ORA verification code requested after My GWM 1.3 code request was rejected. Please provide the received code.");
+                                throw new Exception("ORA_WAITING_FOR_CODE: EU verification code requested after experimental My GWM profile was rejected. Please provide the received code.");
                             }
+                        }
+
+                        if (useEuVerifyCode)
+                        {
+                            _logger.LogError("ORA_AUTH_FLOW=eu_verifycode ORA_AUTH_STEP=request_code endpoint=getSMSCode type=3 profile=EU_ORA");
+                            await client.GetSmsCodeAsync(new GetSmsCode { Email = account }, cancellationToken);
+                            options.AuthFlow = "eu_verifycode";
+                            await SaveConfigAsync(options, cancellationToken);
+                            throw new Exception("ORA_WAITING_FOR_CODE: EU verification code requested. Please provide the received code.");
                         }
 
                         _logger.LogError("ORA_AUTH_FLOW=legacy ORA_AUTH_STEP=request_code endpoint=getSMSCode type=3 app=GWM-ORA");
@@ -233,9 +250,7 @@ namespace ora2mqtt
                     LoginAccountResponse token;
                     if (useMyGwm13)
                     {
-                        // My GWM 1.3-style flow: validate the OTP first, then perform a second
-                        // loginAccount call carrying verifyCode. This intentionally avoids the
-                        // legacy userAuth/loginWithSMS endpoint that currently returns 607198.
+                        // Experimental My GWM profile retained for diagnostics only.
                         _logger.LogError("ORA_AUTH_FLOW=mygwm13 ORA_AUTH_STEP=check_code endpoint=checkSMSCode type=17");
                         await client.CheckSmsCodeAsync(new CheckSmsCode
                         {
@@ -253,6 +268,31 @@ namespace ora2mqtt
                             LoginEmail = account,
                             VerifyCode = code
                         }, cancellationToken);
+                    }
+                    else if (useEuVerifyCode)
+                    {
+                        // EU hybrid: keep the exact EU identity and type=3 code request that are
+                        // known to work, but avoid the loginWithSMS endpoint that returns 607198.
+                        // checkSMSCode is advisory here: some regional backends do not expose it,
+                        // so a failure is logged and the single final loginAccount+verifyCode call
+                        // is still attempted. The OTP is never sent to two login endpoints.
+                        try
+                        {
+                            _logger.LogError("ORA_AUTH_FLOW=eu_verifycode ORA_AUTH_STEP=check_code endpoint=checkSMSCode type=3 profile=EU_ORA");
+                            await client.CheckSmsCodeEuAsync(new EuCheckSmsCode
+                            {
+                                Email = account,
+                                SmsCode = code
+                            }, cancellationToken);
+                        }
+                        catch (GwmApiException checkException)
+                        {
+                            _logger.LogError($"ORA_AUTH_FLOW=eu_verifycode ORA_AUTH_STEP=check_code_failed ORA_GWM_ERROR_CODE={checkException.Code} message={checkException.Message}; continuing=loginAccount_verifyCode");
+                        }
+
+                        request.VerifyCode = code;
+                        _logger.LogError("ORA_AUTH_FLOW=eu_verifycode ORA_AUTH_STEP=verified_login endpoint=loginAccount verifyCode=present profile=EU_ORA");
+                        token = await client.LoginAccountAsync(request, cancellationToken);
                     }
                     else
                     {
@@ -280,6 +320,11 @@ namespace ora2mqtt
                     _logger.LogError($"ORA_VERIFICATION_FAILED ORA_AUTH_FLOW={options.AuthFlow} ORA_GWM_ERROR_CODE={verificationException.Code} message={verificationException.Message}");
                     throw;
                 }
+            }
+            catch (GwmApiException initialLoginException)
+            {
+                _logger.LogError($"ORA_AUTH_INITIAL_FAILED ORA_AUTH_FLOW={options.AuthFlow} ORA_GWM_ERROR_CODE={initialLoginException.Code} message={initialLoginException.Message}");
+                throw;
             }
         }
 
