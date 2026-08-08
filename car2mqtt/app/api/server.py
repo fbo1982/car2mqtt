@@ -45,13 +45,23 @@ logger = logging.getLogger("car2mqtt.server")
 
 
 def _read_app_version() -> str:
-    """Read the release version from the project VERSION file for the GUI."""
+    """Read the release version supplied by the HA Supervisor build.
+
+    BUILD_VERSION is exposed as CAR2MQTT_VERSION by the Dockerfile.  The
+    VERSION file is kept as a development/source-tree fallback only, so the
+    runtime image does not depend on that file being present in the build
+    context.
+    """
+    env_version = os.getenv("CAR2MQTT_VERSION", "").strip()
+    if env_version:
+        return env_version
+
     version_file = Path(__file__).resolve().parents[2] / "VERSION"
     try:
         version = version_file.read_text(encoding="utf-8").strip()
         return version or "unknown"
     except OSError:
-        logger.warning("VERSION file could not be read: %s", version_file)
+        logger.warning("App version unavailable (CAR2MQTT_VERSION unset, VERSION missing: %s)", version_file)
         return "unknown"
 
 
