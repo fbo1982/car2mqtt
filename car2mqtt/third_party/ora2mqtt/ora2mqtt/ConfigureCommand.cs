@@ -1,4 +1,4 @@
-﻿using CommandLine;
+using CommandLine;
 using libgwmapi.DTO.UserAuth;
 using libgwmapi;
 using MQTTnet.Exceptions;
@@ -177,10 +177,10 @@ namespace ora2mqtt
                     options.Account.GwId = token.GwId;
                     options.Account.BeanId = token.BeanId;
                 }
-                catch (GwmApiException e)
+                catch (GwmApiException verificationException)
                 {
                     // Machine-readable marker consumed by Car2MQTT. Never print credentials or OTP.
-                    _logger.LogError($"ORA_VERIFICATION_FAILED ORA_GWM_ERROR_CODE={e.Code} message={e.Message}");
+                    _logger.LogError($"ORA_VERIFICATION_FAILED ORA_GWM_ERROR_CODE={verificationException.Code} message={verificationException.Message}");
                     throw;
                 }
             }

@@ -19,3 +19,7 @@ def test_docker_uses_supervisor_version_and_architecture():
     assert "${BUILD_ARCH}-base-python" in dockerfile
     assert "CAR2MQTT_VERSION=${BUILD_VERSION}" in dockerfile
     assert "COPY VERSION" not in dockerfile
+
+
+def test_deprecated_build_yaml_is_not_shipped():
+    assert not (ROOT / "build.yaml").exists()
