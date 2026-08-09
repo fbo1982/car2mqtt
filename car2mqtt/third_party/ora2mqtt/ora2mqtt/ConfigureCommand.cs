@@ -511,21 +511,32 @@ namespace ora2mqtt
                     LoginAccountResponse token;
                     if (useEuMyGwmFront)
                     {
-                        // Redeem the OTP on the same front-service identity and persistent device
-                        // that requested it.  Do not send it to checkSMSCode/loginWithSMS first.
-                        _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service endpoint=userAuth/loginAccount lane={client.FrontApiLane} payload={frontPayload} verifyCode=present same_device=true route={client.FrontRouteId} rs={client.FrontRs} profile={client.FrontIdentityLabel} terminal={client.FrontTerminal} brand={client.FrontBrand} enterpriseId={client.FrontEnterpriseId}");
+                        // The current EU flow uses loginWithSMS to redeem the code.  Keep the
+                        // working MyGWM app-api route, headers and persistent device context
+                        // discovered above; only switch the final endpoint/payload.
                         if (String.Equals(frontPayload, "eu_legacy", StringComparison.OrdinalIgnoreCase))
                         {
-                            request.VerifyCode = code;
-                            token = await client.LoginAccountMyGwmEuFrontAppAsync(request, cancellationToken);
+                            var frontLoginWithSmsRequest = new LoginWithSmsRequest
+                            {
+                                Email = account,
+                                Country = options.Country,
+                                DeviceId = options.DeviceId,
+                                Model = request.Model,
+                                PushToken = String.Empty,
+                                SmsCode = code
+                            };
+                            _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service endpoint=userAuth/loginWithSMS lane={client.FrontApiLane} payload={frontPayload} smsCode=present same_device=true route={client.FrontRouteId} rs={client.FrontRs} profile={client.FrontIdentityLabel} terminal={client.FrontTerminal} brand={client.FrontBrand} enterpriseId={client.FrontEnterpriseId}");
+                            token = await client.LoginWithSmsMyGwmEuFrontAppAsync(frontLoginWithSmsRequest, cancellationToken);
                         }
                         else if (String.Equals(frontPayload, "mygwm13", StringComparison.OrdinalIgnoreCase))
                         {
+                            _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service endpoint=userAuth/loginAccount lane={client.FrontApiLane} payload={frontPayload} verifyCode=present same_device=true route={client.FrontRouteId} rs={client.FrontRs} profile={client.FrontIdentityLabel} terminal={client.FrontTerminal} brand={client.FrontBrand} enterpriseId={client.FrontEnterpriseId}");
                             frontApp13Request.VerifyCode = code;
                             token = await client.LoginAccountMyGwmEuFrontApp13Async(frontApp13Request, cancellationToken);
                         }
                         else
                         {
+                            _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service endpoint=userAuth/loginAccount lane={client.FrontApiLane} payload={frontPayload} verifyCode=present same_device=true route={client.FrontRouteId} rs={client.FrontRs} profile={client.FrontIdentityLabel} terminal={client.FrontTerminal} brand={client.FrontBrand} enterpriseId={client.FrontEnterpriseId}");
                             frontRequest.VerifyCode = code;
                             token = await client.LoginAccountMyGwmEuFrontAsync(frontRequest, cancellationToken);
                         }

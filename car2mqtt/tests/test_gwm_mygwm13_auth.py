@@ -59,21 +59,21 @@ def test_front_flow_requests_and_redeems_code_on_same_transport():
     assert 'ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=request_code transport=eu-front-service' in source
     assert 'GetSmsCodeMyGwmEuFrontAsync' in source
     assert 'ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service' in source
-    assert 'frontRequest.VerifyCode = code;' in source
+    assert 'LoginWithSmsMyGwmEuFrontAppAsync' in source
     assert 'ProbeFrontLoginAsync("discovery")' in source
     assert 'LoginAccountMyGwmEuFrontAppAsync(request' in source
     assert 'LoginAccountMyGwmEuFrontApp13Async(frontApp13Request' in source
 
 
-def test_front_flow_does_not_send_otp_to_legacy_verification_endpoints():
+def test_front_flow_uses_eu_login_with_sms_only_on_front_transport():
     source = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
     start = source.index('if (useEuMyGwmFront)\n                    {', source.index('LoginAccountResponse token;', source.index('code = VerificationCode')))
     end = source.index('else if (useMyGwm13)', start)
     front_verify_block = source[start:end]
     assert 'CheckSmsCode' not in front_verify_block
-    assert 'LoginWithSmsAsync' not in front_verify_block
+    assert 'client.LoginWithSmsAsync' not in front_verify_block
+    assert 'LoginWithSmsMyGwmEuFrontAppAsync' in front_verify_block
     assert 'LoginAccountMyGwmEuFrontAsync(frontRequest' in front_verify_block
-    assert 'LoginAccountMyGwmEuFrontAppAsync(request' in front_verify_block
     assert 'LoginAccountMyGwmEuFrontApp13Async(frontApp13Request' in front_verify_block
 
 

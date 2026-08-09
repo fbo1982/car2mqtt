@@ -1,3 +1,4 @@
 {
-  "tests/test_acconia_integration.py::AcconiaIntegrationTests": true
+  "tests/test_gwm_front_route_client_reuse.py::test_release_is_1247": true,
+  "tests/test_gwm_mygwm13_auth.py::test_front_flow_does_not_send_otp_to_legacy_verification_endpoints": true
 }

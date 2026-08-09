@@ -47,4 +47,5 @@ def test_front_code_request_and_redemption_keep_payload_lane():
     assert 'lane={client.FrontApiLane} payload={frontPayload}' in configure
     assert 'GetSmsCodeMyGwmEuFrontApp13Async' in configure
     assert 'frontApp13Request.VerifyCode = code' in configure
-    assert 'request.VerifyCode = code' in configure
+    assert 'endpoint=userAuth/loginWithSMS' in configure
+    assert 'LoginWithSmsMyGwmEuFrontAppAsync' in configure

@@ -56,6 +56,13 @@ public partial class GwmApiClient
         return PostFrontAsync<LoginAccountRequest, LoginAccountResponse>("userAuth/loginAccount", request, cancellationToken);
     }
 
+    // EU verification flow: redeem the one-time code via loginWithSMS on the
+    // same MyGWM front-service app-api route/headers/device that requested it.
+    public Task<LoginAccountResponse> LoginWithSmsMyGwmEuFrontAppAsync(LoginWithSmsRequest request, CancellationToken cancellationToken)
+    {
+        return PostFrontAsync<LoginWithSmsRequest, LoginAccountResponse>("userAuth/loginWithSMS", request, cancellationToken);
+    }
+
     public Task<LoginAccountResponse> LoginAccountMyGwmEuFrontApp13Async(MyGwm13LoginAccountRequest request, CancellationToken cancellationToken)
     {
         return PostFrontAsync<MyGwm13LoginAccountRequest, LoginAccountResponse>("userAuth/loginAccount", request, cancellationToken);
