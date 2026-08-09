@@ -34,3 +34,13 @@ def test_selected_identity_is_logged_on_sms_request_and_redemption():
     assert 'terminal={client.FrontTerminal}' in configure
     assert 'brand={client.FrontBrand}' in configure
     assert 'enterpriseId={client.FrontEnterpriseId}' in configure
+
+
+def test_identity_http_errors_do_not_abort_discovery():
+    configure = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
+    assert 'catch (HttpRequestException identityHttpException)' in configure
+    assert 'ORA_AUTH_STEP=identity_probe_http_rejected' in configure
+    start = configure.index('catch (HttpRequestException identityHttpException)')
+    block = configure[start:start+1200]
+    assert 'continue;' in block
+    assert 'sms_sent=false' in block

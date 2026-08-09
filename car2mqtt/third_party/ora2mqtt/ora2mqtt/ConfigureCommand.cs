@@ -247,6 +247,14 @@ namespace ora2mqtt
                                                     _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=identity_selected route={routeId} rs={rs} profile={identity.Label} terminal={identity.Terminal} brand={identity.Brand} enterpriseId={identity.EnterpriseId} reason=gwm_response ORA_GWM_ERROR_CODE={identityException.Code} message={identityException.Message} sms_sent=false");
                                                     throw;
                                                 }
+                                                catch (HttpRequestException identityHttpException)
+                                                {
+                                                    // Some invalid front-service client identities return a plain
+                                                    // HTTP 5xx instead of a structured GWM error. That must reject
+                                                    // only this probe candidate, not abort the whole discovery.
+                                                    _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=identity_probe_http_rejected route={routeId} rs={rs} profile={identity.Label} terminal={identity.Terminal} brand={identity.Brand} enterpriseId={identity.EnterpriseId} http_error={identityHttpException.Message} sms_sent=false");
+                                                    continue;
+                                                }
                                             }
 
                                             if (token is not null)
