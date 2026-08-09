@@ -14,6 +14,8 @@ Es bündelt mehrere Hersteller in einer Oberfläche, mappt Rohdaten auf ein einh
 - Optionaler **MQTT Device Tracker**
 - **EVCC YAML / Copy Helper** pro Fahrzeug
 - **EVCC Geo Detection**: lokaler A/B/C-Status aus Fahrzeugverbindung + GPS + Home-Assistant-Zone
+- **Geo-Hysterese** mit getrenntem Ankunfts-/Abfahrtsradius gegen GPS-Flattern
+- optionale **Shelly-Geo-Automation**: Steckdose bei Fahrzeug-Ankunft einschalten und bei Abfahrt sicher ausschalten, ohne EVCC-Fahrzeugbindung
 - Copy-Helper für `configuration.yaml`, `automations.yaml` und fahrzeugspezifische Variablenblöcke
 - Live-Logs sowie ReAuth-/Reconnect-Hilfen für unterstützte Hersteller
 
@@ -59,6 +61,8 @@ Die MySilence-Schnittstelle ist nicht offiziell dokumentiert und kann sich durch
 - per UI direkt kopierbar
 - standortabhängiger `evccStatus` (`A`/`B`/`C`) direkt über MQTT
 - optionaler Geo-Filter gegen die lokal ausgewählte Home-Assistant-Zone
+- konfigurierbare Hysterese für Ankunft und Abfahrt
+- optionale Shelly-Schaltung auf Geo-Flanken, EVCC bleibt für Fahrzeugerkennung und Ladefreigabe zuständig
 - zusätzlich Copy-Helper für passende MQTT-Sensoren und Automationen
 
 ## Was Car2MQTT macht
@@ -154,7 +158,17 @@ car/<manufacturer>/<plate>/mapped/evccGeoReason
 
 Der Filter verändert **nicht** die Herstellerwerte `mapped/plugged` oder `mapped/charging`. Dadurch bleiben Home Assistant, Diagnose und andere MQTT-Verbraucher unverfälscht. Weil die Berechnung lokal aus den auf dem Broker vorhandenen `mapped`-Topics erfolgt, funktioniert sie auch mit Remote-Fahrzeugen: derselbe Wagen kann an Standort A `A` und an Standort B gleichzeitig `B` oder `C` liefern. Der abgeleitete Status wird nicht über die Car2MQTT-MQTT-Weiterleitung an andere Standorte gespiegelt.
 
-Aktivierung: **Einstellungen → EVCC → Standortabhängige Fahrzeugerkennung**. Dort wird auch der Radius in Metern festgelegt; als Mittelpunkt dient die oben ausgewählte Home Zone. Die EVCC-Copy-Vorlage liest anschließend direkt `mapped/evccStatus`.
+Aktivierung: **Einstellungen → EVCC → Standortabhängige Fahrzeugerkennung**. Ab Version 1.2.58 gibt es getrennte Radien für die Hysterese: Ein Fahrzeug wird innerhalb des **Ankunftsradius** als am Standort erkannt und gilt erst nach Überschreiten des größeren **Abfahrtsradius** als weggefahren. Dadurch führen normale GPS-Schwankungen am Zonenrand nicht zu ständigem Umschalten. Als Mittelpunkt dient die oben ausgewählte Home Zone. Die EVCC-Copy-Vorlage liest anschließend direkt `mapped/evccStatus`.
+
+## Geo-Shelly-Automation (ab 1.2.58)
+
+Optional kann Car2MQTT einen Shelly-Switch direkt anhand der Geo-Präsenz eines ausgewählten Fahrzeugs schalten. Das ist **keine feste EVCC-Fahrzeugzuordnung**: Car2MQTT reagiert nur auf die Geo-Flanken. Bei **außen → innen** wird der Shelly einmal eingeschaltet, bei **innen → außen** einmal ausgeschaltet. Zwischen diesen Ereignissen kann EVCC den Ladepunkt normal aktivieren oder deaktivieren, ohne dass Car2MQTT den Ausgang dauerhaft auf EIN erzwingt.
+
+Für die Auswahl wird das `mapped`-Topic verwendet; dadurch kann auch ein **Remote-Fahrzeug** auf dem lokalen MQTT-Broker als Trigger dienen. Der Shelly wird direkt über seine lokale RPC-API (`Switch.GetStatus` / `Switch.Set`) angesprochen.
+
+Als Schutz gegen einen GPS-Ausreißer während des Ladens wird eine Abfahrt bei hoher Shelly-Leistung zunächst nur vorgemerkt. Erst wenn die gemessene Leistung unter den konfigurierten Grenzwert gefallen ist, wird der Ausgang ausgeschaltet. Kehrt das Fahrzeug vorher in die Zone zurück, wird die vorgemerkte Abschaltung verworfen. Bei fehlender oder unbekannter GPS-Position erfolgt keine Shelly-Abschaltung. Ein erster bekannter Zustand **außerhalb** nach einem Car2MQTT-Neustart schaltet den Shelly ebenfalls nicht ab, damit ein anderes Fahrzeug den Ladepunkt weiter nutzen kann.
+
+Konfiguration: **Einstellungen → Geo Automation → Shelly bei Fahrzeug-Ankunft schalten**. Dort Fahrzeug, Shelly-IP/Host, Switch-ID und die maximale Leistung für ein sicheres Ausschalten auswählen. Für einen Shelly Pro 1PM ist typischerweise Switch-ID `0` passend.
 
 ## EVCC Copy Helper
 
@@ -207,6 +221,8 @@ Beispiele:
 
 ### Einstellungen
 - Home Zone für EVCC-/Automations-Helfer und EVCC Geo Detection
+- Ankunfts-/Abfahrtsradius für Geo-Hysterese
+- optionale Geo-Shelly-Automation mit Fahrzeugauswahl und Lastschutz
 - MQTT Discovery für Fahrzeug-Entitäten aktivieren
 - Entitäten bei Start / Fahrzeugänderung automatisch erzeugen
 - Discovery Prefix und Retain konfigurieren
@@ -268,10 +284,5 @@ oder eine projektspezifische Lizenz.
 
 Das gemappte `limitSoc` ist ein langlebiger Fahrzeug-Einstellwert und kann unverändert bleiben, obwohl die Fahrzeugdatenverbindung vollkommen in Ordnung ist. Die von Car2MQTT erzeugte EVCC-Konfiguration setzt deshalb für `limitsoc` **keinen MQTT-`timeout` mehr**. EVCC akzeptiert den zuletzt empfangenen (retained) Wert damit so lange, bis Car2MQTT tatsächlich einen neuen Ladelimitwert veröffentlicht.
 
-Live-Werte wie SoC, Reichweite, Kilometerstand und `evccStatus` behalten weiterhin einen Timeout, damit eine ausgefallene Datenquelle dort sichtbar wird. Ab Version 1.2.57 beträgt der Standard **72h (3 Tage)**. Damit bleiben Fahrzeuge, die ein bis zwei Tage nicht bewegt oder aktualisiert werden, in EVCC gültig, ohne die Fehlererkennung vollständig abzuschalten. Ein periodisches künstliches Neu-Publizieren des Ladelimits ist dadurch nicht nötig und würde eine ausgefallene Datenquelle eher verschleiern.
+Live-Werte wie SoC, Reichweite und `evccStatus` behalten weiterhin ihren konfigurierten Timeout (standardmäßig `24h`), damit eine ausgefallene Datenquelle dort weiterhin sichtbar wird. Ein periodisches künstliches Neu-Publizieren des Ladelimits ist dadurch nicht nötig und würde eine ausgefallene Datenquelle eher verschleiern.
 
-
-
-## EVCC Telemetrie-Timeout 72h (ab 1.2.57)
-
-Die automatisch erzeugte EVCC-Fahrzeugkonfiguration verwendet für `soc`, `range`, `odometer` und `evccStatus` standardmäßig `timeout: 72h`. `limitsoc` bleibt weiterhin ohne Timeout, da das Ladelimit ein langlebiger Einstellwert ist. Ein fahrzeugspezifisch gesetztes `evcc_timeout` kann den 72h-Standard weiterhin überschreiben.

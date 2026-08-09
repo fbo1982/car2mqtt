@@ -120,6 +120,12 @@ class HomeZoneSettingsPayload(BaseModel):
     ha_discovery_retain: bool = True
     evcc_geo_filter_enabled: bool = False
     evcc_geo_radius_m: float = 30.0
+    evcc_geo_exit_radius_m: float = 50.0
+    geo_shelly_enabled: bool = False
+    geo_shelly_vehicle_mapped_topic: str = ""
+    geo_shelly_host: str = ""
+    geo_shelly_switch_id: int = 0
+    geo_shelly_power_off_threshold_w: float = 50.0
 
 
 def _normalize_vehicle_id(license_plate: str) -> str:
@@ -902,10 +908,35 @@ def create_app() -> FastAPI:
         if detected_entity and not any(z.get('entity_id') == detected_entity for z in zones):
             zones.append({'entity_id': detected_entity, 'name': pretty_zone_name(detected_entity)})
         zones.sort(key=lambda z: (str(z.get('name','')).lower(), str(z.get('entity_id','')).lower()))
+        cards, _mqtt = build_cards()
+        local_base_topic = str((_mqtt or {}).get("base_topic") or "car")
+        geo_vehicles = []
+        for card in cards:
+            manufacturer = str(card.get("manufacturer") or "").lower()
+            plate = str(card.get("license_plate") or "")
+            # Remote _meta/mapped_topic contains the source server's original
+            # topic as payload. For local geo processing we must always select
+            # the topic that actually exists on this broker after base rewrite.
+            local_mapped = (
+                mapped_topic(local_base_topic, manufacturer, plate)
+                if bool(card.get("remote"))
+                else str(card.get("mapped_topic") or "").rstrip("/")
+            )
+            if not str(local_mapped or "").strip():
+                continue
+            geo_vehicles.append({
+                "label": str(card.get("label") or card.get("license_plate") or "Fahrzeug"),
+                "manufacturer": str(card.get("manufacturer") or ""),
+                "license_plate": plate,
+                "mapped_topic": str(local_mapped).rstrip("/"),
+                "remote": bool(card.get("remote")),
+                "remote_server_name": str(card.get("remote_server_name") or ""),
+            })
         return {
             "ui_settings": cfg.ui_settings.model_dump(mode="json"),
             "zones": zones,
             "effective_homezone": effective,
+            "geo_vehicles": geo_vehicles,
         }
 
     @app.get("/api/evcc-geo/status")
@@ -926,6 +957,22 @@ def create_app() -> FastAPI:
             cfg.ui_settings.evcc_geo_radius_m = max(1.0, min(1000.0, float(payload.evcc_geo_radius_m or 30.0)))
         except Exception:
             cfg.ui_settings.evcc_geo_radius_m = 30.0
+        try:
+            exit_radius = max(1.0, min(2000.0, float(payload.evcc_geo_exit_radius_m or 50.0)))
+        except Exception:
+            exit_radius = 50.0
+        cfg.ui_settings.evcc_geo_exit_radius_m = max(cfg.ui_settings.evcc_geo_radius_m, exit_radius)
+        cfg.ui_settings.geo_shelly_enabled = bool(payload.geo_shelly_enabled)
+        cfg.ui_settings.geo_shelly_vehicle_mapped_topic = str(payload.geo_shelly_vehicle_mapped_topic or '').strip().rstrip('/')
+        cfg.ui_settings.geo_shelly_host = str(payload.geo_shelly_host or '').strip().rstrip('/')
+        try:
+            cfg.ui_settings.geo_shelly_switch_id = max(0, min(99, int(payload.geo_shelly_switch_id or 0)))
+        except Exception:
+            cfg.ui_settings.geo_shelly_switch_id = 0
+        try:
+            cfg.ui_settings.geo_shelly_power_off_threshold_w = max(0.0, min(10000.0, float(payload.geo_shelly_power_off_threshold_w or 50.0)))
+        except Exception:
+            cfg.ui_settings.geo_shelly_power_off_threshold_w = 50.0
         store.save(cfg)
         try:
             evcc_geo_filter.restart()

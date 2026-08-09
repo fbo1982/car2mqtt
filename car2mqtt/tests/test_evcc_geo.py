@@ -21,8 +21,8 @@ except ModuleNotFoundError:
     sys.modules["paho.mqtt"] = paho_mqtt
     sys.modules["paho.mqtt.client"] = paho_client
 
-from app.core.models import RuntimeMqttSettings, UiSettings, VehicleConfig
-from app.services.evcc_geo import ZonePosition, calculate_evcc_geo_decision, haversine_distance_m
+from app.core.models import AppConfig, RuntimeMqttSettings, UiSettings, VehicleConfig
+from app.services.evcc_geo import EvccGeoFilterService, ZonePosition, calculate_evcc_geo_decision, haversine_distance_m
 from app.services.evcc_integration import build_evcc_custom_vehicle_payload, evcc_payload_to_yaml
 
 
@@ -143,3 +143,103 @@ def test_geo_settings_are_upgrade_safe_and_ui_controls_exist():
     assert 'id="settingsEvccGeoFilterEnabled"' in html
     assert 'id="settingsEvccGeoRadius"' in html
     assert "/evccStatus" in html
+
+
+def test_geo_presence_uses_enter_exit_hysteresis():
+    zone = ZonePosition("zone.home", 49.0, 8.0)
+    # ~33 m north: outside 30 m entry radius, but inside 50 m exit radius.
+    metrics = {"plugged": False, "charging": False, "latitude": 49.00030, "longitude": 8.0}
+    before_entry = calculate_evcc_geo_decision(
+        metrics, geo_enabled=True, zone=zone, radius_m=30, exit_radius_m=50, previous_at_site=False
+    )
+    while_inside = calculate_evcc_geo_decision(
+        metrics, geo_enabled=True, zone=zone, radius_m=30, exit_radius_m=50, previous_at_site=True
+    )
+    assert before_entry.at_site is False
+    assert while_inside.at_site is True
+
+
+def _relay_service() -> EvccGeoFilterService:
+    ui = UiSettings(
+        evcc_geo_filter_enabled=True,
+        evcc_geo_radius_m=30,
+        evcc_geo_exit_radius_m=50,
+        geo_shelly_enabled=True,
+        geo_shelly_vehicle_mapped_topic="car/acconia/TEST/mapped",
+        geo_shelly_host="192.168.18.29",
+        geo_shelly_switch_id=0,
+        geo_shelly_power_off_threshold_w=50,
+    )
+    service = EvccGeoFilterService(
+        lambda: AppConfig(ui_settings=ui),
+        lambda: RuntimeMqttSettings(host="mqtt", base_topic="car"),
+    )
+    service._load_feature_settings()
+    return service
+
+
+def test_geo_shelly_only_acts_on_edges_and_does_not_force_initial_outside_off():
+    service = _relay_service()
+    root = "car/acconia/TEST/mapped"
+
+    service._schedule_relay_edge(root, None, False)
+    assert service._relay_pending_on is False
+    assert service._relay_pending_off is False
+
+    service._schedule_relay_edge(root, None, True)
+    assert service._relay_pending_on is True
+    assert service._relay_pending_off is False
+
+    # EVCC may turn the Shelly off later; Car2MQTT does not keep enforcing ON.
+    service._relay_pending_on = False
+    service._schedule_relay_edge(root, True, True)
+    assert service._relay_pending_on is False
+
+    service._schedule_relay_edge(root, True, False)
+    assert service._relay_pending_off is True
+
+    # A return before the delayed OFF is executed cancels the pending OFF.
+    service._schedule_relay_edge(root, False, True)
+    assert service._relay_pending_off is False
+    assert service._relay_pending_on is True
+
+
+def test_geo_shelly_departure_waits_until_power_is_below_threshold(monkeypatch):
+    service = _relay_service()
+    service._relay_pending_off = True
+    calls = []
+
+    monkeypatch.setattr(service, "_read_shelly_status", lambda: (True, 1200.0))
+    monkeypatch.setattr(service, "_set_shelly_output", lambda enabled: calls.append(enabled))
+    service._process_relay_once()
+    assert calls == []
+    assert service._relay_pending_off is True
+
+    monkeypatch.setattr(service, "_read_shelly_status", lambda: (True, 10.0))
+    service._process_relay_once()
+    assert calls == [False]
+    assert service._relay_pending_off is False
+
+
+def test_geo_shelly_arrival_turns_on_once(monkeypatch):
+    service = _relay_service()
+    service._relay_pending_on = True
+    calls = []
+    monkeypatch.setattr(service, "_read_shelly_status", lambda: (False, 0.0))
+    monkeypatch.setattr(service, "_set_shelly_output", lambda enabled: calls.append(enabled))
+    service._process_relay_once()
+    assert calls == [True]
+    assert service._relay_pending_on is False
+
+
+def test_geo_settings_are_upgrade_safe_and_shelly_controls_exist():
+    ui = UiSettings()
+    assert ui.evcc_geo_exit_radius_m == 50.0
+    assert ui.geo_shelly_enabled is False
+    assert ui.geo_shelly_vehicle_mapped_topic == ""
+    assert ui.geo_shelly_power_off_threshold_w == 50.0
+    html = Path("app/templates/index.html").read_text(encoding="utf-8")
+    assert 'id="settingsEvccGeoExitRadius"' in html
+    assert 'id="settingsGeoShellyEnabled"' in html
+    assert 'id="settingsGeoShellyVehicle"' in html
+    assert 'id="settingsGeoShellyHost"' in html

@@ -86,12 +86,17 @@ def calculate_evcc_geo_decision(
     geo_enabled: bool,
     zone: ZonePosition | None,
     radius_m: float,
+    exit_radius_m: float | None = None,
+    previous_at_site: bool | None = None,
 ) -> EvccGeoDecision:
     """Calculate the EVCC A/B/C status without modifying manufacturer metrics.
 
-    A = disconnected, B = connected, C = charging.  With geo filtering enabled,
+    A = disconnected, B = connected, C = charging. With geo filtering enabled,
     B/C are emitted only when the current vehicle coordinates are inside the
-    selected local Home Assistant zone radius. Missing zone/GPS data fails closed.
+    selected local Home Assistant zone. Presence uses hysteresis: a vehicle
+    enters at ``radius_m`` and leaves only beyond ``exit_radius_m``. Missing
+    zone/GPS data fails closed for EVCC status but returns ``at_site=None`` so
+    external relay automation does not act on an unknown position.
     """
     plugged = _as_bool(metrics.get("plugged")) is True
     charging = _as_bool(metrics.get("charging")) is True
@@ -99,18 +104,6 @@ def calculate_evcc_geo_decision(
     if not geo_enabled:
         status = "C" if charging else ("B" if plugged else "A")
         return EvccGeoDecision(status=status, at_site=None, distance_m=None, reason="geo_disabled")
-
-    if not (plugged or charging):
-        # No vehicle connection to expose to EVCC. Distance is still useful when
-        # coordinates are present, but it must not turn the vehicle into B/C.
-        if zone is None:
-            return EvccGeoDecision("A", None, None, "not_plugged")
-        lat = _as_float(metrics.get("latitude"))
-        lon = _as_float(metrics.get("longitude"))
-        if lat is None or lon is None:
-            return EvccGeoDecision("A", None, None, "not_plugged")
-        distance = haversine_distance_m(zone.latitude, zone.longitude, lat, lon)
-        return EvccGeoDecision("A", distance <= radius_m, distance, "not_plugged")
 
     if zone is None:
         return EvccGeoDecision("A", None, None, "zone_unavailable")
@@ -121,7 +114,13 @@ def calculate_evcc_geo_decision(
         return EvccGeoDecision("A", None, None, "gps_missing")
 
     distance = haversine_distance_m(zone.latitude, zone.longitude, lat, lon)
-    at_site = distance <= max(1.0, float(radius_m))
+    enter_radius = max(1.0, float(radius_m))
+    leave_radius = max(enter_radius, float(exit_radius_m if exit_radius_m is not None else enter_radius))
+    threshold = leave_radius if previous_at_site is True else enter_radius
+    at_site = distance <= threshold
+
+    if not (plugged or charging):
+        return EvccGeoDecision("A", at_site, distance, "not_plugged")
     if not at_site:
         return EvccGeoDecision("A", False, distance, "outside_radius")
     if charging:
@@ -228,7 +227,21 @@ class EvccGeoFilterService:
         self._zone_entity_id = "zone.home"
         self._geo_enabled = False
         self._radius_m = 30.0
+        self._exit_radius_m = 50.0
+        self._presence_by_root: dict[str, bool] = {}
+        self._relay_enabled = False
+        self._relay_vehicle_root = ""
+        self._relay_host = ""
+        self._relay_switch_id = 0
+        self._relay_power_off_threshold_w = 50.0
+        self._relay_pending_on = False
+        self._relay_pending_off = False
+        self._relay_last_action = ""
+        self._relay_last_error = ""
+        self._relay_last_power_w: float | None = None
+        self._relay_last_output: bool | None = None
         self._zone_thread: threading.Thread | None = None
+        self._relay_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._mqtt_settings: RuntimeMqttSettings | None = None
 
@@ -237,6 +250,15 @@ class EvccGeoFilterService:
         ui = cfg.ui_settings
         self._geo_enabled = bool(getattr(ui, "evcc_geo_filter_enabled", False))
         self._radius_m = max(1.0, float(getattr(ui, "evcc_geo_radius_m", 30.0) or 30.0))
+        self._exit_radius_m = max(
+            self._radius_m,
+            float(getattr(ui, "evcc_geo_exit_radius_m", 50.0) or 50.0),
+        )
+        self._relay_enabled = bool(getattr(ui, "geo_shelly_enabled", False))
+        self._relay_vehicle_root = str(getattr(ui, "geo_shelly_vehicle_mapped_topic", "") or "").strip().rstrip("/")
+        self._relay_host = str(getattr(ui, "geo_shelly_host", "") or "").strip().rstrip("/")
+        self._relay_switch_id = max(0, int(getattr(ui, "geo_shelly_switch_id", 0) or 0))
+        self._relay_power_off_threshold_w = max(0.0, float(getattr(ui, "geo_shelly_power_off_threshold_w", 50.0) or 50.0))
         if self.zone_entity_loader is not None:
             resolved_entity = self.zone_entity_loader(cfg)
         else:
@@ -251,11 +273,12 @@ class EvccGeoFilterService:
         if self._geo_enabled:
             if zone:
                 logger.info(
-                    "EVCC Geo: Zone %s geladen (%.6f, %.6f), Radius %.1f m",
+                    "EVCC Geo: Zone %s geladen (%.6f, %.6f), Eintritt %.1f m / Austritt %.1f m",
                     zone.entity_id,
                     zone.latitude,
                     zone.longitude,
                     self._radius_m,
+                    self._exit_radius_m,
                 )
             else:
                 logger.warning("EVCC Geo: Zone %s nicht verfügbar; Status fällt sicher auf A zurück", self._zone_entity_id)
@@ -267,6 +290,111 @@ class EvccGeoFilterService:
                 self._refresh_zone()
             except Exception:
                 logger.exception("EVCC Geo: Zonenaktualisierung fehlgeschlagen")
+
+    def _shelly_base_url(self) -> str:
+        host = str(self._relay_host or "").strip().rstrip("/")
+        if not host:
+            return ""
+        if not host.startswith(("http://", "https://")):
+            host = "http://" + host
+        return host
+
+    def _read_shelly_status(self) -> tuple[bool, float]:
+        base = self._shelly_base_url()
+        if not base:
+            raise RuntimeError("Shelly Host fehlt")
+        resp = requests.get(
+            f"{base}/rpc/Switch.GetStatus",
+            params={"id": self._relay_switch_id},
+            timeout=3.0,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        output = bool(payload.get("output", False))
+        power = _as_float(payload.get("apower")) or 0.0
+        with self._lock:
+            self._relay_last_output = output
+            self._relay_last_power_w = power
+        return output, power
+
+    def _set_shelly_output(self, enabled: bool) -> None:
+        base = self._shelly_base_url()
+        if not base:
+            raise RuntimeError("Shelly Host fehlt")
+        resp = requests.get(
+            f"{base}/rpc/Switch.Set",
+            params={"id": self._relay_switch_id, "on": "true" if enabled else "false"},
+            timeout=3.0,
+        )
+        resp.raise_for_status()
+        with self._lock:
+            self._relay_last_output = bool(enabled)
+            self._relay_last_action = "on" if enabled else "off"
+            self._relay_last_error = ""
+        logger.info("EVCC Geo Shelly: Ausgang %s -> %s", self._relay_switch_id, "EIN" if enabled else "AUS")
+
+    def _schedule_relay_edge(self, root: str, previous: bool | None, current: bool | None) -> None:
+        with self._lock:
+            if not self._relay_enabled or not self._relay_vehicle_root or root.rstrip("/") != self._relay_vehicle_root:
+                return
+            if current is None:
+                return
+            # First known inside state behaves like arrival so a service restart
+            # while the vehicle is parked on-site can restore the socket. A first
+            # known outside state intentionally does nothing to avoid switching
+            # off a socket another vehicle may currently use.
+            if current is True and previous is not True:
+                self._relay_pending_off = False
+                self._relay_pending_on = True
+                logger.info("EVCC Geo Shelly: Ankunft erkannt für %s", root)
+            elif previous is True and current is False:
+                self._relay_pending_on = False
+                self._relay_pending_off = True
+                logger.info("EVCC Geo Shelly: Abfahrt erkannt für %s", root)
+
+    def _process_relay_once(self) -> None:
+        with self._lock:
+            enabled = self._relay_enabled and self._geo_enabled
+            pending_on = self._relay_pending_on
+            pending_off = self._relay_pending_off
+            threshold = self._relay_power_off_threshold_w
+            configured = bool(self._relay_vehicle_root and self._relay_host)
+        if not enabled or not configured or not (pending_on or pending_off):
+            return
+
+        output, power = self._read_shelly_status()
+        if pending_on:
+            if not output:
+                self._set_shelly_output(True)
+            with self._lock:
+                self._relay_pending_on = False
+            return
+
+        if not pending_off:
+            return
+        if not output:
+            with self._lock:
+                self._relay_pending_off = False
+            return
+        if abs(power) > threshold:
+            logger.info(
+                "EVCC Geo Shelly: AUS zurückgestellt, Leistung %.1f W > %.1f W",
+                power,
+                threshold,
+            )
+            return
+        self._set_shelly_output(False)
+        with self._lock:
+            self._relay_pending_off = False
+
+    def _relay_control_loop(self) -> None:
+        while not self._stop_event.wait(2.0):
+            try:
+                self._process_relay_once()
+            except Exception as exc:
+                with self._lock:
+                    self._relay_last_error = str(exc)
+                logger.warning("EVCC Geo Shelly: Steuerung fehlgeschlagen: %s", exc)
 
     def start(self) -> None:
         if self._running:
@@ -295,13 +423,21 @@ class EvccGeoFilterService:
         self._client = client
         self._running = True
         self._stop_event.clear()
+        with self._lock:
+            self._presence_by_root = {}
+            self._relay_pending_on = False
+            self._relay_pending_off = False
         self._zone_thread = threading.Thread(target=self._zone_refresh_loop, name="car2mqtt-evcc-geo-zone", daemon=True)
         self._zone_thread.start()
+        self._relay_thread = threading.Thread(target=self._relay_control_loop, name="car2mqtt-evcc-geo-shelly", daemon=True)
+        self._relay_thread.start()
         logger.info(
-            "EVCC Geo: lokaler Filter gestartet (geo=%s, zone=%s, radius=%.1fm)",
+            "EVCC Geo: lokaler Filter gestartet (geo=%s, zone=%s, Eintritt=%.1fm, Austritt=%.1fm, shelly=%s)",
             self._geo_enabled,
             self._zone_entity_id,
             self._radius_m,
+            self._exit_radius_m,
+            self._relay_enabled,
         )
 
     def stop(self) -> None:
@@ -318,10 +454,12 @@ class EvccGeoFilterService:
                 client.loop_stop()
             except Exception:
                 pass
-        thread = self._zone_thread
+        threads = [self._zone_thread, self._relay_thread]
         self._zone_thread = None
-        if thread and thread.is_alive() and thread is not threading.current_thread():
-            thread.join(timeout=1.0)
+        self._relay_thread = None
+        for thread in threads:
+            if thread and thread.is_alive() and thread is not threading.current_thread():
+                thread.join(timeout=1.0)
 
     def restart(self) -> None:
         self.stop()
@@ -381,7 +519,20 @@ class EvccGeoFilterService:
             zone = self._zone
             geo_enabled = self._geo_enabled
             radius_m = self._radius_m
-        decision = calculate_evcc_geo_decision(metrics, geo_enabled=geo_enabled, zone=zone, radius_m=radius_m)
+            exit_radius_m = self._exit_radius_m
+            previous_at_site = self._presence_by_root.get(root)
+        decision = calculate_evcc_geo_decision(
+            metrics,
+            geo_enabled=geo_enabled,
+            zone=zone,
+            radius_m=radius_m,
+            exit_radius_m=exit_radius_m,
+            previous_at_site=previous_at_site,
+        )
+        if decision.at_site is not None:
+            with self._lock:
+                self._presence_by_root[root] = decision.at_site
+        self._schedule_relay_edge(root, previous_at_site, decision.at_site)
         payloads: dict[str, Any] = {
             "evccStatus": decision.status,
             "evccAtSite": decision.at_site if decision.at_site is not None else False,
@@ -408,5 +559,19 @@ class EvccGeoFilterService:
                 "zone_latitude": zone.latitude if zone else None,
                 "zone_longitude": zone.longitude if zone else None,
                 "radius_m": self._radius_m,
+                "exit_radius_m": self._exit_radius_m,
                 "vehicles_seen": len(self._snapshots),
+                "shelly": {
+                    "enabled": self._relay_enabled,
+                    "vehicle_mapped_topic": self._relay_vehicle_root,
+                    "host": self._relay_host,
+                    "switch_id": self._relay_switch_id,
+                    "power_off_threshold_w": self._relay_power_off_threshold_w,
+                    "pending_on": self._relay_pending_on,
+                    "pending_off": self._relay_pending_off,
+                    "last_action": self._relay_last_action,
+                    "last_error": self._relay_last_error,
+                    "last_power_w": self._relay_last_power_w,
+                    "last_output": self._relay_last_output,
+                },
             }

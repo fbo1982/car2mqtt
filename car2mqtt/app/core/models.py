@@ -60,6 +60,17 @@ class UiSettings(BaseModel):
     # when enabled B/C are only exposed inside the selected local HA zone.
     evcc_geo_filter_enabled: bool = False
     evcc_geo_radius_m: float = 30.0
+    # Hysteresis: a vehicle enters at evcc_geo_radius_m and is considered
+    # departed only after it exceeds this larger radius.
+    evcc_geo_exit_radius_m: float = 50.0
+    # Optional geo-triggered Shelly switch. This is deliberately independent
+    # of EVCC vehicle assignment: Car2MQTT only toggles the socket on arrival
+    # and departure edges, while EVCC retains normal charger/vehicle control.
+    geo_shelly_enabled: bool = False
+    geo_shelly_vehicle_mapped_topic: str = ""
+    geo_shelly_host: str = ""
+    geo_shelly_switch_id: int = 0
+    geo_shelly_power_off_threshold_w: float = 50.0
 
 
 class MqttForwardClientConfig(BaseModel):

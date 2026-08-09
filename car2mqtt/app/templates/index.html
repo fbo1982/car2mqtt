@@ -460,10 +460,31 @@ select, option {
             <div class="muted" style="margin-top:10px">Car2MQTT erzeugt lokal <code>mapped/evccStatus</code> (A/B/C). Rohwerte wie <code>plugged</code> und <code>charging</code> bleiben unverändert. Das funktioniert auch für Remote-Fahrzeuge auf diesem MQTT-Broker.</div>
           </div>
           <div class="grid two" style="margin-top:16px">
-            <div class="field"><label>Geo-Radius in Metern</label><input id="settingsEvccGeoRadius" type="number" min="1" max="1000" step="1" value="30" /></div>
-            <div class="field"><label>Verwendeter Standort</label><div class="muted" style="margin-top:10px">Die oben ausgewählte Home Zone wird verwendet. Fehlen Zone oder GPS, meldet Car2MQTT an EVCC sicher <strong>A = nicht verbunden</strong>.</div></div>
+            <div class="field"><label>Ankunftsradius in Metern</label><input id="settingsEvccGeoRadius" type="number" min="1" max="1000" step="1" value="30" /></div>
+            <div class="field"><label>Abfahrtsradius in Metern</label><input id="settingsEvccGeoExitRadius" type="number" min="1" max="2000" step="1" value="50" /></div>
           </div>
+          <div class="field" style="margin-top:12px"><label>Verwendeter Standort</label><div class="muted" style="margin-top:8px">Die oben ausgewählte Home Zone wird verwendet. Die Hysterese verhindert Flattern: Eintritt z. B. bei ≤30 m, Austritt erst bei &gt;50 m. Fehlen Zone oder GPS, meldet Car2MQTT an EVCC sicher <strong>A = nicht verbunden</strong>; eine Shelly-Abschaltung wird bei unbekannter Position aber nicht ausgelöst.</div></div>
           <div class="howto-note" style="margin-top:14px">Diagnose-Topics: <code>evccStatus</code>, <code>evccAtSite</code>, <code>evccDistance</code> und <code>evccGeoReason</code>.</div>
+        </div>
+        <div class="howto-card">
+          <div class="eyebrow">Geo Automation</div>
+          <h4>Shelly bei Fahrzeug-Ankunft schalten</h4>
+          <div class="field" style="margin-top:14px">
+            <label style="display:flex;align-items:center;gap:10px">
+              <input id="settingsGeoShellyEnabled" type="checkbox">
+              <span>Shelly über Geo-Ankunft/Abfahrt schalten</span>
+            </label>
+            <div class="muted" style="margin-top:10px">Keine feste EVCC-Fahrzeugzuordnung: Car2MQTT schaltet nur einmal bei Ankunft EIN und einmal bei Abfahrt AUS. Danach behält EVCC die normale Kontrolle über den Ladepunkt.</div>
+          </div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="field"><label>Fahrzeug</label><select id="settingsGeoShellyVehicle"><option value="">Fahrzeug wählen</option></select></div>
+            <div class="field"><label>Shelly Host / IP</label><input id="settingsGeoShellyHost" placeholder="192.168.18.29" /></div>
+          </div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="field"><label>Switch ID</label><input id="settingsGeoShellySwitchId" type="number" min="0" max="99" step="1" value="0" /></div>
+            <div class="field"><label>Max. Leistung zum sicheren Ausschalten (W)</label><input id="settingsGeoShellyPowerThreshold" type="number" min="0" max="10000" step="1" value="50" /></div>
+          </div>
+          <div class="howto-note" style="margin-top:14px"><strong>Schutz:</strong> Liegt beim Verlassen mehr als der Grenzwert an, wird AUS nur vorgemerkt. Sobald die Leistung darunter fällt, wird der Shelly ausgeschaltet. Kehrt das Fahrzeug vorher zurück, wird die vorgemerkte Abschaltung verworfen.</div>
         </div>
       </div>
     </div>
@@ -841,6 +862,34 @@ function renderSettingsDialog(data){
   if(field('settingsHaDiscoveryRetain')) field('settingsHaDiscoveryRetain').checked = ui.ha_discovery_retain !== false;
   if(field('settingsEvccGeoFilterEnabled')) field('settingsEvccGeoFilterEnabled').checked = !!ui.evcc_geo_filter_enabled;
   if(field('settingsEvccGeoRadius')) field('settingsEvccGeoRadius').value = ui.evcc_geo_radius_m || 30;
+  if(field('settingsEvccGeoExitRadius')) field('settingsEvccGeoExitRadius').value = ui.evcc_geo_exit_radius_m || 50;
+  if(field('settingsGeoShellyEnabled')) field('settingsGeoShellyEnabled').checked = !!ui.geo_shelly_enabled;
+  if(field('settingsGeoShellyHost')) field('settingsGeoShellyHost').value = ui.geo_shelly_host || '';
+  if(field('settingsGeoShellySwitchId')) field('settingsGeoShellySwitchId').value = Number.isFinite(Number(ui.geo_shelly_switch_id)) ? Number(ui.geo_shelly_switch_id) : 0;
+  if(field('settingsGeoShellyPowerThreshold')) field('settingsGeoShellyPowerThreshold').value = Number.isFinite(Number(ui.geo_shelly_power_off_threshold_w)) ? Number(ui.geo_shelly_power_off_threshold_w) : 50;
+  const vehicleSelect = field('settingsGeoShellyVehicle');
+  if(vehicleSelect){
+    const configuredTopic = String(ui.geo_shelly_vehicle_mapped_topic || '').replace(/\/$/, '');
+    vehicleSelect.innerHTML = '<option value="">Fahrzeug wählen</option>';
+    const vehicles = Array.isArray(data?.geo_vehicles) ? data.geo_vehicles : [];
+    vehicles.forEach(v => {
+      const topic = String(v?.mapped_topic || '').replace(/\/$/, '');
+      if(!topic) return;
+      const opt = document.createElement('option');
+      opt.value = topic;
+      const remote = v?.remote ? ` · Remote${v?.remote_server_name ? ` ${v.remote_server_name}` : ''}` : '';
+      opt.textContent = `${v?.label || v?.license_plate || topic} · ${v?.manufacturer || ''} ${v?.license_plate || ''}${remote}`.trim();
+      if(topic === configuredTopic) opt.selected = true;
+      vehicleSelect.appendChild(opt);
+    });
+    if(configuredTopic && !vehicles.some(v => String(v?.mapped_topic || '').replace(/\/$/, '') === configuredTopic)){
+      const opt = document.createElement('option');
+      opt.value = configuredTopic;
+      opt.textContent = `Gespeichert: ${configuredTopic}`;
+      opt.selected = true;
+      vehicleSelect.appendChild(opt);
+    }
+  }
 }
 async function openSettingsDialog(){
   const dlg = field('settingsDialog');
@@ -1390,7 +1439,15 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
       device_tracker_enabled: !!(trackerToggle && trackerToggle.checked),
       ha_discovery_enabled: !!field('settingsHaDiscoveryEnabled')?.checked,
       ha_discovery_prefix: field('settingsHaDiscoveryPrefix')?.value || 'homeassistant',
-      ha_discovery_retain: !!field('settingsHaDiscoveryRetain')?.checked, evcc_geo_filter_enabled: !!field('settingsEvccGeoFilterEnabled')?.checked, evcc_geo_radius_m: parseFloat(field('settingsEvccGeoRadius')?.value || '30')
+      ha_discovery_retain: !!field('settingsHaDiscoveryRetain')?.checked,
+      evcc_geo_filter_enabled: !!field('settingsEvccGeoFilterEnabled')?.checked,
+      evcc_geo_radius_m: parseFloat(field('settingsEvccGeoRadius')?.value || '30'),
+      evcc_geo_exit_radius_m: parseFloat(field('settingsEvccGeoExitRadius')?.value || '50'),
+      geo_shelly_enabled: !!field('settingsGeoShellyEnabled')?.checked,
+      geo_shelly_vehicle_mapped_topic: field('settingsGeoShellyVehicle')?.value || '',
+      geo_shelly_host: field('settingsGeoShellyHost')?.value || '',
+      geo_shelly_switch_id: parseInt(field('settingsGeoShellySwitchId')?.value || '0', 10),
+      geo_shelly_power_off_threshold_w: parseFloat(field('settingsGeoShellyPowerThreshold')?.value || '50')
     });
     uiSettings = resp.ui_settings || {};
     helperHomezoneJson = resp.effective_homezone || helperHomezoneJson;
