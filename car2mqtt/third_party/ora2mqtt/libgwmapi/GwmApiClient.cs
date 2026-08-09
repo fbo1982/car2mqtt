@@ -202,6 +202,27 @@ public partial class GwmApiClient
         }
     }
 
+    /// <summary>
+    /// Configure the normal vehicle/runtime app gateway for tokens issued by the
+    /// My GWM EU front-service login. Public My GWM clients use GW_APP_GWM on the
+    /// regional app gateway with rs=2 and systemType=2 for vehicle data.
+    /// </summary>
+    public void UseMyGwmEuRuntimeProfile(string country)
+    {
+        var normalizedCountry = (country ?? String.Empty).Trim().ToUpperInvariant();
+        SetHeader(_appClient, "rs", "2");
+        SetHeader(_appClient, "terminal", "GW_APP_GWM");
+        SetHeader(_appClient, "brand", "6");
+        SetHeader(_appClient, "country", normalizedCountry);
+        SetHeader(_appClient, "language", CountryToFrontLanguage(normalizedCountry));
+        SetHeader(_appClient, "regioncode", normalizedCountry);
+        SetHeader(_appClient, "systemtype", "2");
+        _appClient.DefaultRequestHeaders.Remove("enterpriseId");
+        _appClient.DefaultRequestHeaders.Remove("appId");
+        _appClient.DefaultRequestHeaders.Remove("channel");
+        _appClient.DefaultRequestHeaders.Remove("cver");
+    }
+
     public void UseLegacyOraProfile()
     {
         foreach (var client in new[] { _h5Client, _appClient })
@@ -269,6 +290,15 @@ public partial class GwmApiClient
         _frontClient.DefaultRequestHeaders.Add("accessToken", accessToken);
     }
 
+    public void SetRefreshToken(string refreshToken)
+    {
+        foreach (var client in new[] { _h5Client, _appClient, _frontClient })
+        {
+            client.DefaultRequestHeaders.Remove("refreshToken");
+            client.DefaultRequestHeaders.Add("refreshToken", refreshToken ?? String.Empty);
+        }
+    }
+
     private async Task PostH5Async<T>(string url, T body, CancellationToken cancellationToken)
     {
         var response = await _h5Client.PostAsJsonAsync(url, body, cancellationToken);
@@ -308,6 +338,12 @@ public partial class GwmApiClient
     {
         var response = await _frontClient.PostAsJsonAsync(GetFrontUri(url), body, cancellationToken);
         return await GetResponseAsync<TOut>(response, cancellationToken);
+    }
+
+    private async Task<T> GetFrontAsync<T>(string url, CancellationToken cancellationToken)
+    {
+        var response = await _frontClient.GetAsync(GetFrontUri(url), cancellationToken);
+        return await GetResponseAsync<T>(response, cancellationToken);
     }
 
     private async Task<T> GetH5Async<T>(string url, CancellationToken cancellationToken)

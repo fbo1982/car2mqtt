@@ -1,5 +1,6 @@
 ﻿using System.Globalization;
 using System.Text.Json;
+using System.Text;
 using CommandLine;
 using libgwmapi;
 using MQTTnet;
@@ -46,7 +47,18 @@ public class RunCommand:BaseCommand
             while (!cancellationToken.IsCancellationRequested)
             {
                 await RefreshTokenAsync(api, config, cancellationToken);
-                await PublishStatusAsync(mqtt, api, config.Mqtt, publishHaDiscovery, cancellationToken);
+                try
+                {
+                    await PublishStatusAsync(mqtt, api, config.Mqtt, publishHaDiscovery, cancellationToken);
+                }
+                catch (GwmApiException runtimeAuthException) when
+                    (String.Equals(config.AuthFlow, "eu_mygwm_front", StringComparison.OrdinalIgnoreCase) &&
+                     IsRuntimeAuthError(runtimeAuthException))
+                {
+                    _logger.LogWarning($"MyGWM runtime token rejected (GWM code={runtimeAuthException.Code}; {runtimeAuthException.Message}). Refreshing on the same front-service app-api context...");
+                    await RefreshTokenAsync(api, config, cancellationToken, force: true);
+                    await PublishStatusAsync(mqtt, api, config.Mqtt, publishHaDiscovery, cancellationToken);
+                }
                 if (publishHaDiscovery)
                 {
                     publishHaDiscovery = false;
@@ -102,21 +114,48 @@ public class RunCommand:BaseCommand
     private GwmApiClient GetGwmApiClient(Ora2MqttOptions options)
     {
         var client = ConfigureApiClient(options);
+        if (String.Equals(options.AuthFlow, "eu_mygwm_front", StringComparison.OrdinalIgnoreCase))
+        {
+            // Authentication succeeded on the MyGWM EU front-service app-api lane.
+            // Vehicle data itself follows the normal regional app gateway, but with
+            // the MyGWM vehicle identity rather than the discontinued ORA identity.
+            client.UseMyGwmEuFrontProfile(options.Country, "eu_global_service_global_gateway_app", "2");
+            client.UseMyGwmEuFrontIdentity("mygwm13_app", "GW_APP_GWM", "6", "CC01");
+            client.UseMyGwmEuRuntimeProfile(options.Country);
+            _logger.LogInformation("ORA runtime profile: MyGWM EU app-api (GW_APP_GWM, brand=6, rs=2)");
+        }
         client.SetAccessToken(options.Account.AccessToken);
+        client.SetRefreshToken(options.Account.RefreshToken);
         return client;
     }
 
-    private async Task RefreshTokenAsync(GwmApiClient client, Ora2MqttOptions options, CancellationToken cancellationToken)
+    private async Task RefreshTokenAsync(GwmApiClient client, Ora2MqttOptions options, CancellationToken cancellationToken, bool force = false)
     {
-        try
+        var useMyGwmFront = String.Equals(options.AuthFlow, "eu_mygwm_front", StringComparison.OrdinalIgnoreCase);
+        if (useMyGwmFront)
         {
-            //check token
-            await client.GetUserBaseInfoAsync(cancellationToken);
-            return;
+            // Do not validate a freshly issued MyGWM token through the legacy ORA H5
+            // user endpoint. That cross-profile check returns 607501 even though the
+            // token was just issued successfully. Only refresh when the JWT itself is
+            // near expiry, or when a real runtime API call rejected it.
+            if (!force && !IsJwtExpiredOrNearExpiry(options.Account.AccessToken))
+            {
+                return;
+            }
+            _logger.LogInformation("Refreshing MyGWM EU access token on front-service app-api...");
         }
-        catch (GwmApiException e)
+        else
         {
-            _logger.LogError($"Access token expired ({e.Message}). Trying to refresh token...");
+            try
+            {
+                // Legacy ORA token validation.
+                await client.GetUserBaseInfoAsync(cancellationToken);
+                return;
+            }
+            catch (GwmApiException e)
+            {
+                _logger.LogError($"Access token expired ({e.Message}). Trying to refresh token...");
+            }
         }
 
         var refresh = new RefreshTokenRequest
@@ -126,10 +165,15 @@ public class RunCommand:BaseCommand
             RefreshToken = options.Account.RefreshToken,
         };
 
-        _logger.LogInformation("Refreshing ORA access token...");
+        if (!useMyGwmFront)
+        {
+            _logger.LogInformation("Refreshing ORA access token...");
+        }
         client.SetAccessToken("");
 
-        var refreshTask = client.RefreshTokenAsync(refresh, cancellationToken);
+        var refreshTask = useMyGwmFront
+            ? client.RefreshTokenMyGwmEuFrontAsync(refresh, cancellationToken)
+            : client.RefreshTokenAsync(refresh, cancellationToken);
         var completed = await Task.WhenAny(refreshTask, Task.Delay(TimeSpan.FromSeconds(30), cancellationToken));
         if (completed != refreshTask)
         {
@@ -144,12 +188,60 @@ public class RunCommand:BaseCommand
             options.Account.RefreshToken = response.RefreshToken;
             await SaveConfigAsync(options, cancellationToken);
             client.SetAccessToken(options.Account.AccessToken);
-            _logger.LogInformation("ORA token refresh successful.");
+            client.SetRefreshToken(options.Account.RefreshToken);
+            _logger.LogInformation(useMyGwmFront ? "MyGWM EU token refresh successful." : "ORA token refresh successful.");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "ORA token refresh failed.");
             throw;
+        }
+    }
+
+    private static bool IsRuntimeAuthError(GwmApiException exception)
+    {
+        var message = exception.Message ?? String.Empty;
+        return exception.Code == "607501" ||
+               exception.Code == "110641" ||
+               message.Contains("token", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("logged in elsewhere", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("login again", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsJwtExpiredOrNearExpiry(string accessToken)
+    {
+        if (String.IsNullOrWhiteSpace(accessToken))
+        {
+            return true;
+        }
+        try
+        {
+            var parts = accessToken.Split('.');
+            if (parts.Length < 2)
+            {
+                // Some GWM deployments use opaque tokens. Do not force-refresh an
+                // opaque token merely because its expiry cannot be decoded.
+                return false;
+            }
+            var payload = parts[1].Replace('-', '+').Replace('_', '/');
+            payload += payload.Length % 4 switch
+            {
+                2 => "==",
+                3 => "=",
+                _ => String.Empty
+            };
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(payload));
+            using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty("exp", out var expElement) ||
+                !expElement.TryGetInt64(out var exp))
+            {
+                return false;
+            }
+            return DateTimeOffset.UtcNow >= DateTimeOffset.FromUnixTimeSeconds(exp).AddMinutes(-1);
+        }
+        catch
+        {
+            return false;
         }
     }
 

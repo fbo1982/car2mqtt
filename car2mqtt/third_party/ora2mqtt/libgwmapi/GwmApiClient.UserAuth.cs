@@ -92,4 +92,10 @@ public partial class GwmApiClient
     {
         return PostH5Async<RefreshTokenRequest, RefreshTokenResponse>("userAuth/refreshToken", request, cancellationToken);
     }
+
+
+    public Task<RefreshTokenResponse> RefreshTokenMyGwmEuFrontAsync(RefreshTokenRequest request, CancellationToken cancellationToken)
+    {
+        return PostFrontAsync<RefreshTokenRequest, RefreshTokenResponse>("userAuth/refreshToken", request, cancellationToken);
+    }
 }

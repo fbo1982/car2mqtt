@@ -95,8 +95,29 @@ namespace ora2mqtt
 
         private async Task LoginAsync(GwmApiClient client, Ora2MqttOptions options, CancellationToken cancellationToken)
         {
+            var authFlow = AuthFlow(options);
+            var useEuMyGwmFront = String.Equals(authFlow, "eu_mygwm_front", StringComparison.OrdinalIgnoreCase);
+            var useMyGwm13 = String.Equals(authFlow, "mygwm13", StringComparison.OrdinalIgnoreCase);
+            var useEuVerifyCode = String.Equals(authFlow, "eu_verifycode", StringComparison.OrdinalIgnoreCase);
+            options.AuthFlow = useEuMyGwmFront ? "eu_mygwm_front" :
+                (useMyGwm13 ? "mygwm13" : (useEuVerifyCode ? "eu_verifycode" : "legacy"));
+
             if (!String.IsNullOrEmpty(options.Account.AccessToken))
             {
+                if (useEuMyGwmFront)
+                {
+                    // Tokens issued by the MyGWM front-service must not be validated
+                    // through the legacy ORA H5 profile. Preserve them here; RunCommand
+                    // applies the MyGWM runtime profile and refreshes only when needed.
+                    client.UseMyGwmEuFrontProfile(options.Country, "eu_global_service_global_gateway_app", "2");
+                    client.UseMyGwmEuFrontIdentity("mygwm13_app", "GW_APP_GWM", "6", "CC01");
+                    client.UseMyGwmEuRuntimeProfile(options.Country);
+                    client.SetAccessToken(options.Account.AccessToken);
+                    client.SetRefreshToken(options.Account.RefreshToken);
+                    _logger.LogError("ORA_AUTH_TOKENS_REUSED ORA_AUTH_FLOW=eu_mygwm_front validation=runtime_deferred");
+                    return;
+                }
+
                 try
                 {
                     client.SetAccessToken(options.Account.AccessToken);
@@ -128,16 +149,9 @@ namespace ora2mqtt
             }
             var account = NonInteractive ? Env("ORA_ACCOUNT")! : Prompt.Input<string>("Please enter your mail address");
             var password = NonInteractive ? Env("ORA_PASSWORD")! : Prompt.Password("Please enter your password");
-            var authFlow = AuthFlow(options);
-            var useEuMyGwmFront = String.Equals(authFlow, "eu_mygwm_front", StringComparison.OrdinalIgnoreCase);
-            var useMyGwm13 = String.Equals(authFlow, "mygwm13", StringComparison.OrdinalIgnoreCase);
-            var useEuVerifyCode = String.Equals(authFlow, "eu_verifycode", StringComparison.OrdinalIgnoreCase);
-            options.AuthFlow = useEuMyGwmFront ? "eu_mygwm_front" :
-                (useMyGwm13 ? "mygwm13" : (useEuVerifyCode ? "eu_verifycode" : "legacy"));
 
-            // Vehicle traffic stays on the existing EU gateway profile for now.  The new
-            // My GWM authentication probe gets its own front-service transport so the OTP
-            // and device context never cross the legacy ORA H5 session.
+            // Authentication uses a dedicated front-service transport. Runtime vehicle
+            // traffic is switched to the MyGWM app identity after tokens are issued.
             client.UseLegacyOraProfile();
             if (useEuMyGwmFront)
             {

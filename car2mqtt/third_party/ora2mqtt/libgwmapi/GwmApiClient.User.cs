@@ -8,4 +8,10 @@ public partial class GwmApiClient
     {
         return GetH5Async<UserBaseInfo>("user/getUserBaseInfo", cancellationToken);
     }
+
+
+    public Task<UserBaseInfo> GetUserBaseInfoMyGwmEuFrontAsync(CancellationToken cancellationToken)
+    {
+        return GetFrontAsync<UserBaseInfo>("user/getUserBaseInfo", cancellationToken);
+    }
 }
