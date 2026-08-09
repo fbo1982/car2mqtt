@@ -132,7 +132,7 @@ def build_evcc_custom_vehicle_payload(vehicle: VehicleConfig, mqtt_settings: Run
     root = (mapped_root or mapped_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)).rstrip("/")
     cfg = vehicle.provider_config or {}
     try:
-        cap = float(str(cfg.get("capacity_kwh") or cfg.get("capacityKwh") or "0") or 0)
+        cap = float(str(cfg.get("evcc_capacity_kwh") or cfg.get("capacity_kwh") or cfg.get("capacityKwh") or "0") or 0)
     except Exception:
         cap = 0
 
@@ -141,6 +141,7 @@ def build_evcc_custom_vehicle_payload(vehicle: VehicleConfig, mqtt_settings: Run
     # blocks; the API sync below sends this either as native custom payload or
     # as the YAML text used by EVCC's custom-device editor.
     timeout = str(cfg.get("evcc_timeout") or "24h")
+    is_silence = str(vehicle.manufacturer or "").strip().lower() == "acconia"
     payload: dict[str, Any] = {
         "name": str(cfg.get("evcc_name") or build_evcc_vehicle_name(vehicle)),
         "title": str(cfg.get("evcc_title") or vehicle.label or vehicle.license_plate),
@@ -150,14 +151,17 @@ def build_evcc_custom_vehicle_payload(vehicle: VehicleConfig, mqtt_settings: Run
         "soc": {"source": "mqtt", "topic": f"{root}/soc", "timeout": timeout},
         "range": {"source": "mqtt", "topic": f"{root}/range", "timeout": timeout},
         "odometer": {"source": "mqtt", "topic": f"{root}/odometer", "timeout": timeout},
-        "limitsoc": {"source": "mqtt", "topic": f"{root}/limitSoc", "timeout": timeout},
         # EVCC reads one locally-derived A/B/C status. Car2MQTT publishes this
         # on every site, including for remote-forwarded vehicles. With the geo
         # filter disabled it mirrors the legacy plugged/charging behaviour.
         "status": {"source": "mqtt", "topic": f"{root}/evccStatus", "timeout": timeout},
-        "onIdentify": {"mode": _evcc_onidentify_mode(cfg)},
+        "onIdentify": {"mode": ("now" if is_silence and not (cfg.get("evcc_onidentify_mode") or cfg.get("onidentify_mode")) else _evcc_onidentify_mode(cfg))},
     }
-    phases = str(cfg.get("evcc_phases") or cfg.get("phases") or "").strip()
+    # MySilence currently does not provide a vehicle charge-limit value. Avoid
+    # creating an MQTT plugin that can only time out.
+    if not is_silence:
+        payload["limitsoc"] = {"source": "mqtt", "topic": f"{root}/limitSoc", "timeout": timeout}
+    phases = str(cfg.get("evcc_phases") or cfg.get("phases") or ("1" if is_silence else "")).strip()
     if phases:
         try:
             payload["phases"] = int(phases)

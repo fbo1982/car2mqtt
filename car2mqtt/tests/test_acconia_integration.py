@@ -79,6 +79,32 @@ class AcconiaIntegrationTests(unittest.TestCase):
         self.assertEqual(mapped["capacityKwh"], 5.6)
         self.assertEqual(mapped["vehicleType"], "ev")
 
+    def test_mapper_prefers_explicit_connected_over_charging_order(self):
+        payload_connected_then_charging = {
+            "connected": True,
+            "charging": False,
+            "lastLocation": {"latitude": 48.1, "longitude": 11.4},
+        }
+        payload_charging_then_connected = {
+            "charging": False,
+            "connected": True,
+            "lastLocation": {"latitude": 48.1, "longitude": 11.4},
+        }
+        first = apply_acconia_metric({}, "", payload_connected_then_charging)
+        second = apply_acconia_metric({}, "", payload_charging_then_connected)
+        self.assertFalse(first["charging"])
+        self.assertTrue(first["plugged"])
+        self.assertFalse(second["charging"])
+        self.assertTrue(second["plugged"])
+
+    def test_mapper_falls_back_to_charging_when_no_connection_flag_exists(self):
+        mapped = apply_acconia_metric({}, "", {"charging": True})
+        self.assertTrue(mapped["charging"])
+        self.assertTrue(mapped["plugged"])
+        mapped = apply_acconia_metric(mapped, "", {"charging": False})
+        self.assertFalse(mapped["charging"])
+        self.assertFalse(mapped["plugged"])
+
     def test_runner_selects_requested_scooter(self):
         vehicle = VehicleConfig(
             id="SILENCE1",

@@ -150,7 +150,8 @@ function getCopyConfigContext(){
   const entityBase = `car_${manufacturerPrefix}_${id.toLowerCase()}`;
   const varPrefix = `${id.toLowerCase()}_`;
   const evccCfg = evccCfgFromCardOrVehicle(current || {});
-  const onIdentifyMode = normalizeEvccOnIdentifyMode(field('editEvccOnIdentifyMode')?.value || evccCfg.evcc_onidentify_mode || 'off');
+  const configuredMode = field('editEvccOnIdentifyMode')?.value || evccCfg.evcc_onidentify_mode || '';
+  const onIdentifyMode = normalizeEvccOnIdentifyMode(configuredMode || (manufacturer === 'acconia' ? 'now' : 'off'));
   return { manufacturer, manufacturerPrefix, id, rawPlate, title, current, capacity, topicBase, entityBase, varPrefix, onIdentifyMode };
 }
 function getHelperCards(){
@@ -565,14 +566,17 @@ daheimladen_force_evcc_vehicle:
 }
 
 function buildEvccCustomTemplate(){
-  const { id, title, capacity, topicBase, onIdentifyMode } = getCopyConfigContext();
+  const { manufacturer, id, title, capacity, topicBase, onIdentifyMode } = getCopyConfigContext();
+  const isSilence = manufacturer === 'acconia';
+  const phases = isSilence ? 1 : 3;
+  const limitSocBlock = isSilence ? '' : `\nlimitsoc:\n  source: mqtt\n  topic: ${topicBase}/limitSoc\n  timeout: 24h\n`;
   return `###########################################
 ###### CAR2MQTT Custom EVCC Template ######
 ###########################################
 
 title: ${yamlEscape(title)} #<- Angezeigter Fahrzeugname
 capacity: ${capacity || '0'} #<- Auf die Batteriekapazität anpassen
-phases: 3 #<- Wieviele Phasen werden verwendet 1,3 zulässig
+phases: ${phases} #<- Wieviele Phasen werden verwendet 1,3 zulässig
 icon: car
 identifiers:
   - ${id}
@@ -593,12 +597,7 @@ odometer:
   source: mqtt
   topic: ${topicBase}/odometer
   timeout: 24h
-
-limitsoc:
-  source: mqtt
-  topic: ${topicBase}/limitSoc
-  timeout: 24h
-
+${limitSocBlock}
 status:
   source: mqtt
   topic: ${topicBase}/evccStatus

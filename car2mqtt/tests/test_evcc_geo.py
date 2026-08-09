@@ -92,6 +92,27 @@ def test_evcc_vehicle_template_reads_single_derived_status_topic():
     assert "source: combined" not in yaml_text
 
 
+def test_silence_evcc_template_uses_single_phase_geo_status_and_no_limitsoc():
+    vehicle = VehicleConfig(
+        id="SILENCES04",
+        label="Silence S04 (David)",
+        manufacturer="acconia",
+        license_plate="VERSICHERUNGSKENNZEICHEN",
+        provider_config={"evcc_capacity_kwh": "11"},
+    )
+    settings = RuntimeMqttSettings(host="mqtt", base_topic="car")
+    payload = build_evcc_custom_vehicle_payload(vehicle, settings)
+    assert payload["capacity"] == 11.0
+    assert payload["phases"] == 1
+    assert payload["onIdentify"]["mode"] == "now"
+    assert "limitsoc" not in payload
+    assert payload["status"]["topic"] == "car/acconia/VERSICHERUNGSKENNZEICHEN/mapped/evccStatus"
+    yaml_text = evcc_payload_to_yaml(payload)
+    assert "phases: 1" in yaml_text
+    assert "limitsoc:" not in yaml_text
+    assert "source: combined" not in yaml_text
+
+
 def test_geo_settings_are_upgrade_safe_and_ui_controls_exist():
     ui = UiSettings()
     assert ui.evcc_geo_filter_enabled is False

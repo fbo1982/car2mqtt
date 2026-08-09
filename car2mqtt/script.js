@@ -492,14 +492,18 @@ daheimladen_force_evcc_vehicle:
 }
 
 function buildEvccCustomTemplate(){
-  const { id, title, capacity, topicBase } = getCopyConfigContext();
+  const { manufacturer, id, title, capacity, topicBase } = getCopyConfigContext();
+  const isSilence = manufacturer === 'acconia';
+  const phases = isSilence ? 1 : 3;
+  const identifyMode = isSilence ? 'now' : 'pv';
+  const limitSocBlock = isSilence ? '' : `\nlimitsoc:\n  source: mqtt\n  topic: ${topicBase}/limitSoc\n  timeout: 24h\n`;
   return `###########################################
 ###### CAR2MQTT Custom EVCC Template ######
 ###########################################
 
 title: ${yamlEscape(title)} #<- Angezeigter Fahrzeugname
 capacity: ${capacity || '0'} #<- Auf die Batteriekapazität anpassen
-phases: 3 #<- Wieviele Phasen werden verwendet 1,3 zulässig
+phases: ${phases} #<- Wieviele Phasen werden verwendet 1,3 zulässig
 icon: car
 identifiers:
   - ${id}
@@ -508,11 +512,8 @@ soc:
   topic: ${topicBase}/soc
   timeout: 24h
 
-onIdentify: #<- es darf nur eine Lademodus aktiv sein.
-  mode: pv # PV Only
-  #mode: now # Schnell
-  #mode: minpv # Minimum + PV
-  #mode: off # Aus
+onIdentify: #<- genau ein Lademodus aktiv
+  mode: ${identifyMode} # Silence=now, andere Standardvorlage=pv
 
 range:
   source: mqtt
@@ -523,12 +524,7 @@ odometer:
   source: mqtt
   topic: ${topicBase}/odometer
   timeout: 24h
-
-limitsoc:
-  source: mqtt
-  topic: ${topicBase}/limitSoc
-  timeout: 24h
-
+${limitSocBlock}
 status:
   source: mqtt
   topic: ${topicBase}/evccStatus

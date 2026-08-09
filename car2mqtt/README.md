@@ -133,6 +133,12 @@ Für die Migration aus einer bestehenden manuellen `configuration.yaml` ist die 
 
 Zusätzlich werden – soweit der jeweilige Hersteller den Wert liefert – unter anderem SoC, Reichweite, Kilometerstand, Ladelimit, Akkukapazität, Ladezustand und weitere Fahrzeugzustände als Entitäten angelegt. Nicht vorhandene Herstellerwerte bleiben in Home Assistant einfach unbekannt. Der separat konfigurierbare Device Tracker bleibt davon unabhängig.
 
+## Silence / ACCIONA EVCC-Hinweis (ab 1.2.55)
+
+Für MySilence-Fahrzeuge verwendet die erzeugte EVCC-Konfiguration standardmäßig `phases: 1` und lässt `limitsoc` weg, weil MySilence derzeit keinen entsprechenden Fahrzeug-Limitwert liefert. Der EVCC-Status wird wie bei den anderen Fahrzeugen ausschließlich aus dem lokal erzeugten `mapped/evccStatus` gelesen.
+
+Beim MySilence-Mapping hat ein expliziter Anschlusswert (`plugged`, `connected`, `chargerConnected` oder `chargingConnected`) Vorrang vor dem Ladeflag. Nur wenn kein separater Anschlusswert vorhanden ist, dient `charging` als Fallback für `plugged`. Dadurch kann `charging=false` ein vorhandenes `connected=true` nicht mehr überschreiben.
+
 ## EVCC Geo Detection
 
 Ab Version 1.2.54 erzeugt jede Car2MQTT-Installation auf ihrem **lokalen MQTT-Broker** einen zusätzlichen EVCC-Status pro Fahrzeug:

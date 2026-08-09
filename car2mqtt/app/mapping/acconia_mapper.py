@@ -109,6 +109,8 @@ def apply_acconia_metric(
     parsed = _parse_payload(payload)
     paths = _flatten(parsed) if isinstance(parsed, (dict, list)) else [("", parsed)]
     topic_base = str(relative_topic or "").strip("/").replace("/", ".")
+    explicit_plugged: bool | None = None
+    charging_seen: bool | None = None
 
     for inner_path, value in paths:
         path = ".".join(part for part in (topic_base, inner_path) if part)
@@ -139,12 +141,12 @@ def apply_acconia_metric(
             continue
         if key in {"charging", "chargestate", "ischarging"}:
             if boo is not None:
+                charging_seen = boo
                 _set_metric(mapped, "charging", boo, ts)
-                _set_metric(mapped, "plugged", boo, ts)
             continue
         if key in {"plugged", "connected", "chargerconnected", "chargingconnected"}:
             if boo is not None:
-                _set_metric(mapped, "plugged", boo, ts)
+                explicit_plugged = boo
             continue
 
         looks_like_soc = key in {
@@ -164,6 +166,15 @@ def apply_acconia_metric(
             else:
                 _set_metric(mapped, "soc", num, ts)
             continue
+
+    # MySilence may expose both a charging flag and a separate connection flag.
+    # A charging=false value must not overwrite connected=true merely because it
+    # appears later in the JSON object. Prefer the explicit plug/connection state;
+    # only fall back to charging when the API does not provide one.
+    if explicit_plugged is not None:
+        _set_metric(mapped, "plugged", explicit_plugged, ts)
+    elif charging_seen is not None:
+        _set_metric(mapped, "plugged", charging_seen, ts)
 
     battery1 = _to_number(mapped.get("battery1Soc"))
     battery2 = _to_number(mapped.get("battery2Soc"))
