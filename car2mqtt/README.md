@@ -14,8 +14,7 @@ Es bündelt mehrere Hersteller in einer Oberfläche, mappt Rohdaten auf ein einh
 - Optionaler **MQTT Device Tracker**
 - **EVCC YAML / Copy Helper** pro Fahrzeug
 - **EVCC Geo Detection**: lokaler A/B/C-Status aus Fahrzeugverbindung + GPS + Home-Assistant-Zone
-- **Geo-Hysterese** mit getrenntem Ankunfts-/Abfahrtsradius gegen GPS-Flattern
-- optionale **Shelly-Geo-Automation**: Steckdose bei Fahrzeug-Ankunft einschalten und bei Abfahrt sicher ausschalten, ohne EVCC-Fahrzeugbindung
+- **Geo-Shelly Automation**: standortlokales EIN/AUS bei Ankunft/Abfahrt, Trigger pro lokalem oder Remote-Fahrzeug auswählbar
 - Copy-Helper für `configuration.yaml`, `automations.yaml` und fahrzeugspezifische Variablenblöcke
 - Live-Logs sowie ReAuth-/Reconnect-Hilfen für unterstützte Hersteller
 
@@ -61,8 +60,6 @@ Die MySilence-Schnittstelle ist nicht offiziell dokumentiert und kann sich durch
 - per UI direkt kopierbar
 - standortabhängiger `evccStatus` (`A`/`B`/`C`) direkt über MQTT
 - optionaler Geo-Filter gegen die lokal ausgewählte Home-Assistant-Zone
-- konfigurierbare Hysterese für Ankunft und Abfahrt
-- optionale Shelly-Schaltung auf Geo-Flanken, EVCC bleibt für Fahrzeugerkennung und Ladefreigabe zuständig
 - zusätzlich Copy-Helper für passende MQTT-Sensoren und Automationen
 
 ## Was Car2MQTT macht
@@ -158,17 +155,15 @@ car/<manufacturer>/<plate>/mapped/evccGeoReason
 
 Der Filter verändert **nicht** die Herstellerwerte `mapped/plugged` oder `mapped/charging`. Dadurch bleiben Home Assistant, Diagnose und andere MQTT-Verbraucher unverfälscht. Weil die Berechnung lokal aus den auf dem Broker vorhandenen `mapped`-Topics erfolgt, funktioniert sie auch mit Remote-Fahrzeugen: derselbe Wagen kann an Standort A `A` und an Standort B gleichzeitig `B` oder `C` liefern. Der abgeleitete Status wird nicht über die Car2MQTT-MQTT-Weiterleitung an andere Standorte gespiegelt.
 
-Aktivierung: **Einstellungen → EVCC → Standortabhängige Fahrzeugerkennung**. Ab Version 1.2.58 gibt es getrennte Radien für die Hysterese: Ein Fahrzeug wird innerhalb des **Ankunftsradius** als am Standort erkannt und gilt erst nach Überschreiten des größeren **Abfahrtsradius** als weggefahren. Dadurch führen normale GPS-Schwankungen am Zonenrand nicht zu ständigem Umschalten. Als Mittelpunkt dient die oben ausgewählte Home Zone. Die EVCC-Copy-Vorlage liest anschließend direkt `mapped/evccStatus`.
+Aktivierung: **Einstellungen → EVCC → Standortabhängige Fahrzeugerkennung**. Dort wird auch der Radius in Metern festgelegt; als Mittelpunkt dient die oben ausgewählte Home Zone. Die EVCC-Copy-Vorlage liest anschließend direkt `mapped/evccStatus`.
 
-## Geo-Shelly-Automation (ab 1.2.58)
+## Geo-Shelly Automation (ab 1.2.58, Fahrzeugauswahl ab 1.2.59)
 
-Optional kann Car2MQTT einen Shelly-Switch direkt anhand der Geo-Präsenz eines ausgewählten Fahrzeugs schalten. Das ist **keine feste EVCC-Fahrzeugzuordnung**: Car2MQTT reagiert nur auf die Geo-Flanken. Bei **außen → innen** wird der Shelly einmal eingeschaltet, bei **innen → außen** einmal ausgeschaltet. Zwischen diesen Ereignissen kann EVCC den Ladepunkt normal aktivieren oder deaktivieren, ohne dass Car2MQTT den Ausgang dauerhaft auf EIN erzwingt.
+Für schaltbare Lade-Steckdosen kann Car2MQTT einen Shelly bei Geo-Ankunft einmal einschalten und bei echter Abfahrt wieder ausschalten. EVCC bleibt danach für die normale Lade- und Fahrzeugsteuerung zuständig; es gibt keine feste EVCC-Fahrzeugzuordnung. Die Ankunfts-/Abfahrtsradien verwenden dieselbe Home-Zone und die Geo-Hysterese wie `evccAtSite`.
 
-Für die Auswahl wird das `mapped`-Topic verwendet; dadurch kann auch ein **Remote-Fahrzeug** auf dem lokalen MQTT-Broker als Trigger dienen. Der Shelly wird direkt über seine lokale RPC-API (`Switch.GetStatus` / `Switch.Set`) angesprochen.
+Ab 1.2.59 wird das Trigger-Fahrzeug **nicht mehr global in den Einstellungen** gewählt. Stattdessen besitzt jedes lokale Fahrzeug in seinen Fahrzeugeinstellungen die Checkbox **„Geo-Shelly an diesem Standort auslösen“**. Remote-Fahrzeuge besitzen dieselbe Checkbox; deren Auswahl wird ausschließlich lokal auf dem jeweiligen Car2MQTT-Standort gespeichert. Dadurch kann dasselbe Remote-Fahrzeug Standort A triggern, Standort B aber nicht. Mehrere Fahrzeuge können gleichzeitig ausgewählt werden; AUS wird erst ausgelöst, wenn keines der ausgewählten Fahrzeuge mehr vor Ort ist.
 
-Als Schutz gegen einen GPS-Ausreißer während des Ladens wird eine Abfahrt bei hoher Shelly-Leistung zunächst nur vorgemerkt. Erst wenn die gemessene Leistung unter den konfigurierten Grenzwert gefallen ist, wird der Ausgang ausgeschaltet. Kehrt das Fahrzeug vorher in die Zone zurück, wird die vorgemerkte Abschaltung verworfen. Bei fehlender oder unbekannter GPS-Position erfolgt keine Shelly-Abschaltung. Ein erster bekannter Zustand **außerhalb** nach einem Car2MQTT-Neustart schaltet den Shelly ebenfalls nicht ab, damit ein anderes Fahrzeug den Ladepunkt weiter nutzen kann.
-
-Konfiguration: **Einstellungen → Geo Automation → Shelly bei Fahrzeug-Ankunft schalten**. Dort Fahrzeug, Shelly-IP/Host, Switch-ID und die maximale Leistung für ein sicheres Ausschalten auswählen. Für einen Shelly Pro 1PM ist typischerweise Switch-ID `0` passend.
+Unter **Einstellungen → Geo Automation** werden nur die standortbezogenen Shelly-Daten gepflegt: Host/IP, Shelly `Switch ID` und die maximale Leistung für sicheres Ausschalten. Beim Shelly Pro 1PM ist die `Switch ID` üblicherweise `0`; sie bezeichnet den Shelly-RPC-Kanal `Switch:0` und ist **keine EVCC-Datenbank-ID**. Eine EVCC-DB-ID wird für die Geo-Shelly-Funktion bewusst nicht benötigt.
 
 ## EVCC Copy Helper
 
@@ -221,8 +216,6 @@ Beispiele:
 
 ### Einstellungen
 - Home Zone für EVCC-/Automations-Helfer und EVCC Geo Detection
-- Ankunfts-/Abfahrtsradius für Geo-Hysterese
-- optionale Geo-Shelly-Automation mit Fahrzeugauswahl und Lastschutz
 - MQTT Discovery für Fahrzeug-Entitäten aktivieren
 - Entitäten bei Start / Fahrzeugänderung automatisch erzeugen
 - Discovery Prefix und Retain konfigurieren

@@ -15,6 +15,7 @@ import paho.mqtt.client as mqtt
 import requests
 
 from app.core.models import AppConfig, RuntimeMqttSettings
+from app.mqtt.topic_builder import mapped_topic
 
 logger = logging.getLogger("car2mqtt.evcc_geo")
 
@@ -230,7 +231,7 @@ class EvccGeoFilterService:
         self._exit_radius_m = 50.0
         self._presence_by_root: dict[str, bool] = {}
         self._relay_enabled = False
-        self._relay_vehicle_root = ""
+        self._relay_vehicle_roots: set[str] = set()
         self._relay_host = ""
         self._relay_switch_id = 0
         self._relay_power_off_threshold_w = 50.0
@@ -254,9 +255,22 @@ class EvccGeoFilterService:
             self._radius_m,
             float(getattr(ui, "evcc_geo_exit_radius_m", 50.0) or 50.0),
         )
-        self._relay_enabled = bool(getattr(ui, "geo_shelly_enabled", False))
-        self._relay_vehicle_root = str(getattr(ui, "geo_shelly_vehicle_mapped_topic", "") or "").strip().rstrip("/")
         self._relay_host = str(getattr(ui, "geo_shelly_host", "") or "").strip().rstrip("/")
+        base = str(getattr(self._mqtt_settings, "base_topic", "car") or "car").strip("/") or "car"
+        selected_roots: set[str] = set()
+        for vehicle in cfg.vehicles or []:
+            if bool(getattr(vehicle, "geo_shelly_trigger_enabled", False)):
+                selected_roots.add(mapped_topic(base, vehicle.manufacturer, vehicle.license_plate).rstrip("/"))
+        for remote_id in getattr(ui, "remote_geo_shelly_vehicle_ids", []) or []:
+            parts = str(remote_id or "").split("::")
+            if len(parts) >= 4 and parts[0] == "remote" and parts[1] and parts[2]:
+                selected_roots.add(mapped_topic(base, parts[1].lower(), parts[2]).rstrip("/"))
+        # Upgrade fallback for v1.2.58 installations with the old global topic.
+        legacy_root = str(getattr(ui, "geo_shelly_vehicle_mapped_topic", "") or "").strip().rstrip("/")
+        if not selected_roots and legacy_root:
+            selected_roots.add(legacy_root)
+        self._relay_vehicle_roots = selected_roots
+        self._relay_enabled = bool(self._relay_host and self._relay_vehicle_roots)
         self._relay_switch_id = max(0, int(getattr(ui, "geo_shelly_switch_id", 0) or 0))
         self._relay_power_off_threshold_w = max(0.0, float(getattr(ui, "geo_shelly_power_off_threshold_w", 50.0) or 50.0))
         if self.zone_entity_loader is not None:
@@ -334,23 +348,33 @@ class EvccGeoFilterService:
         logger.info("EVCC Geo Shelly: Ausgang %s -> %s", self._relay_switch_id, "EIN" if enabled else "AUS")
 
     def _schedule_relay_edge(self, root: str, previous: bool | None, current: bool | None) -> None:
+        root = root.rstrip("/")
         with self._lock:
-            if not self._relay_enabled or not self._relay_vehicle_root or root.rstrip("/") != self._relay_vehicle_root:
+            if not self._relay_enabled or root not in self._relay_vehicle_roots:
                 return
             if current is None:
                 return
             # First known inside state behaves like arrival so a service restart
-            # while the vehicle is parked on-site can restore the socket. A first
-            # known outside state intentionally does nothing to avoid switching
-            # off a socket another vehicle may currently use.
+            # while a selected vehicle is parked on-site can restore the socket.
+            # A first known outside state intentionally does nothing.
             if current is True and previous is not True:
                 self._relay_pending_off = False
                 self._relay_pending_on = True
                 logger.info("EVCC Geo Shelly: Ankunft erkannt für %s", root)
             elif previous is True and current is False:
+                # Multiple vehicles may opt in for the same socket. Only schedule
+                # OFF when no other selected vehicle is currently inside.
+                another_inside = any(
+                    selected_root != root and self._presence_by_root.get(selected_root) is True
+                    for selected_root in self._relay_vehicle_roots
+                )
+                if another_inside:
+                    self._relay_pending_off = False
+                    logger.info("EVCC Geo Shelly: %s abgefahren, weiteres ausgewähltes Fahrzeug noch vor Ort", root)
+                    return
                 self._relay_pending_on = False
                 self._relay_pending_off = True
-                logger.info("EVCC Geo Shelly: Abfahrt erkannt für %s", root)
+                logger.info("EVCC Geo Shelly: letzte ausgewählte Fahrzeug-Abfahrt erkannt für %s", root)
 
     def _process_relay_once(self) -> None:
         with self._lock:
@@ -358,7 +382,7 @@ class EvccGeoFilterService:
             pending_on = self._relay_pending_on
             pending_off = self._relay_pending_off
             threshold = self._relay_power_off_threshold_w
-            configured = bool(self._relay_vehicle_root and self._relay_host)
+            configured = bool(self._relay_vehicle_roots and self._relay_host)
         if not enabled or not configured or not (pending_on or pending_off):
             return
 
@@ -563,7 +587,8 @@ class EvccGeoFilterService:
                 "vehicles_seen": len(self._snapshots),
                 "shelly": {
                     "enabled": self._relay_enabled,
-                    "vehicle_mapped_topic": self._relay_vehicle_root,
+                    "vehicle_mapped_topics": sorted(self._relay_vehicle_roots),
+                    "selected_vehicle_count": len(self._relay_vehicle_roots),
                     "host": self._relay_host,
                     "switch_id": self._relay_switch_id,
                     "power_off_threshold_w": self._relay_power_off_threshold_w,

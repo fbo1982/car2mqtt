@@ -39,6 +39,10 @@ class VehicleConfig(BaseModel):
     provider_state: ProviderState = Field(default_factory=ProviderState)
     mqtt_client_ids: List[str] = Field(default_factory=list)
     device_tracker_enabled: bool = False
+    # Per-location opt-in for the optional Geo-Shelly automation. For local
+    # vehicles this flag is stored with the vehicle; remote vehicles use the
+    # local ui_settings.remote_geo_shelly_vehicle_ids list instead.
+    geo_shelly_trigger_enabled: bool = False
 
     @field_validator("manufacturer", mode="before")
     @classmethod
@@ -50,6 +54,9 @@ class UiSettings(BaseModel):
     helper_home_zone_entity_id: str = ""
     device_tracker_enabled: bool = False
     remote_device_tracker_ids: List[str] = Field(default_factory=list)
+    # Remote vehicle IDs selected locally as Geo-Shelly triggers. This makes
+    # the selection site-specific even though the vehicle originates elsewhere.
+    remote_geo_shelly_vehicle_ids: List[str] = Field(default_factory=list)
     # Disabled by default for upgrades so existing manual MQTT YAML entities do
     # not collide until the user deliberately migrates to MQTT Discovery.
     ha_discovery_enabled: bool = False
@@ -67,6 +74,8 @@ class UiSettings(BaseModel):
     # of EVCC vehicle assignment: Car2MQTT only toggles the socket on arrival
     # and departure edges, while EVCC retains normal charger/vehicle control.
     geo_shelly_enabled: bool = False
+    # Deprecated v1.2.58 single-vehicle selector. Kept for upgrade compatibility;
+    # v1.2.59 uses per-vehicle trigger flags instead.
     geo_shelly_vehicle_mapped_topic: str = ""
     geo_shelly_host: str = ""
     geo_shelly_switch_id: int = 0

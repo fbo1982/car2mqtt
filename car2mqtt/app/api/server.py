@@ -84,6 +84,7 @@ class VehiclePayload(BaseModel):
     auth_session_id: str | None = None
     mqtt_client_ids: list[str] = []
     device_tracker_enabled: bool = False
+    geo_shelly_trigger_enabled: bool = False
 
 
 class MqttClientPayload(BaseModel):
@@ -440,6 +441,7 @@ def _vehicle_card(vehicle: VehicleConfig, runtime_state: Dict[str, Any] | None, 
         "manufacturer_note": ("ORA Runner vorbereitet" if vehicle.manufacturer == "gwm" else ("MySilence Cloud-Polling" if vehicle.manufacturer == "acconia" else "")),
         "source_topic_base": vehicle.provider_config.get("source_topic_base", "") if vehicle.manufacturer == "gwm" else "",
         "device_tracker_enabled": bool(getattr(vehicle, 'device_tracker_enabled', False)),
+        "geo_shelly_trigger_enabled": bool(getattr(vehicle, 'geo_shelly_trigger_enabled', False)),
     }
 
 
@@ -595,6 +597,7 @@ def _remote_vehicle_payload_from_card(card: dict[str, Any]) -> dict[str, Any]:
         'status_detail': card.get('status_detail',''),
         'mqtt_client_ids': [],
         'device_tracker_enabled': bool(card.get('device_tracker_enabled', False)),
+        'geo_shelly_trigger_enabled': bool(card.get('geo_shelly_trigger_enabled', False)),
         'remote_server_name': card.get('remote_server_name',''),
     }
 
@@ -619,6 +622,33 @@ def _card_device_tracker_enabled(card: dict[str, Any], cfg: AppConfig) -> bool:
         return str(card.get('id') or '') in ids
     vehicle = next((v for v in (cfg.vehicles or []) if v.id == card.get('id')), None)
     return bool(getattr(vehicle, 'device_tracker_enabled', False)) if vehicle else False
+
+
+def _card_geo_shelly_trigger_enabled(card: dict[str, Any], cfg: AppConfig) -> bool:
+    ui = getattr(cfg, 'ui_settings', None)
+    remote_ids = set(getattr(ui, 'remote_geo_shelly_vehicle_ids', []) or [])
+    explicit_local = any(bool(getattr(v, 'geo_shelly_trigger_enabled', False)) for v in (cfg.vehicles or []))
+    explicit_any = explicit_local or bool(remote_ids)
+    if card.get('remote'):
+        selected = str(card.get('id') or '') in remote_ids
+    else:
+        vehicle = next((v for v in (cfg.vehicles or []) if v.id == card.get('id')), None)
+        selected = bool(getattr(vehicle, 'geo_shelly_trigger_enabled', False)) if vehicle else False
+    if selected or explicit_any:
+        return selected
+
+    # Upgrade compatibility for v1.2.58: expose the former single global
+    # mapped-topic selection as a checked per-vehicle box until the user saves
+    # that vehicle once. This avoids a hidden legacy trigger in the new UI.
+    legacy = str(getattr(ui, 'geo_shelly_vehicle_mapped_topic', '') or '').strip().rstrip('/')
+    if not legacy:
+        return False
+    try:
+        base = str(load_runtime_mqtt_settings().base_topic or 'car').strip('/') or 'car'
+        root = mapped_topic(base, str(card.get('manufacturer') or '').lower(), str(card.get('license_plate') or '')).rstrip('/')
+        return root == legacy
+    except Exception:
+        return False
 
 
 def _device_tracker_token(card: dict[str, Any]) -> str:
@@ -842,6 +872,7 @@ def create_app() -> FastAPI:
         cards.extend(remote_cards)
         for card in cards:
             card['device_tracker_enabled'] = _card_device_tracker_enabled(card, config)
+            card['geo_shelly_trigger_enabled'] = _card_geo_shelly_trigger_enabled(card, config)
         cards.sort(key=lambda c: (str(c.get('label','')).lower(), str(c.get('license_plate','')).lower(), 1 if c.get('remote') else 0))
         return cards, mqtt_settings.model_dump(mode="json")
 
@@ -962,9 +993,13 @@ def create_app() -> FastAPI:
         except Exception:
             exit_radius = 50.0
         cfg.ui_settings.evcc_geo_exit_radius_m = max(cfg.ui_settings.evcc_geo_radius_m, exit_radius)
-        cfg.ui_settings.geo_shelly_enabled = bool(payload.geo_shelly_enabled)
-        cfg.ui_settings.geo_shelly_vehicle_mapped_topic = str(payload.geo_shelly_vehicle_mapped_topic or '').strip().rstrip('/')
         cfg.ui_settings.geo_shelly_host = str(payload.geo_shelly_host or '').strip().rstrip('/')
+        # v1.2.59 activates Geo-Shelly when a host is configured and at least
+        # one vehicle is opted in. Keep the legacy master flag true for older
+        # configs/API clients, but vehicle selection is no longer global.
+        cfg.ui_settings.geo_shelly_enabled = bool(cfg.ui_settings.geo_shelly_host)
+        if str(payload.geo_shelly_vehicle_mapped_topic or '').strip():
+            cfg.ui_settings.geo_shelly_vehicle_mapped_topic = str(payload.geo_shelly_vehicle_mapped_topic or '').strip().rstrip('/')
         try:
             cfg.ui_settings.geo_shelly_switch_id = max(0, min(99, int(payload.geo_shelly_switch_id or 0)))
         except Exception:
@@ -1108,6 +1143,30 @@ def create_app() -> FastAPI:
             pass
         return {'status':'ok','vehicle_id':vehicle_id,'device_tracker_enabled': enabled}
 
+    @app.post("/api/remote-vehicles/{vehicle_id}/geo-shelly")
+    async def set_remote_vehicle_geo_shelly(vehicle_id: str, payload: dict):
+        cfg = store.load()
+        cards, _ = build_cards()
+        card = next((c for c in cards if str(c.get('id')) == vehicle_id and c.get('remote')), None)
+        if not card:
+            raise HTTPException(status_code=404, detail="Remote-Fahrzeug nicht gefunden")
+        enabled = bool((payload or {}).get('geo_shelly_trigger_enabled'))
+        ids = set(getattr(cfg.ui_settings, 'remote_geo_shelly_vehicle_ids', []) or [])
+        if enabled:
+            ids.add(vehicle_id)
+        else:
+            ids.discard(vehicle_id)
+        cfg.ui_settings.remote_geo_shelly_vehicle_ids = sorted(ids)
+        # Any explicit v1.2.59 vehicle selection retires the old single-topic
+        # selector so it cannot silently re-enable a vehicle later.
+        cfg.ui_settings.geo_shelly_vehicle_mapped_topic = ""
+        store.save(cfg)
+        try:
+            evcc_geo_filter.restart()
+        except Exception:
+            logger.exception("EVCC Geo Filter nach Remote Geo-Shelly Änderung konnte nicht neu gestartet werden")
+        return {'status':'ok','vehicle_id':vehicle_id,'geo_shelly_trigger_enabled': enabled}
+
     @app.get("/api/providers")
     async def get_providers():
         return [provider.model_dump(mode="json") for provider in registry.all()]
@@ -1234,6 +1293,7 @@ def create_app() -> FastAPI:
             provider_config=validated_provider,
             mqtt_client_ids=list(payload.mqtt_client_ids or []),
             device_tracker_enabled=bool(payload.device_tracker_enabled),
+            geo_shelly_trigger_enabled=bool(payload.geo_shelly_trigger_enabled),
         )
         vehicle.mqtt.base_topic = mqtt_settings.base_topic
         vehicle.mqtt.qos = mqtt_settings.qos
@@ -1332,6 +1392,21 @@ def create_app() -> FastAPI:
             worker_manager.stop_vehicle(vehicle_id_to_replace)
             log_store.append(vehicle.id, f"Fahrzeug-ID geändert von {vehicle_id_to_replace} auf {vehicle.id}")
         store.upsert_vehicle(vehicle)
+        # Per-vehicle Geo-Shelly selection supersedes the v1.2.58 global topic.
+        # Also retire the legacy selector when this saved vehicle is the legacy
+        # target and the user explicitly unchecks it in the new UI.
+        cfg_after_vehicle = store.load()
+        legacy_root = str(getattr(cfg_after_vehicle.ui_settings, 'geo_shelly_vehicle_mapped_topic', '') or '').strip().rstrip('/')
+        local_base = str(load_runtime_mqtt_settings().base_topic or 'car').strip('/') or 'car'
+        this_root = mapped_topic(local_base, vehicle.manufacturer, vehicle.license_plate).rstrip('/')
+        selection_changed = existing and bool(getattr(existing, 'geo_shelly_trigger_enabled', False)) != bool(payload.geo_shelly_trigger_enabled)
+        if bool(payload.geo_shelly_trigger_enabled) or selection_changed or (legacy_root and legacy_root == this_root):
+            cfg_after_vehicle.ui_settings.geo_shelly_vehicle_mapped_topic = ""
+            store.save(cfg_after_vehicle)
+        try:
+            evcc_geo_filter.restart()
+        except Exception:
+            logger.exception("EVCC Geo Filter nach Fahrzeugänderung konnte nicht neu gestartet werden")
         worker_manager.publish_vehicle_saved_meta(vehicle.id)
         worker_manager.sync_vehicle_to_forward_clients(vehicle.id)
         try:

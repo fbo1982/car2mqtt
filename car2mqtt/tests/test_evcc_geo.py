@@ -164,14 +164,19 @@ def _relay_service() -> EvccGeoFilterService:
         evcc_geo_filter_enabled=True,
         evcc_geo_radius_m=30,
         evcc_geo_exit_radius_m=50,
-        geo_shelly_enabled=True,
-        geo_shelly_vehicle_mapped_topic="car/acconia/TEST/mapped",
         geo_shelly_host="192.168.18.29",
         geo_shelly_switch_id=0,
         geo_shelly_power_off_threshold_w=50,
     )
+    vehicle = VehicleConfig(
+        id="TEST",
+        label="Test Silence",
+        manufacturer="acconia",
+        license_plate="TEST",
+        geo_shelly_trigger_enabled=True,
+    )
     service = EvccGeoFilterService(
-        lambda: AppConfig(ui_settings=ui),
+        lambda: AppConfig(ui_settings=ui, vehicles=[vehicle]),
         lambda: RuntimeMqttSettings(host="mqtt", base_topic="car"),
     )
     service._load_feature_settings()
@@ -232,14 +237,41 @@ def test_geo_shelly_arrival_turns_on_once(monkeypatch):
     assert service._relay_pending_on is False
 
 
-def test_geo_settings_are_upgrade_safe_and_shelly_controls_exist():
+def test_geo_settings_use_per_vehicle_shelly_selection():
     ui = UiSettings()
+    vehicle = VehicleConfig(id="TEST", label="Test", manufacturer="acconia", license_plate="TEST")
     assert ui.evcc_geo_exit_radius_m == 50.0
-    assert ui.geo_shelly_enabled is False
     assert ui.geo_shelly_vehicle_mapped_topic == ""
     assert ui.geo_shelly_power_off_threshold_w == 50.0
+    assert vehicle.geo_shelly_trigger_enabled is False
     html = Path("app/templates/index.html").read_text(encoding="utf-8")
     assert 'id="settingsEvccGeoExitRadius"' in html
-    assert 'id="settingsGeoShellyEnabled"' in html
-    assert 'id="settingsGeoShellyVehicle"' in html
     assert 'id="settingsGeoShellyHost"' in html
+    assert 'id="editGeoShellyTriggerEnabled"' in html
+    assert 'id="editRemoteGeoShellyTriggerEnabled"' in html
+    assert 'id="settingsGeoShellyVehicle"' not in html
+    assert 'id="settingsGeoShellyEnabled"' not in html
+
+
+def test_geo_shelly_multiple_selected_vehicles_only_switch_off_after_last_departure():
+    ui = UiSettings(geo_shelly_host="192.168.18.29", geo_shelly_power_off_threshold_w=50)
+    vehicles = [
+        VehicleConfig(id="A", label="A", manufacturer="bmw", license_plate="A", geo_shelly_trigger_enabled=True),
+        VehicleConfig(id="B", label="B", manufacturer="acconia", license_plate="B", geo_shelly_trigger_enabled=True),
+    ]
+    service = EvccGeoFilterService(
+        lambda: AppConfig(ui_settings=ui, vehicles=vehicles),
+        lambda: RuntimeMqttSettings(host="mqtt", base_topic="car"),
+    )
+    service._load_feature_settings()
+    a = "car/bmw/A/mapped"
+    b = "car/acconia/B/mapped"
+    service._presence_by_root[a] = True
+    service._presence_by_root[b] = True
+
+    service._schedule_relay_edge(a, True, False)
+    assert service._relay_pending_off is False
+
+    service._presence_by_root[a] = False
+    service._schedule_relay_edge(b, True, False)
+    assert service._relay_pending_off is True
