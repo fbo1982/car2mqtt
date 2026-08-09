@@ -45,6 +45,7 @@ from app.services.ha_discovery import (
     publish_all_discovery,
     publish_vehicle_discovery,
 )
+from app.services.evcc_geo import EvccGeoFilterService
 
 logger = logging.getLogger("car2mqtt.server")
 
@@ -117,6 +118,8 @@ class HomeZoneSettingsPayload(BaseModel):
     ha_discovery_enabled: bool = False
     ha_discovery_prefix: str = "homeassistant"
     ha_discovery_retain: bool = True
+    evcc_geo_filter_enabled: bool = False
+    evcc_geo_radius_m: float = 30.0
 
 
 def _normalize_vehicle_id(license_plate: str) -> str:
@@ -733,6 +736,11 @@ def create_app() -> FastAPI:
     log_store = VehicleLogStore(data_dir)
     registry = ProviderRegistry()
     worker_manager = WorkerManager(data_dir, store, state_store)
+    evcc_geo_filter = EvccGeoFilterService(
+        store.load,
+        load_runtime_mqtt_settings,
+        zone_entity_loader=lambda cfg: str(_read_existing_homezone(cfg).get("entity_id") or "zone.home"),
+    )
 
     def _ui_discovery_settings(cfg: AppConfig) -> tuple[bool, str, bool]:
         ui = cfg.ui_settings
@@ -786,6 +794,10 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup_event():
         worker_manager.start_all()
+        try:
+            evcc_geo_filter.start()
+        except Exception:
+            logger.exception("EVCC Geo Filter konnte nicht gestartet werden")
         cfg = store.load()
         discovery_enabled, _, _ = _ui_discovery_settings(cfg)
         if discovery_enabled:
@@ -810,6 +822,10 @@ def create_app() -> FastAPI:
         task = getattr(app.state, "device_tracker_task", None)
         if task:
             task.cancel()
+        try:
+            evcc_geo_filter.stop()
+        except Exception:
+            logger.exception("EVCC Geo Filter konnte nicht sauber gestoppt werden")
 
     def build_cards() -> tuple[list[dict], dict]:
         config = store.load()
@@ -892,6 +908,10 @@ def create_app() -> FastAPI:
             "effective_homezone": effective,
         }
 
+    @app.get("/api/evcc-geo/status")
+    async def get_evcc_geo_status():
+        return evcc_geo_filter.status()
+
     @app.post("/api/settings/homezone")
     async def save_homezone_settings(payload: HomeZoneSettingsPayload):
         cfg = store.load()
@@ -901,7 +921,16 @@ def create_app() -> FastAPI:
         cfg.ui_settings.ha_discovery_enabled = bool(payload.ha_discovery_enabled)
         cfg.ui_settings.ha_discovery_prefix = str(payload.ha_discovery_prefix or 'homeassistant').strip() or 'homeassistant'
         cfg.ui_settings.ha_discovery_retain = bool(payload.ha_discovery_retain)
+        cfg.ui_settings.evcc_geo_filter_enabled = bool(payload.evcc_geo_filter_enabled)
+        try:
+            cfg.ui_settings.evcc_geo_radius_m = max(1.0, min(1000.0, float(payload.evcc_geo_radius_m or 30.0)))
+        except Exception:
+            cfg.ui_settings.evcc_geo_radius_m = 30.0
         store.save(cfg)
+        try:
+            evcc_geo_filter.restart()
+        except Exception:
+            logger.exception("EVCC Geo Filter nach Einstellungsänderung konnte nicht neu gestartet werden")
         try:
             cards, _ = build_cards()
             _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(cfg.ui_settings.device_tracker_enabled))

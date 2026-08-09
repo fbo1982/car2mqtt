@@ -73,6 +73,10 @@ def test_discovery_exposes_common_read_only_vehicle_entities():
 
     assert "homeassistant/binary_sensor/car_bmw_ggca501e_charging/config" in topics
     assert "homeassistant/binary_sensor/car_bmw_ggca501e_plugged/config" in topics
+    assert "homeassistant/sensor/car_bmw_ggca501e_evccstatus/config" in topics
+    assert "homeassistant/sensor/car_bmw_ggca501e_evccdistance/config" in topics
+    assert "homeassistant/sensor/car_bmw_ggca501e_evccgeoreason/config" in topics
+    assert "homeassistant/binary_sensor/car_bmw_ggca501e_evccatsite/config" in topics
     assert not any("/button/" in topic or "/number/" in topic for topic in topics)
 
 

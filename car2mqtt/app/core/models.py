@@ -55,6 +55,11 @@ class UiSettings(BaseModel):
     ha_discovery_enabled: bool = False
     ha_discovery_prefix: str = "homeassistant"
     ha_discovery_retain: bool = True
+    # EVCC always reads the derived mapped/evccStatus topic. When the geo
+    # filter is disabled this mirrors the legacy plugged/charging behaviour;
+    # when enabled B/C are only exposed inside the selected local HA zone.
+    evcc_geo_filter_enabled: bool = False
+    evcc_geo_radius_m: float = 30.0
 
 
 class MqttForwardClientConfig(BaseModel):

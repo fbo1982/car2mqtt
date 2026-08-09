@@ -144,12 +144,16 @@ def build_discovery_configs(
     add_sensor("lastUpdate", "Letzte Fahrzeugaktualisierung", device_class="timestamp", entity_category="diagnostic")
     add_sensor("latitude_ts", "Latitude Zeitstempel", device_class="timestamp", entity_category="diagnostic", enabled_by_default=False)
     add_sensor("longitude_ts", "Longitude Zeitstempel", device_class="timestamp", entity_category="diagnostic", enabled_by_default=False)
+    add_sensor("evccStatus", "EVCC Status lokal", icon="mdi:ev-station", entity_category="diagnostic")
+    add_sensor("evccDistance", "EVCC Entfernung zum Ladeort", unit="m", device_class="distance", state_class="measurement", entity_category="diagnostic")
+    add_sensor("evccGeoReason", "EVCC Geo Entscheidung", icon="mdi:map-marker-check", entity_category="diagnostic")
 
     # Friendly boolean representations in addition to the compatibility sensor
     # above. No command entities are advertised here because Car2MQTT currently
     # does not implement the corresponding MQTT command consumers.
     add_binary("charging", "Lädt", device_class="battery_charging")
     add_binary("plugged", "Angesteckt", device_class="plug")
+    add_binary("evccAtSite", "Am lokalen EVCC Ladeort", device_class="presence", icon="mdi:map-marker-radius")
     add_binary("doorsLocked", "Türen verriegelt", icon="mdi:car-door-lock")
     add_binary("windowsOpen", "Fenster offen", device_class="window")
 

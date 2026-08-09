@@ -109,15 +109,23 @@ def evcc_payload_to_yaml(payload: dict[str, Any]) -> str:
     status = payload.get("status")
     if isinstance(status, dict):
         lines.append("status:")
-        lines.append(f"  source: {_yaml_scalar(status.get('source') or 'combined')}")
-        for key in ("plugged", "charging"):
-            cfg = status.get(key)
-            if isinstance(cfg, dict) and cfg.get("source") and cfg.get("topic"):
-                lines.append(f"  {key}:")
-                lines.append(f"    source: {_yaml_scalar(cfg.get('source'))}")
-                lines.append(f"    topic: {_yaml_scalar(cfg.get('topic'))}")
-                if cfg.get("timeout"):
-                    lines.append(f"    timeout: {_yaml_scalar(cfg.get('timeout'))}")
+        source = status.get("source") or "combined"
+        lines.append(f"  source: {_yaml_scalar(source)}")
+        if status.get("topic"):
+            lines.append(f"  topic: {_yaml_scalar(status.get('topic'))}")
+            if status.get("timeout"):
+                lines.append(f"  timeout: {_yaml_scalar(status.get('timeout'))}")
+        else:
+            # Backward-compatible renderer for older combined plugged/charging
+            # payloads kept for imported configurations.
+            for key in ("plugged", "charging"):
+                cfg = status.get(key)
+                if isinstance(cfg, dict) and cfg.get("source") and cfg.get("topic"):
+                    lines.append(f"  {key}:")
+                    lines.append(f"    source: {_yaml_scalar(cfg.get('source'))}")
+                    lines.append(f"    topic: {_yaml_scalar(cfg.get('topic'))}")
+                    if cfg.get("timeout"):
+                        lines.append(f"    timeout: {_yaml_scalar(cfg.get('timeout'))}")
     return "\n".join(lines) + "\n"
 
 def build_evcc_custom_vehicle_payload(vehicle: VehicleConfig, mqtt_settings: RuntimeMqttSettings, mapped_root: str | None = None) -> dict[str, Any]:
@@ -143,11 +151,10 @@ def build_evcc_custom_vehicle_payload(vehicle: VehicleConfig, mqtt_settings: Run
         "range": {"source": "mqtt", "topic": f"{root}/range", "timeout": timeout},
         "odometer": {"source": "mqtt", "topic": f"{root}/odometer", "timeout": timeout},
         "limitsoc": {"source": "mqtt", "topic": f"{root}/limitSoc", "timeout": timeout},
-        "status": {
-            "source": "combined",
-            "plugged": {"source": "mqtt", "topic": f"{root}/plugged", "timeout": timeout},
-            "charging": {"source": "mqtt", "topic": f"{root}/charging", "timeout": timeout},
-        },
+        # EVCC reads one locally-derived A/B/C status. Car2MQTT publishes this
+        # on every site, including for remote-forwarded vehicles. With the geo
+        # filter disabled it mirrors the legacy plugged/charging behaviour.
+        "status": {"source": "mqtt", "topic": f"{root}/evccStatus", "timeout": timeout},
         "onIdentify": {"mode": _evcc_onidentify_mode(cfg)},
     }
     phases = str(cfg.get("evcc_phases") or cfg.get("phases") or "").strip()

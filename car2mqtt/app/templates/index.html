@@ -449,6 +449,22 @@ select, option {
           <div class="howto-note" style="margin-top:14px"><strong>Migration:</strong> Wenn die bisherigen Car2MQTT-MQTT-Sensoren noch manuell in <code>configuration.yaml</code> definiert sind, diese vier Fahrzeug-Sensoren zuerst dort entfernen und Home Assistant neu laden/starten. Die Discovery-Version verwendet bewusst dieselben Entity-IDs für <code>plugged</code>, <code>plugged_ts</code>, <code>latitude</code> und <code>longitude</code>.</div>
           <div style="margin-top:14px"><button id="publishHaDiscoveryBtn" type="button" class="ghost-btn">Alle HA Entitäten jetzt senden</button></div>
         </div>
+        <div class="howto-card">
+          <div class="eyebrow">EVCC</div>
+          <h4>Standortabhängige Fahrzeugerkennung</h4>
+          <div class="field" style="margin-top:14px">
+            <label style="display:flex;align-items:center;gap:10px">
+              <input id="settingsEvccGeoFilterEnabled" type="checkbox">
+              <span>Connected/Charging für EVCC auf die lokale Home Zone begrenzen</span>
+            </label>
+            <div class="muted" style="margin-top:10px">Car2MQTT erzeugt lokal <code>mapped/evccStatus</code> (A/B/C). Rohwerte wie <code>plugged</code> und <code>charging</code> bleiben unverändert. Das funktioniert auch für Remote-Fahrzeuge auf diesem MQTT-Broker.</div>
+          </div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="field"><label>Geo-Radius in Metern</label><input id="settingsEvccGeoRadius" type="number" min="1" max="1000" step="1" value="30" /></div>
+            <div class="field"><label>Verwendeter Standort</label><div class="muted" style="margin-top:10px">Die oben ausgewählte Home Zone wird verwendet. Fehlen Zone oder GPS, meldet Car2MQTT an EVCC sicher <strong>A = nicht verbunden</strong>.</div></div>
+          </div>
+          <div class="howto-note" style="margin-top:14px">Diagnose-Topics: <code>evccStatus</code>, <code>evccAtSite</code>, <code>evccDistance</code> und <code>evccGeoReason</code>.</div>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -823,6 +839,8 @@ function renderSettingsDialog(data){
   if(field('settingsHaDiscoveryEnabled')) field('settingsHaDiscoveryEnabled').checked = !!ui.ha_discovery_enabled;
   if(field('settingsHaDiscoveryPrefix')) field('settingsHaDiscoveryPrefix').value = ui.ha_discovery_prefix || 'homeassistant';
   if(field('settingsHaDiscoveryRetain')) field('settingsHaDiscoveryRetain').checked = ui.ha_discovery_retain !== false;
+  if(field('settingsEvccGeoFilterEnabled')) field('settingsEvccGeoFilterEnabled').checked = !!ui.evcc_geo_filter_enabled;
+  if(field('settingsEvccGeoRadius')) field('settingsEvccGeoRadius').value = ui.evcc_geo_radius_m || 30;
 }
 async function openSettingsDialog(){
   const dlg = field('settingsDialog');
@@ -1069,15 +1087,9 @@ limitsoc:
   timeout: 24h
 
 status:
-  source: combined
-  plugged:
-    source: mqtt
-    topic: ${topicBase}/plugged
-    timeout: 24h
-  charging:
-    source: mqtt
-    topic: ${topicBase}/charging
-    timeout: 24h
+  source: mqtt
+  topic: ${topicBase}/evccStatus
+  timeout: 24h
 `;
 }
 function buildConfigurationYamlTemplate(){
@@ -1382,7 +1394,7 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
       device_tracker_enabled: !!(trackerToggle && trackerToggle.checked),
       ha_discovery_enabled: !!field('settingsHaDiscoveryEnabled')?.checked,
       ha_discovery_prefix: field('settingsHaDiscoveryPrefix')?.value || 'homeassistant',
-      ha_discovery_retain: !!field('settingsHaDiscoveryRetain')?.checked
+      ha_discovery_retain: !!field('settingsHaDiscoveryRetain')?.checked, evcc_geo_filter_enabled: !!field('settingsEvccGeoFilterEnabled')?.checked, evcc_geo_radius_m: parseFloat(field('settingsEvccGeoRadius')?.value || '30')
     });
     uiSettings = resp.ui_settings || {};
     helperHomezoneJson = resp.effective_homezone || helperHomezoneJson;

@@ -13,6 +13,7 @@ Es bündelt mehrere Hersteller in einer Oberfläche, mappt Rohdaten auf ein einh
 - **Home Assistant MQTT Discovery** für Fahrzeug-Entitäten
 - Optionaler **MQTT Device Tracker**
 - **EVCC YAML / Copy Helper** pro Fahrzeug
+- **EVCC Geo Detection**: lokaler A/B/C-Status aus Fahrzeugverbindung + GPS + Home-Assistant-Zone
 - Copy-Helper für `configuration.yaml`, `automations.yaml` und fahrzeugspezifische Variablenblöcke
 - Live-Logs sowie ReAuth-/Reconnect-Hilfen für unterstützte Hersteller
 
@@ -56,6 +57,8 @@ Die MySilence-Schnittstelle ist nicht offiziell dokumentiert und kann sich durch
 ### EVCC
 - pro Fahrzeug generierte **EVCC-Vorlage**
 - per UI direkt kopierbar
+- standortabhängiger `evccStatus` (`A`/`B`/`C`) direkt über MQTT
+- optionaler Geo-Filter gegen die lokal ausgewählte Home-Assistant-Zone
 - zusätzlich Copy-Helper für passende MQTT-Sensoren und Automationen
 
 ## Was Car2MQTT macht
@@ -130,6 +133,23 @@ Für die Migration aus einer bestehenden manuellen `configuration.yaml` ist die 
 
 Zusätzlich werden – soweit der jeweilige Hersteller den Wert liefert – unter anderem SoC, Reichweite, Kilometerstand, Ladelimit, Akkukapazität, Ladezustand und weitere Fahrzeugzustände als Entitäten angelegt. Nicht vorhandene Herstellerwerte bleiben in Home Assistant einfach unbekannt. Der separat konfigurierbare Device Tracker bleibt davon unabhängig.
 
+## EVCC Geo Detection
+
+Ab Version 1.2.54 erzeugt jede Car2MQTT-Installation auf ihrem **lokalen MQTT-Broker** einen zusätzlichen EVCC-Status pro Fahrzeug:
+
+```text
+car/<manufacturer>/<plate>/mapped/evccStatus
+car/<manufacturer>/<plate>/mapped/evccAtSite
+car/<manufacturer>/<plate>/mapped/evccDistance
+car/<manufacturer>/<plate>/mapped/evccGeoReason
+```
+
+`evccStatus` verwendet die EVCC-Fahrzeugzustände `A` (nicht verbunden), `B` (verbunden) und `C` (lädt). Ist der Geo-Filter deaktiviert, wird der bisherige Zustand aus `plugged` und `charging` gespiegelt. Ist er aktiviert, werden `B` und `C` nur ausgegeben, wenn die aktuelle Fahrzeugposition innerhalb des konfigurierten Radius um die ausgewählte Home-Assistant-Zone liegt. Fehlen Zone oder GPS-Daten, fällt die Entscheidung absichtlich auf `A` zurück.
+
+Der Filter verändert **nicht** die Herstellerwerte `mapped/plugged` oder `mapped/charging`. Dadurch bleiben Home Assistant, Diagnose und andere MQTT-Verbraucher unverfälscht. Weil die Berechnung lokal aus den auf dem Broker vorhandenen `mapped`-Topics erfolgt, funktioniert sie auch mit Remote-Fahrzeugen: derselbe Wagen kann an Standort A `A` und an Standort B gleichzeitig `B` oder `C` liefern. Der abgeleitete Status wird nicht über die Car2MQTT-MQTT-Weiterleitung an andere Standorte gespiegelt.
+
+Aktivierung: **Einstellungen → EVCC → Standortabhängige Fahrzeugerkennung**. Dort wird auch der Radius in Metern festgelegt; als Mittelpunkt dient die oben ausgewählte Home Zone. Die EVCC-Copy-Vorlage liest anschließend direkt `mapped/evccStatus`.
+
 ## EVCC Copy Helper
 
 Zu jedem Fahrzeug wird eine direkt kopierbare Vorlage erzeugt, u. a. für:
@@ -180,7 +200,7 @@ Beispiele:
 - Device Tracker je Fahrzeug aktivieren
 
 ### Einstellungen
-- Home Zone für EVCC-/Automations-Helfer
+- Home Zone für EVCC-/Automations-Helfer und EVCC Geo Detection
 - MQTT Discovery für Fahrzeug-Entitäten aktivieren
 - Entitäten bei Start / Fahrzeugänderung automatisch erzeugen
 - Discovery Prefix und Retain konfigurieren

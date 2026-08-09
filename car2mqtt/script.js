@@ -276,6 +276,8 @@ function renderSettingsDialog(data){
   if(field("settingsHaDiscoveryEnabled")) field("settingsHaDiscoveryEnabled").checked = !!ui.ha_discovery_enabled;
   if(field("settingsHaDiscoveryPrefix")) field("settingsHaDiscoveryPrefix").value = ui.ha_discovery_prefix || "homeassistant";
   if(field("settingsHaDiscoveryRetain")) field("settingsHaDiscoveryRetain").checked = ui.ha_discovery_retain !== false;
+  if(field("settingsEvccGeoFilterEnabled")) field("settingsEvccGeoFilterEnabled").checked = !!ui.evcc_geo_filter_enabled;
+  if(field("settingsEvccGeoRadius")) field("settingsEvccGeoRadius").value = ui.evcc_geo_radius_m || 30;
   if(field("settingsEvccEnabled")) field("settingsEvccEnabled").checked = !!ui.evcc_enabled;
   if(field("settingsEvccUrl")) field("settingsEvccUrl").value = ui.evcc_url || "http://localhost:7070";
   if(field("settingsEvccPassword")) field("settingsEvccPassword").value = "";
@@ -528,15 +530,9 @@ limitsoc:
   timeout: 24h
 
 status:
-  source: combined
-  plugged:
-    source: mqtt
-    topic: ${topicBase}/plugged
-    timeout: 24h
-  charging:
-    source: mqtt
-    topic: ${topicBase}/charging
-    timeout: 24h
+  source: mqtt
+  topic: ${topicBase}/evccStatus
+  timeout: 24h
 `;
 }
 function buildConfigurationYamlTemplate(){
@@ -855,7 +851,7 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
   try{
     const select = field('settingsHomeZoneSelect');
     const trackerToggle = field('settingsDeviceTrackerEnabled');
-    const resp = await postJson('api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '', device_tracker_enabled: !!(trackerToggle && trackerToggle.checked), ha_discovery_enabled: !!field('settingsHaDiscoveryEnabled')?.checked, ha_discovery_prefix: field('settingsHaDiscoveryPrefix')?.value || 'homeassistant', ha_discovery_retain: !!field('settingsHaDiscoveryRetain')?.checked, evcc_enabled: !!field('settingsEvccEnabled')?.checked, evcc_url: field('settingsEvccUrl')?.value || 'http://localhost:7070', evcc_password: field('settingsEvccPassword')?.value || '', evcc_auto_create: !!field('settingsEvccAutoCreate')?.checked, evcc_auto_update: !!field('settingsEvccAutoUpdate')?.checked, evcc_auto_delete: !!field('settingsEvccAutoDelete')?.checked });
+    const resp = await postJson('api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '', device_tracker_enabled: !!(trackerToggle && trackerToggle.checked), ha_discovery_enabled: !!field('settingsHaDiscoveryEnabled')?.checked, ha_discovery_prefix: field('settingsHaDiscoveryPrefix')?.value || 'homeassistant', ha_discovery_retain: !!field('settingsHaDiscoveryRetain')?.checked, evcc_geo_filter_enabled: !!field('settingsEvccGeoFilterEnabled')?.checked, evcc_geo_radius_m: parseFloat(field('settingsEvccGeoRadius')?.value || '30'), evcc_enabled: !!field('settingsEvccEnabled')?.checked, evcc_url: field('settingsEvccUrl')?.value || 'http://localhost:7070', evcc_password: field('settingsEvccPassword')?.value || '', evcc_auto_create: !!field('settingsEvccAutoCreate')?.checked, evcc_auto_update: !!field('settingsEvccAutoUpdate')?.checked, evcc_auto_delete: !!field('settingsEvccAutoDelete')?.checked });
     uiSettings = resp.ui_settings || {};
     helperHomezoneJson = resp.effective_homezone || helperHomezoneJson;
     const info = field('settingsHomeZoneInfo');
