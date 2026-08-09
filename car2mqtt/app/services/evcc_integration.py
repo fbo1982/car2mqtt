@@ -140,7 +140,7 @@ def build_evcc_custom_vehicle_payload(vehicle: VehicleConfig, mqtt_settings: Run
     # custom MQTT vehicles. User-defined devices in EVCC need the MQTT plugin
     # blocks; the API sync below sends this either as native custom payload or
     # as the YAML text used by EVCC's custom-device editor.
-    timeout = str(cfg.get("evcc_timeout") or "24h")
+    timeout = str(cfg.get("evcc_timeout") or "72h")
     is_silence = str(vehicle.manufacturer or "").strip().lower() == "acconia"
     payload: dict[str, Any] = {
         "name": str(cfg.get("evcc_name") or build_evcc_vehicle_name(vehicle)),
@@ -160,7 +160,11 @@ def build_evcc_custom_vehicle_payload(vehicle: VehicleConfig, mqtt_settings: Run
     # MySilence currently does not provide a vehicle charge-limit value. Avoid
     # creating an MQTT plugin that can only time out.
     if not is_silence:
-        payload["limitsoc"] = {"source": "mqtt", "topic": f"{root}/limitSoc", "timeout": timeout}
+        # Charge targets are quasi-static configuration values. They may legitimately
+        # remain unchanged for weeks. Do not apply the generic telemetry timeout here:
+        # EVCC otherwise marks a perfectly valid retained value as ``outdated`` merely
+        # because the vehicle did not change/re-publish its charge target.
+        payload["limitsoc"] = {"source": "mqtt", "topic": f"{root}/limitSoc"}
     phases = str(cfg.get("evcc_phases") or cfg.get("phases") or ("1" if is_silence else "")).strip()
     if phases:
         try:

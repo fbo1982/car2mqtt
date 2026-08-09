@@ -569,7 +569,7 @@ function buildEvccCustomTemplate(){
   const { manufacturer, id, title, capacity, topicBase, onIdentifyMode } = getCopyConfigContext();
   const isSilence = manufacturer === 'acconia';
   const phases = isSilence ? 1 : 3;
-  const limitSocBlock = isSilence ? '' : `\nlimitsoc:\n  source: mqtt\n  topic: ${topicBase}/limitSoc\n  timeout: 24h\n`;
+  const limitSocBlock = isSilence ? '' : `\nlimitsoc:\n  source: mqtt\n  topic: ${topicBase}/limitSoc\n`;
   return `###########################################
 ###### CAR2MQTT Custom EVCC Template ######
 ###########################################
@@ -583,7 +583,7 @@ identifiers:
 soc:
   source: mqtt
   topic: ${topicBase}/soc
-  timeout: 24h
+  timeout: 72h
 
 onIdentify: #<- genau ein Lademodus aktiv
   mode: ${onIdentifyMode} # off=Aus, pv=PV, minpv=Min+PV, now=Schnell
@@ -591,17 +591,17 @@ onIdentify: #<- genau ein Lademodus aktiv
 range:
   source: mqtt
   topic: ${topicBase}/range
-  timeout: 24h
+  timeout: 72h
 
 odometer:
   source: mqtt
   topic: ${topicBase}/odometer
-  timeout: 24h
+  timeout: 72h
 ${limitSocBlock}
 status:
   source: mqtt
   topic: ${topicBase}/evccStatus
-  timeout: 24h
+  timeout: 72h
 `;
 }
 function buildConfigurationYamlTemplate(){

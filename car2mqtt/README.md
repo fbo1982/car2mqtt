@@ -264,3 +264,14 @@ MIT License
 
 oder eine projektspezifische Lizenz.
 
+## EVCC Ladelimit ohne künstliche Veralterung (ab 1.2.56)
+
+Das gemappte `limitSoc` ist ein langlebiger Fahrzeug-Einstellwert und kann unverändert bleiben, obwohl die Fahrzeugdatenverbindung vollkommen in Ordnung ist. Die von Car2MQTT erzeugte EVCC-Konfiguration setzt deshalb für `limitsoc` **keinen MQTT-`timeout` mehr**. EVCC akzeptiert den zuletzt empfangenen (retained) Wert damit so lange, bis Car2MQTT tatsächlich einen neuen Ladelimitwert veröffentlicht.
+
+Live-Werte wie SoC, Reichweite, Kilometerstand und `evccStatus` behalten weiterhin einen Timeout, damit eine ausgefallene Datenquelle dort sichtbar wird. Ab Version 1.2.57 beträgt der Standard **72h (3 Tage)**. Damit bleiben Fahrzeuge, die ein bis zwei Tage nicht bewegt oder aktualisiert werden, in EVCC gültig, ohne die Fehlererkennung vollständig abzuschalten. Ein periodisches künstliches Neu-Publizieren des Ladelimits ist dadurch nicht nötig und würde eine ausgefallene Datenquelle eher verschleiern.
+
+
+
+## EVCC Telemetrie-Timeout 72h (ab 1.2.57)
+
+Die automatisch erzeugte EVCC-Fahrzeugkonfiguration verwendet für `soc`, `range`, `odometer` und `evccStatus` standardmäßig `timeout: 72h`. `limitsoc` bleibt weiterhin ohne Timeout, da das Ladelimit ein langlebiger Einstellwert ist. Ein fahrzeugspezifisch gesetztes `evcc_timeout` kann den 72h-Standard weiterhin überschreiben.

@@ -85,11 +85,33 @@ def test_evcc_vehicle_template_reads_single_derived_status_topic():
     assert payload["status"] == {
         "source": "mqtt",
         "topic": "car/bmw/GGCA501E/mapped/evccStatus",
-        "timeout": "24h",
+        "timeout": "72h",
     }
     yaml_text = evcc_payload_to_yaml(payload)
-    assert "status:\n  source: mqtt\n  topic: car/bmw/GGCA501E/mapped/evccStatus\n  timeout: 24h" in yaml_text
+    assert "status:\n  source: mqtt\n  topic: car/bmw/GGCA501E/mapped/evccStatus\n  timeout: 72h" in yaml_text
     assert "source: combined" not in yaml_text
+
+
+def test_evcc_live_telemetry_uses_three_day_timeout():
+    vehicle = VehicleConfig(id="GGCA501E", label="Test BMW", manufacturer="bmw", license_plate="GG CA 501E")
+    settings = RuntimeMqttSettings(host="mqtt", base_topic="car")
+    payload = build_evcc_custom_vehicle_payload(vehicle, settings)
+    for key in ("soc", "range", "odometer", "status"):
+        assert payload[key]["timeout"] == "72h"
+
+
+def test_evcc_limitsoc_is_retained_without_freshness_timeout():
+    vehicle = VehicleConfig(id="GGCA501E", label="Test BMW", manufacturer="bmw", license_plate="GG CA 501E")
+    settings = RuntimeMqttSettings(host="mqtt", base_topic="car")
+    payload = build_evcc_custom_vehicle_payload(vehicle, settings)
+    assert payload["limitsoc"] == {
+        "source": "mqtt",
+        "topic": "car/bmw/GGCA501E/mapped/limitSoc",
+    }
+    yaml_text = evcc_payload_to_yaml(payload)
+    assert "limitsoc:\n  source: mqtt\n  topic: car/bmw/GGCA501E/mapped/limitSoc\n" in yaml_text
+    limitsoc_section = yaml_text.split("limitsoc:\n", 1)[1].split("\nstatus:\n", 1)[0]
+    assert "timeout:" not in limitsoc_section
 
 
 def test_silence_evcc_template_uses_single_phase_geo_status_and_no_limitsoc():
