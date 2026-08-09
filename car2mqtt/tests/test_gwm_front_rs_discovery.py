@@ -15,7 +15,7 @@ def test_illegal_rs_triggers_non_sms_rs_discovery():
     start = configure.index('ORA_AUTH_STEP=rs_discovery_start')
     end = configure.index('if (token is null)', start)
     block = configure[start:end]
-    assert 'LoginAccountMyGwmEuFrontAsync' in block
+    assert 'ProbeFrontLoginAsync' in block
     assert 'GetSmsCodeMyGwmEuFrontAsync' not in block
     assert 'sms_sent=false' in block
 

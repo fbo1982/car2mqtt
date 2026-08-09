@@ -10,5 +10,5 @@ def test_front_route_switch_does_not_mutate_httpclient_baseaddress_after_request
 
 
 def test_release_is_1247():
-    assert Path("VERSION").read_text().strip() == "1.2.47"
-    assert 'version: "1.2.47"' in Path("config.yaml").read_text()
+    assert Path("VERSION").read_text().strip() == "1.2.48"
+    assert 'version: "1.2.48"' in Path("config.yaml").read_text()

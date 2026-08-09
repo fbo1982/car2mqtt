@@ -16,7 +16,7 @@ def test_551008_triggers_non_sms_identity_discovery():
     start = configure.index('ORA_AUTH_STEP=identity_discovery_start')
     end = configure.index('// Any other structured GWM response means the rs value', start)
     block = configure[start:end]
-    assert 'LoginAccountMyGwmEuFrontAsync' in block
+    assert 'ProbeFrontLoginAsync' in block
     assert 'GetSmsCodeMyGwmEuFrontAsync' not in block
     assert 'sms_sent=false' in block
 

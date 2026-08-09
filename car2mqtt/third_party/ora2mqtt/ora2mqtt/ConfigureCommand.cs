@@ -165,6 +165,42 @@ namespace ora2mqtt
                 Password = Md5Lower(password),
                 DeviceId = options.DeviceId
             };
+            var frontApp13Request = new MyGwm13LoginAccountRequest
+            {
+                Account = account,
+                Password = password,
+                Country = options.Country,
+                DeviceId = options.DeviceId,
+                LoginEmail = account
+            };
+            var frontPayload = "pc_md5";
+
+            async Task<LoginAccountResponse> ProbeFrontLoginAsync(string probeStep)
+            {
+                if (!String.Equals(client.FrontApiLane, "app", StringComparison.OrdinalIgnoreCase))
+                {
+                    frontPayload = "pc_md5";
+                    return await client.LoginAccountMyGwmEuFrontAsync(frontRequest, cancellationToken);
+                }
+
+                // The mobile app lane should use an app-shaped request, not the minimal
+                // pc-api body. Try the established EU body first and the newer MyGWM/AU
+                // loginAccount body only if the backend returns its generic code 001.
+                frontPayload = "eu_legacy";
+                _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=payload_probe probe={probeStep} route={client.FrontRouteId} lane=app payload={frontPayload} terminal={client.FrontTerminal} brand={client.FrontBrand} rs={client.FrontRs} sms_sent=false");
+                try
+                {
+                    return await client.LoginAccountMyGwmEuFrontAppAsync(request, cancellationToken);
+                }
+                catch (GwmApiException payloadException) when (IsInconclusiveFrontPayloadResponse(payloadException))
+                {
+                    _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=payload_probe_inconclusive probe={probeStep} route={client.FrontRouteId} lane=app payload={frontPayload} ORA_GWM_ERROR_CODE={payloadException.Code} message={payloadException.Message} sms_sent=false");
+                    frontPayload = "mygwm13";
+                    _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=payload_probe probe={probeStep} route={client.FrontRouteId} lane=app payload={frontPayload} terminal={client.FrontTerminal} brand={client.FrontBrand} rs={client.FrontRs} sms_sent=false");
+                    return await client.LoginAccountMyGwmEuFrontApp13Async(frontApp13Request, cancellationToken);
+                }
+            }
+
             try
             {
                 LoginAccountResponse token;
@@ -175,15 +211,35 @@ namespace ora2mqtt
                     foreach (var routeId in GwmApiClient.MyGwmEuFrontRouteIds)
                     {
                         client.UseMyGwmEuFrontProfile(options.Country, routeId);
-                        _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=route_probe transport=eu-front-service endpoint=userAuth/loginAccount terminal=GW_PC_GWM brand=6 device_context=persistent route={routeId} sms_sent=false");
+                        _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=route_probe transport=eu-front-service endpoint=userAuth/loginAccount lane={client.FrontApiLane} terminal={client.FrontTerminal} brand={client.FrontBrand} device_context=persistent route={routeId} rs={client.FrontRs} sms_sent=false");
                         try
                         {
-                            token = await client.LoginAccountMyGwmEuFrontAsync(frontRequest, cancellationToken);
+                            token = await ProbeFrontLoginAsync("discovery");
                             _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=route_selected route={routeId} reason=login_success");
                             break;
                         }
                         catch (GwmApiException routeGwmException)
                         {
+                            // On an app-api candidate, generic code 001 means the route answered
+                            // but neither known app login payload matched. Do not select that route
+                            // and do not send SMS; continue probing the other app/front layouts.
+                            if (String.Equals(client.FrontApiLane, "app", StringComparison.OrdinalIgnoreCase) &&
+                                IsInconclusiveFrontIdentityResponse(routeGwmException))
+                            {
+                                _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=route_probe_inconclusive route={routeId} lane=app payload={frontPayload} ORA_GWM_ERROR_CODE={routeGwmException.Code} message={routeGwmException.Message} sms_sent=false");
+                                continue;
+                            }
+
+                            // Likewise, a direct 551008 on app-api tells us that this exact app
+                            // metadata bundle is not accepted. It is not a reason to fall back to
+                            // OTP or to stop route discovery.
+                            if (String.Equals(client.FrontApiLane, "app", StringComparison.OrdinalIgnoreCase) &&
+                                IsIllegalFrontIdentity(routeGwmException))
+                            {
+                                _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=route_probe_identity_rejected route={routeId} lane=app payload={frontPayload} ORA_GWM_ERROR_CODE={routeGwmException.Code} message={routeGwmException.Message} sms_sent=false");
+                                continue;
+                            }
+
                             // A structured GWM response proves that this route reached the auth
                             // service. 551005/Illegal rs is even more specific: the route is valid,
                             // but the regional rs selector copied from the Brazilian client is not.
@@ -199,7 +255,7 @@ namespace ora2mqtt
                                     _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=rs_probe route={routeId} rs={rs} endpoint=userAuth/loginAccount sms_sent=false");
                                     try
                                     {
-                                        token = await client.LoginAccountMyGwmEuFrontAsync(frontRequest, cancellationToken);
+                                        token = await ProbeFrontLoginAsync("discovery");
                                         _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=rs_selected route={routeId} rs={rs} reason=login_success sms_sent=false");
                                         break;
                                     }
@@ -227,7 +283,7 @@ namespace ora2mqtt
                                                 _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=identity_probe route={routeId} rs={rs} profile={identity.Label} terminal={identity.Terminal} brand={identity.Brand} enterpriseId={identity.EnterpriseId} endpoint=userAuth/loginAccount sms_sent=false");
                                                 try
                                                 {
-                                                    token = await client.LoginAccountMyGwmEuFrontAsync(frontRequest, cancellationToken);
+                                                    token = await ProbeFrontLoginAsync("discovery");
                                                     _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=identity_selected route={routeId} rs={rs} profile={identity.Label} terminal={identity.Terminal} brand={identity.Brand} enterpriseId={identity.EnterpriseId} reason=login_success sms_sent=false");
                                                     break;
                                                 }
@@ -345,8 +401,16 @@ namespace ora2mqtt
                         {
                             try
                             {
-                                _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=request_code transport=eu-front-service endpoint=userAuth/getSMSCode type=3 same_device=true route={client.FrontRouteId} rs={client.FrontRs} profile={client.FrontIdentityLabel} terminal={client.FrontTerminal} brand={client.FrontBrand} enterpriseId={client.FrontEnterpriseId}");
-                                await client.GetSmsCodeMyGwmEuFrontAsync(new GetSmsCode { Email = account }, cancellationToken);
+                                var frontCodeType = String.Equals(frontPayload, "mygwm13", StringComparison.OrdinalIgnoreCase) ? "17" : "3";
+                                _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=request_code transport=eu-front-service endpoint=userAuth/getSMSCode lane={client.FrontApiLane} payload={frontPayload} type={frontCodeType} same_device=true route={client.FrontRouteId} rs={client.FrontRs} profile={client.FrontIdentityLabel} terminal={client.FrontTerminal} brand={client.FrontBrand} enterpriseId={client.FrontEnterpriseId}");
+                                if (String.Equals(frontPayload, "mygwm13", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    await client.GetSmsCodeMyGwmEuFrontApp13Async(new MyGwm13GetSmsCode { Email = account }, cancellationToken);
+                                }
+                                else
+                                {
+                                    await client.GetSmsCodeMyGwmEuFrontAsync(new GetSmsCode { Email = account }, cancellationToken);
+                                }
                                 options.AuthFlow = "eu_mygwm_front";
                                 await SaveConfigAsync(options, cancellationToken);
                                 throw new Exception("ORA_WAITING_FOR_CODE: My GWM EU front-service verification code requested. Please provide the received code.");
@@ -422,7 +486,14 @@ namespace ora2mqtt
                 {
                     if (useEuMyGwmFront)
                     {
-                        await client.GetSmsCodeMyGwmEuFrontAsync(new GetSmsCode { Email = account }, cancellationToken);
+                        if (String.Equals(frontPayload, "mygwm13", StringComparison.OrdinalIgnoreCase))
+                        {
+                            await client.GetSmsCodeMyGwmEuFrontApp13Async(new MyGwm13GetSmsCode { Email = account }, cancellationToken);
+                        }
+                        else
+                        {
+                            await client.GetSmsCodeMyGwmEuFrontAsync(new GetSmsCode { Email = account }, cancellationToken);
+                        }
                     }
                     else if (useMyGwm13)
                     {
@@ -442,9 +513,22 @@ namespace ora2mqtt
                     {
                         // Redeem the OTP on the same front-service identity and persistent device
                         // that requested it.  Do not send it to checkSMSCode/loginWithSMS first.
-                        frontRequest.VerifyCode = code;
-                        _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service endpoint=userAuth/loginAccount verifyCode=present same_device=true route={client.FrontRouteId} rs={client.FrontRs} profile={client.FrontIdentityLabel} terminal={client.FrontTerminal} brand={client.FrontBrand} enterpriseId={client.FrontEnterpriseId}");
-                        token = await client.LoginAccountMyGwmEuFrontAsync(frontRequest, cancellationToken);
+                        _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service endpoint=userAuth/loginAccount lane={client.FrontApiLane} payload={frontPayload} verifyCode=present same_device=true route={client.FrontRouteId} rs={client.FrontRs} profile={client.FrontIdentityLabel} terminal={client.FrontTerminal} brand={client.FrontBrand} enterpriseId={client.FrontEnterpriseId}");
+                        if (String.Equals(frontPayload, "eu_legacy", StringComparison.OrdinalIgnoreCase))
+                        {
+                            request.VerifyCode = code;
+                            token = await client.LoginAccountMyGwmEuFrontAppAsync(request, cancellationToken);
+                        }
+                        else if (String.Equals(frontPayload, "mygwm13", StringComparison.OrdinalIgnoreCase))
+                        {
+                            frontApp13Request.VerifyCode = code;
+                            token = await client.LoginAccountMyGwmEuFrontApp13Async(frontApp13Request, cancellationToken);
+                        }
+                        else
+                        {
+                            frontRequest.VerifyCode = code;
+                            token = await client.LoginAccountMyGwmEuFrontAsync(frontRequest, cancellationToken);
+                        }
                     }
                     else if (useMyGwm13)
                     {
@@ -552,6 +636,13 @@ namespace ora2mqtt
                 String.Equals(exception.Code, "607198", StringComparison.OrdinalIgnoreCase) ||
                 exception.Message.Contains("internal server", StringComparison.OrdinalIgnoreCase) ||
                 exception.Message.Contains("System busy", StringComparison.OrdinalIgnoreCase) ||
+                exception.Message.Contains("服务器内部错误", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsInconclusiveFrontPayloadResponse(GwmApiException exception)
+        {
+            return String.Equals(exception.Code, "001", StringComparison.OrdinalIgnoreCase) ||
+                exception.Message.Contains("internal server", StringComparison.OrdinalIgnoreCase) ||
                 exception.Message.Contains("服务器内部错误", StringComparison.OrdinalIgnoreCase);
         }
 

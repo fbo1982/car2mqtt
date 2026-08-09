@@ -28,7 +28,7 @@ def test_front_service_profile_uses_pc_mygwm_identity():
     assert 'UseMyGwmEuFrontIdentity("pc_gwm", "GW_PC_GWM", "6", "CC01")' in source
     assert 'SetHeader(_frontClient, "brand", brand)' in source
     assert 'SetHeader(_frontClient, "enterpriseid", enterpriseId)' in source
-    assert 'SetHeader(_frontClient, "rs", rs)' in source
+    assert 'SetHeader(_frontClient, "rs", selectedRs)' in source
     assert 'MyGwmEuFrontRsCandidates' in source
     assert 'SetHeader(_frontClient, "terminal", terminal)' in source
 
@@ -60,7 +60,9 @@ def test_front_flow_requests_and_redeems_code_on_same_transport():
     assert 'GetSmsCodeMyGwmEuFrontAsync' in source
     assert 'ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=verified_login transport=eu-front-service' in source
     assert 'frontRequest.VerifyCode = code;' in source
-    assert source.count('LoginAccountMyGwmEuFrontAsync(frontRequest') >= 2
+    assert 'ProbeFrontLoginAsync("discovery")' in source
+    assert 'LoginAccountMyGwmEuFrontAppAsync(request' in source
+    assert 'LoginAccountMyGwmEuFrontApp13Async(frontApp13Request' in source
 
 
 def test_front_flow_does_not_send_otp_to_legacy_verification_endpoints():
@@ -70,12 +72,16 @@ def test_front_flow_does_not_send_otp_to_legacy_verification_endpoints():
     front_verify_block = source[start:end]
     assert 'CheckSmsCode' not in front_verify_block
     assert 'LoginWithSmsAsync' not in front_verify_block
-    assert 'LoginAccountMyGwmEuFrontAsync' in front_verify_block
+    assert 'LoginAccountMyGwmEuFrontAsync(frontRequest' in front_verify_block
+    assert 'LoginAccountMyGwmEuFrontAppAsync(request' in front_verify_block
+    assert 'LoginAccountMyGwmEuFrontApp13Async(frontApp13Request' in front_verify_block
 
 
 def test_front_api_methods_use_front_transport_not_h5():
     auth = (ROOT / "third_party/ora2mqtt/libgwmapi/GwmApiClient.UserAuth.cs").read_text(encoding="utf-8")
     assert 'LoginAccountMyGwmEuFrontAsync' in auth
+    assert 'LoginAccountMyGwmEuFrontAppAsync' in auth
+    assert 'LoginAccountMyGwmEuFrontApp13Async' in auth
     assert 'PostFrontAsync<MyGwmEuFrontLoginRequest, LoginAccountResponse>' in auth
     assert 'GetSmsCodeMyGwmEuFrontAsync' in auth
     assert 'return PostFrontAsync("userAuth/getSMSCode"' in auth
@@ -116,7 +122,7 @@ def test_front_route_discovery_probes_without_requesting_sms():
     probe_start = configure.index('foreach (var routeId in GwmApiClient.MyGwmEuFrontRouteIds)')
     probe_end = configure.index('if (token is null)', probe_start)
     probe_block = configure[probe_start:probe_end]
-    assert 'LoginAccountMyGwmEuFrontAsync' in probe_block
+    assert 'ProbeFrontLoginAsync' in probe_block
     assert 'GetSmsCodeMyGwmEuFrontAsync' not in probe_block
     assert 'sms_sent=false' in probe_block
 

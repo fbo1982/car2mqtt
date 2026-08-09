@@ -51,6 +51,21 @@ public partial class GwmApiClient
         return PostFrontAsync<MyGwmEuFrontLoginRequest, LoginAccountResponse>("userAuth/loginAccount", request, cancellationToken);
     }
 
+    public Task<LoginAccountResponse> LoginAccountMyGwmEuFrontAppAsync(LoginAccountRequest request, CancellationToken cancellationToken)
+    {
+        return PostFrontAsync<LoginAccountRequest, LoginAccountResponse>("userAuth/loginAccount", request, cancellationToken);
+    }
+
+    public Task<LoginAccountResponse> LoginAccountMyGwmEuFrontApp13Async(MyGwm13LoginAccountRequest request, CancellationToken cancellationToken)
+    {
+        return PostFrontAsync<MyGwm13LoginAccountRequest, LoginAccountResponse>("userAuth/loginAccount", request, cancellationToken);
+    }
+
+    public Task GetSmsCodeMyGwmEuFrontApp13Async(MyGwm13GetSmsCode request, CancellationToken cancellationToken)
+    {
+        return PostFrontAsync("userAuth/getSMSCode", request, cancellationToken);
+    }
+
     public Task GetSmsCodeMyGwmEuFrontAsync(GetSmsCode request, CancellationToken cancellationToken)
     {
         return PostFrontAsync("userAuth/getSMSCode", request, cancellationToken);

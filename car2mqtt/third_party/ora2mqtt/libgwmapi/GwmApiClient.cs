@@ -60,6 +60,14 @@ public partial class GwmApiClient
             // The public EU app exposes eu-front-service/eu-global-service for legal/protocol
             // content.  The exact MyGWM 1.3 auth route is not publicly documented, so probe
             // only loginAccount (never getSMSCode) across plausible front-service layouts.
+            // Probe the mobile-app lane first. The public Homebridge client uses pc-api,
+            // but the official MyGWM mobile app identifies as GW_APP_*; mixing that identity
+            // with pc-api produced only generic code 001 responses in EU.
+            ["eu_global_service_global_gateway_app"] = "https://eu-front-service.gwmcloud.com/eu-global-service/eu-global-gateway/app-api/api/v1.0/",
+            ["eu_global_service_app"] = "https://eu-front-service.gwmcloud.com/eu-global-service/app-api/api/v1.0/",
+            ["eu_global_service_official_gateway_app"] = "https://eu-front-service.gwmcloud.com/eu-global-service/eu-official-gateway/app-api/api/v1.0/",
+            ["eu_official_gateway_app"] = "https://eu-front-service.gwmcloud.com/eu-official-gateway/app-api/api/v1.0/",
+            ["eu_official_commerce_official_gateway_app"] = "https://eu-front-service.gwmcloud.com/eu-official-commerce/eu-official-gateway/app-api/api/v1.0/",
             ["eu_global_service_pc"] = "https://eu-front-service.gwmcloud.com/eu-global-service/pc-api/api/v1.0/",
             ["eu_global_service_official_gateway_pc"] = "https://eu-front-service.gwmcloud.com/eu-global-service/eu-official-gateway/pc-api/api/v1.0/",
             ["eu_global_service_global_gateway_pc"] = "https://eu-front-service.gwmcloud.com/eu-global-service/eu-global-gateway/pc-api/api/v1.0/",
@@ -97,23 +105,58 @@ public partial class GwmApiClient
     public string FrontBrand { get; private set; } = "6";
     public string FrontEnterpriseId { get; private set; } = "CC01";
 
-    public void UseMyGwmEuFrontProfile(string country, string routeId = "eu_global_service_pc", string rs = "5")
+    public string FrontApiLane { get; private set; } = "pc";
+
+    public void UseMyGwmEuFrontProfile(string country, string routeId = "eu_global_service_global_gateway_app", string rs = "")
     {
         if (!MyGwmEuFrontRoutes.TryGetValue(routeId, out _))
         {
             throw new ArgumentException($"Unknown MyGWM EU front route: {routeId}", nameof(routeId));
         }
+
         FrontRouteId = routeId;
-        FrontRs = rs;
-        SetHeader(_frontClient, "appid", "6");
-        SetHeader(_frontClient, "brandid", "CCZ001");
+        FrontApiLane = routeId.EndsWith("_app", StringComparison.OrdinalIgnoreCase) ? "app" : "pc";
+        var selectedRs = String.IsNullOrWhiteSpace(rs) ? (FrontApiLane == "app" ? "2" : "5") : rs;
+        FrontRs = selectedRs;
+
+        // Clear lane-specific headers before applying the next profile. This prevents
+        // Brazilian PC headers from leaking into a mobile app-api probe (and vice versa).
+        foreach (var header in new[] { "appid", "brandid", "devicetype", "gwid", "regioncode", "systemtype", "channel", "cver", "enterpriseid" })
+        {
+            _frontClient.DefaultRequestHeaders.Remove(header);
+        }
+
         SetHeader(_frontClient, "country", country);
-        SetHeader(_frontClient, "devicetype", "0");
-        _frontClient.DefaultRequestHeaders.Remove("gwid");
-        _frontClient.DefaultRequestHeaders.TryAddWithoutValidation("gwid", String.Empty);
         SetHeader(_frontClient, "language", CountryToFrontLanguage(country));
-        SetHeader(_frontClient, "rs", rs);
-        UseMyGwmEuFrontIdentity("pc_gwm", "GW_PC_GWM", "6", "CC01");
+        SetHeader(_frontClient, "rs", selectedRs);
+
+        if (FrontApiLane == "app")
+        {
+            // Candidate MyGWM 1.3 mobile profile. Unlike the public PC client, do not
+            // send brandid/devicetype/gwid on app-api. Keep the app identity internally
+            // consistent across initial login, code request and OTP redemption.
+            SetHeader(_frontClient, "terminal", "GW_APP_GWM");
+            SetHeader(_frontClient, "brand", "6");
+            SetHeader(_frontClient, "enterpriseid", "CC01");
+            SetHeader(_frontClient, "appid", "6");
+            SetHeader(_frontClient, "channel", "APP");
+            SetHeader(_frontClient, "cver", "1.3.0");
+            SetHeader(_frontClient, "systemtype", "1");
+            FrontIdentityLabel = "mygwm13_app";
+            FrontTerminal = "GW_APP_GWM";
+            FrontBrand = "6";
+            FrontEnterpriseId = "CC01";
+        }
+        else
+        {
+            // Public MyGWM PC/front-service profile (Brazil reference), used only as a
+            // fallback diagnostic lane. EU rs is discovered separately when required.
+            SetHeader(_frontClient, "appid", "6");
+            SetHeader(_frontClient, "brandid", "CCZ001");
+            SetHeader(_frontClient, "devicetype", "0");
+            _frontClient.DefaultRequestHeaders.TryAddWithoutValidation("gwid", String.Empty);
+            UseMyGwmEuFrontIdentity("pc_gwm", "GW_PC_GWM", "6", "CC01");
+        }
     }
 
     public void UseMyGwmEuFrontIdentity(string label, string terminal, string brand, string enterpriseId)
