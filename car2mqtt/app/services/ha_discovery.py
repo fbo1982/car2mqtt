@@ -1,71 +1,223 @@
 from __future__ import annotations
-import json, re
-from typing import Any
-from app.core.models import AppConfig, VehicleConfig, RuntimeMqttSettings
+
+import json
+import re
+from typing import Any, Iterable
+
+from app.core.models import AppConfig, RuntimeMqttSettings, VehicleConfig
 from app.mqtt.client import LocalMqttClient
 from app.mqtt.topic_builder import mapped_topic, normalize_plate
+
 
 def _slug(value: str) -> str:
     raw = re.sub(r"[^a-zA-Z0-9_]+", "_", str(value or "").strip().lower())
     return raw.strip("_") or "vehicle"
 
-def _entity_slug(vehicle: VehicleConfig) -> str:
-    return f"car2mqtt_{_slug(vehicle.manufacturer)}_{_slug(normalize_plate(vehicle.license_plate) or vehicle.id)}"
+
+def _entity_base(vehicle: VehicleConfig) -> str:
+    """Keep the entity ids used by the existing configuration.yaml Copy Helper.
+
+    Existing automations reference e.g. sensor.car_bmw_ggca501e_plugged.  MQTT
+    Discovery therefore deliberately uses the same base instead of introducing a
+    new naming scheme.
+    """
+    plate = normalize_plate(vehicle.license_plate) or vehicle.id
+    return f"car_{_slug(vehicle.manufacturer)}_{_slug(plate)}"
+
+
+def _discovery_uid(vehicle: VehicleConfig, key: str, component: str = "sensor") -> str:
+    # Unique IDs are stable per MQTT platform.  Reusing the Copy Helper IDs for
+    # sensor entities lets an existing YAML setup migrate without changing the
+    # automation references once the YAML sensor definitions have been removed.
+    base = _entity_base(vehicle)
+    key_slug = _slug(key)
+    return f"{base}_{key_slug}"
+
 
 def _device(vehicle: VehicleConfig) -> dict[str, Any]:
-    return {"identifiers":[f"car2mqtt_{vehicle.id}"],"manufacturer":str(vehicle.manufacturer).upper(),"name":vehicle.label,"model":str((vehicle.provider_config or {}).get("model") or "Vehicle"),"sw_version":"car2mqtt"}
+    provider = vehicle.provider_config or {}
+    model = str(provider.get("model") or provider.get("vehicle_model") or "Vehicle")
+    return {
+        "identifiers": [f"car2mqtt_{_slug(vehicle.manufacturer)}_{_slug(normalize_plate(vehicle.license_plate) or vehicle.id)}"],
+        "manufacturer": str(vehicle.manufacturer).upper(),
+        "name": vehicle.label,
+        "model": model,
+        "sw_version": "Car2MQTT",
+    }
+
 
 def _topic(prefix: str, component: str, uid: str) -> str:
     return f"{prefix.rstrip('/')}/{component}/{uid}/config"
 
-def build_discovery_configs(vehicle: VehicleConfig, settings: RuntimeMqttSettings, discovery_prefix: str="homeassistant") -> list[tuple[str, dict[str, Any]]]:
+
+def _default_entity_id(component: str, uid: str) -> str:
+    # Since Home Assistant 2026.4, default_entity_id is the supported way to
+    # request a deterministic initial entity id for MQTT discovery entities.
+    return f"{component}.{uid}"
+
+
+def build_discovery_configs(
+    vehicle: VehicleConfig,
+    settings: RuntimeMqttSettings,
+    discovery_prefix: str = "homeassistant",
+) -> list[tuple[str, dict[str, Any]]]:
     root = mapped_topic(settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
-    base = _entity_slug(vehicle); dev = _device(vehicle); configs=[]
-    def add_sensor(key,name,unit="",device_class="",state_class="",icon=""):
-        uid=f"{base}_{key}"; cfg={"name":name,"unique_id":uid,"state_topic":f"{root}/{key}","device":dev}
-        if unit: cfg["unit_of_measurement"]=unit
-        if device_class: cfg["device_class"]=device_class
-        if state_class: cfg["state_class"]=state_class
-        if icon: cfg["icon"]=icon
-        configs.append((_topic(discovery_prefix,"sensor",uid),cfg))
-    def add_binary(key,name,device_class="",icon=""):
-        uid=f"{base}_{key}"; cfg={"name":name,"unique_id":uid,"state_topic":f"{root}/{key}","payload_on":"true","payload_off":"false","device":dev}
-        if device_class: cfg["device_class"]=device_class
-        if icon: cfg["icon"]=icon
-        configs.append((_topic(discovery_prefix,"binary_sensor",uid),cfg))
-    def add_number(key,name,min_v=0,max_v=100,step=1,unit="%"):
-        uid=f"{base}_{key}_set"; cfg={"name":name,"unique_id":uid,"state_topic":f"{root}/{key}","command_topic":f"{root}/{key}/set","min":min_v,"max":max_v,"step":step,"unit_of_measurement":unit,"mode":"slider","device":dev}
-        configs.append((_topic(discovery_prefix,"number",uid),cfg))
-    def add_button(key,name,command):
-        uid=f"{base}_{key}"; cfg={"name":name,"unique_id":uid,"command_topic":f"{settings.base_topic}/{vehicle.manufacturer}/{normalize_plate(vehicle.license_plate)}/_cmd/{command}","payload_press":"PRESS","device":dev}
-        configs.append((_topic(discovery_prefix,"button",uid),cfg))
-    for key,name,unit,dc,sc,icon in [
-        ("soc","SoC","%","battery","measurement",""),("range","Reichweite","km","distance","measurement",""),("odometer","Kilometerstand","km","distance","total_increasing",""),("limitSoc","Ladelimit","%","battery","measurement",""),("capacityKwh","Akkukapazität","kWh","energy","measurement",""),("fuelLevel","Tankstand","%","","measurement","mdi:gas-station"),("fuelRange","Tankreichweite","km","distance","measurement",""),("vehicleType","Antrieb","","","","mdi:car-info"),("latitude","Latitude","","","","mdi:latitude"),("longitude","Longitude","","","","mdi:longitude"),("plugged_ts","Angesteckt Zeitstempel","","timestamp","",""),("latitude_ts","Latitude Zeitstempel","","timestamp","",""),("longitude_ts","Longitude Zeitstempel","","timestamp","","")]: add_sensor(key,name,unit,dc,sc,icon)
-    add_binary("charging","Lädt","battery_charging"); add_binary("plugged","Angesteckt","plug"); add_binary("connected","Verbunden","connectivity"); add_binary("doorsLocked","Türen verriegelt","lock"); add_binary("windowsOpen","Fenster offen","window")
-    add_number("limitSoc","Ladelimit setzen",40,100,1,"%")
-    add_button("refresh","Aktualisieren","refresh"); add_button("wake","Aufwecken","wake"); add_button("lock","Verriegeln","lock"); add_button("unlock","Entriegeln","unlock")
-    uid=f"{base}_tracker"; configs.append((_topic(discovery_prefix,"device_tracker",uid),{"name":f"{vehicle.label} Standort","unique_id":uid,"json_attributes_topic":f"{root}/device_tracker","state_topic":f"{root}/device_tracker/state","source_type":"gps","device":dev}))
+    dev = _device(vehicle)
+    configs: list[tuple[str, dict[str, Any]]] = []
+
+    def add_sensor(
+        key: str,
+        name: str,
+        *,
+        unit: str = "",
+        device_class: str = "",
+        state_class: str = "",
+        icon: str = "",
+        entity_category: str = "",
+        enabled_by_default: bool = True,
+    ) -> None:
+        uid = _discovery_uid(vehicle, key, "sensor")
+        cfg: dict[str, Any] = {
+            "name": name,
+            "unique_id": uid,
+            "default_entity_id": _default_entity_id("sensor", uid),
+            "state_topic": f"{root}/{key}",
+            "device": dev,
+            "enabled_by_default": enabled_by_default,
+        }
+        if unit:
+            cfg["unit_of_measurement"] = unit
+        if device_class:
+            cfg["device_class"] = device_class
+        if state_class:
+            cfg["state_class"] = state_class
+        if icon:
+            cfg["icon"] = icon
+        if entity_category:
+            cfg["entity_category"] = entity_category
+        configs.append((_topic(discovery_prefix, "sensor", uid), cfg))
+
+    def add_binary(
+        key: str,
+        name: str,
+        *,
+        device_class: str = "",
+        icon: str = "",
+        payload_on: str = "true",
+        payload_off: str = "false",
+    ) -> None:
+        uid = _discovery_uid(vehicle, key, "binary_sensor")
+        cfg: dict[str, Any] = {
+            "name": name,
+            "unique_id": uid,
+            "default_entity_id": _default_entity_id("binary_sensor", uid),
+            "state_topic": f"{root}/{key}",
+            "payload_on": payload_on,
+            "payload_off": payload_off,
+            "device": dev,
+        }
+        if device_class:
+            cfg["device_class"] = device_class
+        if icon:
+            cfg["icon"] = icon
+        configs.append((_topic(discovery_prefix, "binary_sensor", uid), cfg))
+
+    # Compatibility entities: these are the four sensors generated by the
+    # existing configuration.yaml Copy Helper and are referenced by the helper
+    # automation.  Keep both the domain and entity id unchanged.
+    add_sensor("plugged_ts", "Angesteckt Zeitstempel", device_class="timestamp")
+    add_sensor("plugged", "Angesteckt (Rohwert)", icon="mdi:ev-plug-type2")
+    add_sensor("latitude", "Latitude", icon="mdi:latitude")
+    add_sensor("longitude", "Longitude", icon="mdi:longitude")
+
+    # Common mapped vehicle data. Missing topics simply remain unknown in Home
+    # Assistant, which allows one discovery definition to work across BMW, GWM
+    # and ACCIONA/Silence without manufacturer-specific YAML.
+    add_sensor("soc", "SoC", unit="%", device_class="battery", state_class="measurement")
+    add_sensor("range", "Reichweite", unit="km", device_class="distance", state_class="measurement")
+    add_sensor("odometer", "Kilometerstand", unit="km", device_class="distance", state_class="total_increasing")
+    add_sensor("limitSoc", "Ladelimit", unit="%", state_class="measurement", icon="mdi:battery-sync")
+    add_sensor("capacityKwh", "Akkukapazität", unit="kWh", device_class="energy_storage", state_class="measurement")
+    add_sensor("fuelLevel", "Tankstand", unit="%", state_class="measurement", icon="mdi:gas-station")
+    add_sensor("fuelRange", "Tankreichweite", unit="km", device_class="distance", state_class="measurement")
+    add_sensor("vehicleType", "Antrieb", icon="mdi:car-info")
+    add_sensor("lastUpdate", "Letzte Fahrzeugaktualisierung", device_class="timestamp", entity_category="diagnostic")
+    add_sensor("latitude_ts", "Latitude Zeitstempel", device_class="timestamp", entity_category="diagnostic", enabled_by_default=False)
+    add_sensor("longitude_ts", "Longitude Zeitstempel", device_class="timestamp", entity_category="diagnostic", enabled_by_default=False)
+
+    # Friendly boolean representations in addition to the compatibility sensor
+    # above. No command entities are advertised here because Car2MQTT currently
+    # does not implement the corresponding MQTT command consumers.
+    add_binary("charging", "Lädt", device_class="battery_charging")
+    add_binary("plugged", "Angesteckt", device_class="plug")
+    add_binary("doorsLocked", "Türen verriegelt", icon="mdi:car-door-lock")
+    add_binary("windowsOpen", "Fenster offen", device_class="window")
+
     return configs
 
-def publish_vehicle_discovery(vehicle: VehicleConfig, settings: RuntimeMqttSettings, *, discovery_prefix="homeassistant", retain=True) -> int:
-    if not settings.host: raise RuntimeError("MQTT Host ist nicht gesetzt")
-    client=LocalMqttClient(settings); count=0
+
+def _publish_configs(
+    configs: Iterable[tuple[str, dict[str, Any]]],
+    settings: RuntimeMqttSettings,
+    *,
+    retain: bool,
+) -> int:
+    if not settings.host:
+        raise RuntimeError("MQTT Host ist nicht gesetzt")
+    client = LocalMqttClient(settings)
+    count = 0
     try:
         client.connect()
-        for topic,cfg in build_discovery_configs(vehicle,settings,discovery_prefix): client.publish(topic,json.dumps(cfg,ensure_ascii=False),retain=retain,qos=1); count+=1
-    finally: client.disconnect()
+        for topic, cfg in configs:
+            client.publish(topic, json.dumps(cfg, ensure_ascii=False), retain=retain, qos=1)
+            count += 1
+    finally:
+        client.disconnect()
     return count
 
-def clear_vehicle_discovery(vehicle: VehicleConfig, settings: RuntimeMqttSettings, *, discovery_prefix="homeassistant") -> int:
-    if not settings.host: return 0
-    client=LocalMqttClient(settings); count=0
+
+def publish_vehicle_discovery(
+    vehicle: VehicleConfig,
+    settings: RuntimeMqttSettings,
+    *,
+    discovery_prefix: str = "homeassistant",
+    retain: bool = True,
+) -> int:
+    return _publish_configs(
+        build_discovery_configs(vehicle, settings, discovery_prefix),
+        settings,
+        retain=retain,
+    )
+
+
+def clear_vehicle_discovery(
+    vehicle: VehicleConfig,
+    settings: RuntimeMqttSettings,
+    *,
+    discovery_prefix: str = "homeassistant",
+) -> int:
+    if not settings.host:
+        return 0
+    client = LocalMqttClient(settings)
+    count = 0
     try:
         client.connect()
-        for topic,_ in build_discovery_configs(vehicle,settings,discovery_prefix): client.publish(topic,"",retain=True,qos=1); count+=1
-    finally: client.disconnect()
+        for topic, _ in build_discovery_configs(vehicle, settings, discovery_prefix):
+            client.publish(topic, "", retain=True, qos=1)
+            count += 1
+    finally:
+        client.disconnect()
     return count
+
 
 def publish_all_discovery(config: AppConfig, settings: RuntimeMqttSettings) -> int:
-    ui=config.ui_settings
-    if not getattr(ui,"ha_discovery_enabled",True): return 0
-    return sum(publish_vehicle_discovery(v,settings,discovery_prefix=ui.ha_discovery_prefix or "homeassistant",retain=bool(ui.ha_discovery_retain)) for v in config.vehicles if v.enabled)
+    ui = config.ui_settings
+    if not getattr(ui, "ha_discovery_enabled", False):
+        return 0
+    prefix = str(getattr(ui, "ha_discovery_prefix", "homeassistant") or "homeassistant").strip() or "homeassistant"
+    retain = bool(getattr(ui, "ha_discovery_retain", True))
+    return sum(
+        publish_vehicle_discovery(vehicle, settings, discovery_prefix=prefix, retain=retain)
+        for vehicle in config.vehicles
+        if vehicle.enabled
+    )

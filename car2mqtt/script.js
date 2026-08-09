@@ -273,7 +273,7 @@ function renderSettingsDialog(data){
   if(info) info.textContent = describeHomezone(data?.effective_homezone || helperHomezoneJson);
   if(trackerToggle) trackerToggle.checked = !!(data?.ui_settings?.device_tracker_enabled);
   const ui = data?.ui_settings || {};
-  if(field("settingsHaDiscoveryEnabled")) field("settingsHaDiscoveryEnabled").checked = ui.ha_discovery_enabled !== false;
+  if(field("settingsHaDiscoveryEnabled")) field("settingsHaDiscoveryEnabled").checked = !!ui.ha_discovery_enabled;
   if(field("settingsHaDiscoveryPrefix")) field("settingsHaDiscoveryPrefix").value = ui.ha_discovery_prefix || "homeassistant";
   if(field("settingsHaDiscoveryRetain")) field("settingsHaDiscoveryRetain").checked = ui.ha_discovery_retain !== false;
   if(field("settingsEvccEnabled")) field("settingsEvccEnabled").checked = !!ui.evcc_enabled;

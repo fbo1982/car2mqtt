@@ -194,7 +194,7 @@ select, option {
   <div class="panel">
     <div class="modal-head"><div><div class="eyebrow">Fahrzeug</div><h3>Fahrzeug bearbeiten</h3></div><button id="closeEditBtn" class="icon-btn">✕</button></div>
     <div id="editError" class="notice"></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="copyConfigsBtn" type="button" class="ghost-btn">Copy Configs</button></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0 28px 10px"><button id="bmwHowtoBtn" type="button" class="ghost-btn howto-btn hidden">My BMW How to</button><button id="publishVehicleDiscoveryBtn" type="button" class="ghost-btn">HA Entitäten senden</button><button id="copyConfigsBtn" type="button" class="ghost-btn">Copy Configs</button></div>
     <div class="modal-body grid">
       <div class="dialog-narrow"><div class="field"><label>Hersteller</label><select id="editManufacturer"></select></div>
       <div class="field"><label style="margin-bottom:0">Status</label><div><input id="editEnabled" class="check-lg" type="checkbox" style="width:auto"> Fahrzeug aktiv</div><small>Wenn deaktiviert, werden keine Remote-Logins und keine Live-Datenverbindungen aufgebaut.</small></div>
@@ -430,6 +430,25 @@ select, option {
             <div class="muted" style="margin-top:10px">Erstellt für lokale und remote Fahrzeuge automatisch MQTT Device Tracker Entitäten.</div>
           </div>
         </div>
+        <div class="howto-card">
+          <div class="eyebrow">Home Assistant</div>
+          <h4>MQTT Discovery für Fahrzeug-Entitäten</h4>
+          <div class="field" style="margin-top:14px">
+            <label style="display:flex;align-items:center;gap:10px">
+              <input id="settingsHaDiscoveryEnabled" type="checkbox">
+              <span>Fahrzeug-Entitäten automatisch bereitstellen</span>
+            </label>
+            <div class="muted" style="margin-top:10px">Neue und geänderte lokale Fahrzeuge werden automatisch als Home-Assistant-MQTT-Entitäten veröffentlicht.</div>
+          </div>
+          <div class="grid two" style="margin-top:16px">
+            <div class="field"><label>Discovery Prefix</label><input id="settingsHaDiscoveryPrefix" value="homeassistant" /></div>
+            <div class="field">
+              <label style="display:flex;align-items:center;gap:10px;margin-top:28px"><input id="settingsHaDiscoveryRetain" type="checkbox" checked><span>Discovery retained speichern</span></label>
+            </div>
+          </div>
+          <div class="howto-note" style="margin-top:14px"><strong>Migration:</strong> Wenn die bisherigen Car2MQTT-MQTT-Sensoren noch manuell in <code>configuration.yaml</code> definiert sind, diese vier Fahrzeug-Sensoren zuerst dort entfernen und Home Assistant neu laden/starten. Die Discovery-Version verwendet bewusst dieselben Entity-IDs für <code>plugged</code>, <code>plugged_ts</code>, <code>latitude</code> und <code>longitude</code>.</div>
+          <div style="margin-top:14px"><button id="publishHaDiscoveryBtn" type="button" class="ghost-btn">Alle HA Entitäten jetzt senden</button></div>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -571,6 +590,7 @@ function setEditRemoteMode(enabled, card=null){
   const manWrap = field('editManufacturer')?.closest('.field');
   if(manWrap) manWrap.style.display = enabled ? 'none' : '';
   field('bmwHowtoBtn')?.classList.toggle('hidden', true);
+  field('publishVehicleDiscoveryBtn')?.classList.toggle('hidden', !!enabled);
   field('editLabel').readOnly = !!enabled;
   field('editPlate').readOnly = !!enabled;
   if(enabled && card){
@@ -799,6 +819,10 @@ function renderSettingsDialog(data){
   });
   if(info) info.textContent = describeHomezone(data?.effective_homezone || helperHomezoneJson);
   if(trackerToggle) trackerToggle.checked = !!(data?.ui_settings?.device_tracker_enabled);
+  const ui = data?.ui_settings || {};
+  if(field('settingsHaDiscoveryEnabled')) field('settingsHaDiscoveryEnabled').checked = !!ui.ha_discovery_enabled;
+  if(field('settingsHaDiscoveryPrefix')) field('settingsHaDiscoveryPrefix').value = ui.ha_discovery_prefix || 'homeassistant';
+  if(field('settingsHaDiscoveryRetain')) field('settingsHaDiscoveryRetain').checked = ui.ha_discovery_retain !== false;
 }
 async function openSettingsDialog(){
   const dlg = field('settingsDialog');
@@ -1353,7 +1377,13 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
   try{
     const select = field('settingsHomeZoneSelect');
     const trackerToggle = field('settingsDeviceTrackerEnabled');
-    const resp = await postJson('api/settings/homezone', { helper_home_zone_entity_id: select ? select.value : '', device_tracker_enabled: !!(trackerToggle && trackerToggle.checked) });
+    const resp = await postJson('api/settings/homezone', {
+      helper_home_zone_entity_id: select ? select.value : '',
+      device_tracker_enabled: !!(trackerToggle && trackerToggle.checked),
+      ha_discovery_enabled: !!field('settingsHaDiscoveryEnabled')?.checked,
+      ha_discovery_prefix: field('settingsHaDiscoveryPrefix')?.value || 'homeassistant',
+      ha_discovery_retain: !!field('settingsHaDiscoveryRetain')?.checked
+    });
     uiSettings = resp.ui_settings || {};
     helperHomezoneJson = resp.effective_homezone || helperHomezoneJson;
     const info = field('settingsHomeZoneInfo');
@@ -1363,6 +1393,23 @@ if(saveSettingsBtn) saveSettingsBtn.onclick = async (ev)=>{
     alert(err.message || 'Einstellungen konnten nicht gespeichert werden.');
   }
 };
+async function publishAllHaDiscovery(){
+  try{
+    const data = await postJson('./api/ha-discovery/publish', {});
+    alert(`Home Assistant Discovery veröffentlicht: ${data.published || 0} Entitäten.`);
+  }catch(err){ alert(err.message || 'Discovery konnte nicht veröffentlicht werden.'); }
+}
+async function publishCurrentVehicleDiscovery(){
+  if(!editState.vehicleId || String(editState.vehicleId).startsWith('remote::')) return;
+  try{
+    const data = await postJson(`./api/vehicles/${editState.vehicleId}/ha-discovery/publish`, {});
+    alert(`Home Assistant Discovery veröffentlicht: ${data.published || 0} Entitäten.`);
+  }catch(err){ alert(err.message || 'Discovery konnte nicht veröffentlicht werden.'); }
+}
+const publishHaDiscoveryBtn = field('publishHaDiscoveryBtn');
+if(publishHaDiscoveryBtn) publishHaDiscoveryBtn.onclick = (ev)=>{ ev.preventDefault(); publishAllHaDiscovery(); };
+const publishVehicleDiscoveryBtn = field('publishVehicleDiscoveryBtn');
+if(publishVehicleDiscoveryBtn) publishVehicleDiscoveryBtn.onclick = (ev)=>{ ev.preventDefault(); publishCurrentVehicleDiscovery(); };
 const helperConfigBtn = field('copyHelperBtn');
 if(helperConfigBtn) helperConfigBtn.onclick = (ev)=>{ ev.preventDefault(); openHelperConfigDialog(); };
 const closeHelperConfigBtn = field('closeHelperConfigBtn');

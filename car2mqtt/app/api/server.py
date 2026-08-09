@@ -40,6 +40,11 @@ from app.providers.gwm_config import (
     clear_ora_token_backup,
 )
 from app.services.worker_manager import WorkerManager
+from app.services.ha_discovery import (
+    clear_vehicle_discovery,
+    publish_all_discovery,
+    publish_vehicle_discovery,
+)
 
 logger = logging.getLogger("car2mqtt.server")
 
@@ -109,6 +114,9 @@ class GwmVerificationPayload(BaseModel):
 class HomeZoneSettingsPayload(BaseModel):
     helper_home_zone_entity_id: str = ""
     device_tracker_enabled: bool = False
+    ha_discovery_enabled: bool = False
+    ha_discovery_prefix: str = "homeassistant"
+    ha_discovery_retain: bool = True
 
 
 def _normalize_vehicle_id(license_plate: str) -> str:
@@ -679,6 +687,8 @@ def _publish_device_trackers(cards: list[dict[str, Any]], mqtt_settings, enabled
             if card.get('remote_server_name'):
                 attrs['server_name'] = card.get('remote_server_name')
             state = 'not_home' if 'latitude' in attrs and 'longitude' in attrs else 'unknown'
+            local_device_id = f"car2mqtt_{_slugify_identifier(manufacturer)}_{_slugify_identifier(_normalize_vehicle_id(license_plate) or label)}"
+            device_identifier = slug if card.get('remote') else local_device_id
             device_payload = {
                 'name': label,
                 'object_id': slug,
@@ -690,7 +700,7 @@ def _publish_device_trackers(cards: list[dict[str, Any]], mqtt_settings, enabled
                 'payload_not_home': 'not_home',
                 'icon': 'mdi:car',
                 'device': {
-                    'identifiers': [slug],
+                    'identifiers': [device_identifier],
                     'name': label,
                     'manufacturer': manufacturer,
                     'model': license_plate or label,
@@ -724,6 +734,32 @@ def create_app() -> FastAPI:
     registry = ProviderRegistry()
     worker_manager = WorkerManager(data_dir, store, state_store)
 
+    def _ui_discovery_settings(cfg: AppConfig) -> tuple[bool, str, bool]:
+        ui = cfg.ui_settings
+        enabled = bool(getattr(ui, "ha_discovery_enabled", False))
+        prefix = str(getattr(ui, "ha_discovery_prefix", "homeassistant") or "homeassistant").strip() or "homeassistant"
+        retain = bool(getattr(ui, "ha_discovery_retain", True))
+        return enabled, prefix, retain
+
+    def _publish_discovery_for_vehicle(vehicle: VehicleConfig, cfg: AppConfig | None = None) -> int:
+        cfg = cfg or store.load()
+        enabled, prefix, retain = _ui_discovery_settings(cfg)
+        if not enabled or not vehicle.enabled:
+            return 0
+        settings = load_runtime_mqtt_settings()
+        if not settings.host:
+            return 0
+        return publish_vehicle_discovery(vehicle, settings, discovery_prefix=prefix, retain=retain)
+
+    def _clear_discovery_for_vehicle(vehicle: VehicleConfig, cfg: AppConfig | None = None, *, prefix: str | None = None) -> int:
+        cfg = cfg or store.load()
+        settings = load_runtime_mqtt_settings()
+        if not settings.host:
+            return 0
+        if prefix is None:
+            _, prefix, _ = _ui_discovery_settings(cfg)
+        return clear_vehicle_discovery(vehicle, settings, discovery_prefix=prefix or "homeassistant")
+
     app.state.device_tracker_task = None
     app.state.device_tracker_tokens = {}
 
@@ -751,6 +787,15 @@ def create_app() -> FastAPI:
     async def startup_event():
         worker_manager.start_all()
         cfg = store.load()
+        discovery_enabled, _, _ = _ui_discovery_settings(cfg)
+        if discovery_enabled:
+            try:
+                mqtt_settings = load_runtime_mqtt_settings()
+                if mqtt_settings.host:
+                    published = publish_all_discovery(cfg, mqtt_settings)
+                    logger.info("Home Assistant MQTT Discovery initial veröffentlicht: %s Entitäten", published)
+            except Exception:
+                logger.exception("Home Assistant MQTT Discovery Initialpublish fehlgeschlagen")
         if bool(getattr(getattr(cfg, "ui_settings", None), "device_tracker_enabled", False)):
             try:
                 cards, mqtt_settings = build_cards()
@@ -850,21 +895,69 @@ def create_app() -> FastAPI:
     @app.post("/api/settings/homezone")
     async def save_homezone_settings(payload: HomeZoneSettingsPayload):
         cfg = store.load()
+        old_enabled, old_prefix, _ = _ui_discovery_settings(cfg)
         cfg.ui_settings.helper_home_zone_entity_id = str(payload.helper_home_zone_entity_id or '').strip()
         cfg.ui_settings.device_tracker_enabled = bool(payload.device_tracker_enabled)
+        cfg.ui_settings.ha_discovery_enabled = bool(payload.ha_discovery_enabled)
+        cfg.ui_settings.ha_discovery_prefix = str(payload.ha_discovery_prefix or 'homeassistant').strip() or 'homeassistant'
+        cfg.ui_settings.ha_discovery_retain = bool(payload.ha_discovery_retain)
         store.save(cfg)
         try:
             cards, _ = build_cards()
             _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(cfg.ui_settings.device_tracker_enabled))
             app.state.device_tracker_tokens = {str(card.get('id') or ''): _device_tracker_token(card) for card in cards}
         except Exception:
-            pass
+            logger.exception("Device Tracker nach Einstellungsänderung konnte nicht veröffentlicht werden")
+
+        try:
+            settings = load_runtime_mqtt_settings()
+            new_enabled, new_prefix, _ = _ui_discovery_settings(cfg)
+            if settings.host and old_enabled and (not new_enabled or old_prefix != new_prefix):
+                for vehicle in cfg.vehicles:
+                    _clear_discovery_for_vehicle(vehicle, cfg, prefix=old_prefix)
+            if settings.host and new_enabled:
+                publish_all_discovery(cfg, settings)
+        except Exception:
+            logger.exception("Home Assistant MQTT Discovery nach Einstellungsänderung fehlgeschlagen")
+
         return {
             "status": "ok",
             "ui_settings": cfg.ui_settings.model_dump(mode="json"),
             "effective_homezone": _read_existing_homezone(cfg),
         }
 
+
+    @app.post("/api/ha-discovery/publish")
+    async def publish_ha_discovery():
+        cfg = store.load()
+        settings = load_runtime_mqtt_settings()
+        if not settings.host:
+            raise HTTPException(status_code=400, detail="MQTT Host ist nicht gesetzt")
+        if not bool(getattr(cfg.ui_settings, "ha_discovery_enabled", False)):
+            raise HTTPException(status_code=400, detail="Home Assistant MQTT Discovery ist in den Einstellungen deaktiviert")
+        try:
+            count = publish_all_discovery(cfg, settings)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Discovery konnte nicht veröffentlicht werden: {exc}") from exc
+        return {"status": "ok", "published": count}
+
+    @app.post("/api/vehicles/{vehicle_id}/ha-discovery/publish")
+    async def publish_vehicle_ha_discovery(vehicle_id: str):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
+        settings = load_runtime_mqtt_settings()
+        if not settings.host:
+            raise HTTPException(status_code=400, detail="MQTT Host ist nicht gesetzt")
+        cfg = store.load()
+        enabled, prefix, retain = _ui_discovery_settings(cfg)
+        if not enabled:
+            raise HTTPException(status_code=400, detail="Home Assistant MQTT Discovery ist in den Einstellungen deaktiviert")
+        try:
+            count = publish_vehicle_discovery(vehicle, settings, discovery_prefix=prefix, retain=retain)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Discovery konnte nicht veröffentlicht werden: {exc}") from exc
+        return {"status": "ok", "published": count, "vehicle_id": vehicle_id}
 
 
     @app.get("/api/mqtt-clients")
@@ -1139,6 +1232,16 @@ def create_app() -> FastAPI:
                 vehicle.provider_config["source_topic_base"] = "GWM"
             log_store.append(vehicle.id, "ORA Konfiguration erzeugt: providers/%s/ora2mqtt.yml" % vehicle.id)
 
+        discovery_cfg_before_save = store.load()
+        if existing:
+            old_identity = (existing.manufacturer, normalize_plate(existing.license_plate), existing.id)
+            new_identity = (vehicle.manufacturer, normalize_plate(vehicle.license_plate), vehicle.id)
+            if old_identity != new_identity or (existing.enabled and not vehicle.enabled):
+                try:
+                    _clear_discovery_for_vehicle(existing, discovery_cfg_before_save)
+                except Exception:
+                    logger.exception("Alte Home Assistant Discovery für %s konnte nicht entfernt werden", existing.id)
+
         if vehicle_id_to_replace and vehicle_id_to_replace != vehicle.id:
             if payload.manufacturer == "gwm":
                 src_cfg = Path(data_dir) / "providers" / vehicle_id_to_replace / "ora2mqtt.yml"
@@ -1155,6 +1258,10 @@ def create_app() -> FastAPI:
         store.upsert_vehicle(vehicle)
         worker_manager.publish_vehicle_saved_meta(vehicle.id)
         worker_manager.sync_vehicle_to_forward_clients(vehicle.id)
+        try:
+            _publish_discovery_for_vehicle(vehicle, store.load())
+        except Exception:
+            logger.exception("Home Assistant Discovery für %s konnte nicht veröffentlicht werden", vehicle.id)
         try:
             cards, _ = build_cards()
             _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(getattr(getattr(store.load(), "ui_settings", None), "device_tracker_enabled", False)))
@@ -1298,6 +1405,10 @@ def create_app() -> FastAPI:
         if not vehicle:
             raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
         config = store.load()
+        try:
+            _clear_discovery_for_vehicle(vehicle, config)
+        except Exception:
+            logger.exception("Home Assistant Discovery für gelöschtes Fahrzeug %s konnte nicht entfernt werden", vehicle_id)
         config.vehicles = [v for v in config.vehicles if v.id != vehicle_id]
         store.save(config)
         worker_manager.delete_vehicle(vehicle_id)

@@ -50,6 +50,11 @@ class UiSettings(BaseModel):
     helper_home_zone_entity_id: str = ""
     device_tracker_enabled: bool = False
     remote_device_tracker_ids: List[str] = Field(default_factory=list)
+    # Disabled by default for upgrades so existing manual MQTT YAML entities do
+    # not collide until the user deliberately migrates to MQTT Discovery.
+    ha_discovery_enabled: bool = False
+    ha_discovery_prefix: str = "homeassistant"
+    ha_discovery_retain: bool = True
 
 
 class MqttForwardClientConfig(BaseModel):

@@ -122,6 +122,14 @@ Die Remote-Ansicht ist bewusst reduziert:
 - Bearbeiten-Dialog mit Informationsfeldern
 - Copy-Configs weiterhin verfügbar
 
+## Home Assistant MQTT Discovery
+
+Car2MQTT kann die Home-Assistant-Entitäten für lokale Fahrzeuge direkt über MQTT Discovery bereitstellen. Nach einmaliger Aktivierung unter **Einstellungen → Home Assistant → MQTT Discovery** werden die Entitäten beim Start sowie beim Anlegen oder Ändern eines Fahrzeugs automatisch veröffentlicht.
+
+Für die Migration aus einer bestehenden manuellen `configuration.yaml` ist die Discovery-Funktion bei Upgrades zunächst deaktiviert. Entferne zuerst die bisherigen vier Car2MQTT-Fahrzeugsensoren (`plugged`, `plugged_ts`, `latitude`, `longitude`) aus der manuellen MQTT-Sensor-Konfiguration und aktiviere anschließend Discovery. Die automatisch erzeugten Sensoren behalten absichtlich die bisherigen Entity-IDs wie `sensor.car_bmw_<kennzeichen>_plugged`, sodass die vorhandenen Fahrzeugerkennungs-Automationen nicht angepasst werden müssen.
+
+Zusätzlich werden – soweit der jeweilige Hersteller den Wert liefert – unter anderem SoC, Reichweite, Kilometerstand, Ladelimit, Akkukapazität, Ladezustand und weitere Fahrzeugzustände als Entitäten angelegt. Nicht vorhandene Herstellerwerte bleiben in Home Assistant einfach unbekannt. Der separat konfigurierbare Device Tracker bleibt davon unabhängig.
+
 ## EVCC Copy Helper
 
 Zu jedem Fahrzeug wird eine direkt kopierbare Vorlage erzeugt, u. a. für:
@@ -173,8 +181,9 @@ Beispiele:
 
 ### Einstellungen
 - Home Zone für EVCC-/Automations-Helfer
-- MQTT Discovery aktivieren
-- Entitäten automatisch erzeugen
+- MQTT Discovery für Fahrzeug-Entitäten aktivieren
+- Entitäten bei Start / Fahrzeugänderung automatisch erzeugen
+- Discovery Prefix und Retain konfigurieren
 - Device Tracker global aktivieren
 - Discovery manuell erneut senden
 
