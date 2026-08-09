@@ -224,7 +224,7 @@ public class RunCommand:BaseCommand
                 return false;
             }
             var payload = parts[1].Replace('-', '+').Replace('_', '/');
-            payload += payload.Length % 4 switch
+            payload += (payload.Length % 4) switch
             {
                 2 => "==",
                 3 => "=",
