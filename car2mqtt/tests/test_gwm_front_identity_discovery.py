@@ -44,3 +44,21 @@ def test_identity_http_errors_do_not_abort_discovery():
     block = configure[start:start+1200]
     assert 'continue;' in block
     assert 'sms_sent=false' in block
+
+
+def test_generic_gwm_internal_errors_do_not_select_identity():
+    configure = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
+    assert 'IsInconclusiveFrontIdentityResponse' in configure
+    assert 'String.Equals(exception.Code, "001"' in configure
+    assert 'String.Equals(exception.Code, "607198"' in configure
+    assert 'ORA_AUTH_STEP=identity_probe_inconclusive' in configure
+    start = configure.index('ORA_AUTH_STEP=identity_probe_inconclusive')
+    block = configure[start:start+900]
+    assert 'continue;' in block
+    assert 'sms_sent=false' in block
+
+
+def test_identity_is_selected_only_for_account_specific_response():
+    configure = (ROOT / "third_party/ora2mqtt/ora2mqtt/ConfigureCommand.cs").read_text(encoding="utf-8")
+    assert 'reason=account_response' in configure
+    assert 'reason=gwm_response' not in configure[configure.index('ORA_AUTH_STEP=identity_discovery_start'):configure.index('// Any other structured GWM response means the rs value')]

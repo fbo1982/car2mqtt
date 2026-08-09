@@ -9,6 +9,6 @@ def test_front_route_switch_does_not_mutate_httpclient_baseaddress_after_request
     assert "new Uri(new Uri(baseUrl), url)" in source
 
 
-def test_release_is_1245():
-    assert Path("VERSION").read_text().strip() == "1.2.46"
-    assert 'version: "1.2.46"' in Path("config.yaml").read_text()
+def test_release_is_1247():
+    assert Path("VERSION").read_text().strip() == "1.2.47"
+    assert 'version: "1.2.47"' in Path("config.yaml").read_text()

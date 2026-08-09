@@ -240,11 +240,22 @@ namespace ora2mqtt
                                                         continue;
                                                     }
 
-                                                    // Any other structured GWM response means the identity
-                                                    // tuple is accepted. Keep those headers for OTP request
-                                                    // and redemption and hand the actual account response to
-                                                    // the outer verification/credential handling.
-                                                    _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=identity_selected route={routeId} rs={rs} profile={identity.Label} terminal={identity.Terminal} brand={identity.Brand} enterpriseId={identity.EnterpriseId} reason=gwm_response ORA_GWM_ERROR_CODE={identityException.Code} message={identityException.Message} sms_sent=false");
+                                                    // A structured response is not automatically proof that the
+                                                    // identity tuple is valid. The EU front service can return a
+                                                    // generic code 001/internal-server response for an unsupported
+                                                    // terminal/brand combination. Treat transient/generic backend
+                                                    // failures as inconclusive and continue probing without sending SMS.
+                                                    if (IsInconclusiveFrontIdentityResponse(identityException))
+                                                    {
+                                                        _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=identity_probe_inconclusive route={routeId} rs={rs} profile={identity.Label} terminal={identity.Terminal} brand={identity.Brand} enterpriseId={identity.EnterpriseId} ORA_GWM_ERROR_CODE={identityException.Code} message={identityException.Message} sms_sent=false");
+                                                        continue;
+                                                    }
+
+                                                    // Credential/verification-specific responses prove that the
+                                                    // identity tuple reached the account flow. Preserve the selected
+                                                    // headers for OTP request/redemption and let normal handling process
+                                                    // the account response.
+                                                    _logger.LogError($"ORA_AUTH_FLOW=eu_mygwm_front ORA_AUTH_STEP=identity_selected route={routeId} rs={rs} profile={identity.Label} terminal={identity.Terminal} brand={identity.Brand} enterpriseId={identity.EnterpriseId} reason=account_response ORA_GWM_ERROR_CODE={identityException.Code} message={identityException.Message} sms_sent=false");
                                                     throw;
                                                 }
                                                 catch (HttpRequestException identityHttpException)
@@ -530,6 +541,18 @@ namespace ora2mqtt
         {
             return String.Equals(exception.Code, "551008", StringComparison.OrdinalIgnoreCase) ||
                 exception.Message.Contains("Illegal terminal, brand or enterpriseId", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsInconclusiveFrontIdentityResponse(GwmApiException exception)
+        {
+            // 001 is returned by the EU global front-service as a generic internal
+            // server error for at least one unsupported client identity. It must
+            // not be treated as proof that terminal/brand/enterpriseId is valid.
+            return String.Equals(exception.Code, "001", StringComparison.OrdinalIgnoreCase) ||
+                String.Equals(exception.Code, "607198", StringComparison.OrdinalIgnoreCase) ||
+                exception.Message.Contains("internal server", StringComparison.OrdinalIgnoreCase) ||
+                exception.Message.Contains("System busy", StringComparison.OrdinalIgnoreCase) ||
+                exception.Message.Contains("服务器内部错误", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string Md5Lower(string value)
