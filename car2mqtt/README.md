@@ -21,13 +21,13 @@ Es bündelt mehrere Hersteller in einer Oberfläche, mappt Rohdaten auf ein einh
 ### Verifiziert und im Einsatz
 - **BMW CarData (EU Data Act)** ✅
 - **GWM / ORA** ✅
+- **ACCIONA / Silence über MySilence** ✅
 
-### Hinzugefügt, aber derzeit nicht mit einem produktiven Konto verifiziert
-- **ACCIONA / Silence über MySilence** ⚠️
+### Weitere unterstützte Strukturen
 - Weitere Hersteller-/Topic-Strukturen, die als **Remote-Fahrzeug über MQTT** gespiegelt werden ⚠️
 
-> Hinweis: BMW und GWM/ORA sind die aktuell praktisch getesteten Integrationen.  
-> Die MySilence-Anbindung ist vollständig in UI, Worker und Mapping integriert, benötigt aber noch einen Praxistest mit echten Zugangsdaten.
+> Hinweis: BMW, GWM/ORA und ACCIONA/Silence (MySilence) sind praktisch mit produktiven Konten getestet.  
+> Die MySilence-Anbindung ist vollständig in UI, Worker und Mapping integriert und liefert unter anderem SoC, Reichweite und GPS-Daten.
 
 ## Integrationen
 
