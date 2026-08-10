@@ -283,3 +283,8 @@ Live-Werte wie SoC, Reichweite und `evccStatus` behalten weiterhin ihren konfigu
 ## EVCC Geo Home-Zone Resolver (ab 1.2.60)
 
 Die Geo-Erkennung liest die gewählte Home-Assistant-Zone über den offiziellen Home-Assistant-Core-API-Proxy des Add-ons. Für `zone.home` gibt es zusätzlich einen Fallback auf `/api/config` (Home-Assistant-Systemkoordinaten). Für benutzerdefinierte Zonen gibt es zusätzlich einen Template-API-Fallback. Fehler beim Zonenabruf werden mit HTTP-Status im Log und über `/api/evcc-geo/status` als `zone_resolver_error` ausgegeben, statt still verworfen zu werden.
+
+
+## Home Assistant GPS Device Tracker Zone Fix (ab 1.2.61)
+
+Car2MQTT veröffentlicht GPS-Device-Tracker nur noch über `json_attributes_topic` mit `latitude`, `longitude` und `gps_accuracy`. Der bis 1.2.60 zusätzlich veröffentlichte feste MQTT-State `not_home` wurde entfernt, weil ein `state_topic` in Home Assistant die automatische Zonenauflösung der GPS-Koordinaten überschreibt. Home Assistant bestimmt den Tracker-State jetzt selbst als `home`, Zonenname oder `not_home`. Ein eventuell retained vorhandener alter State wird beim Publish gelöscht.

@@ -701,7 +701,7 @@ def _publish_device_trackers(cards: list[dict[str, Any]], mqtt_settings, enabled
         for card in cards:
             slug = _device_tracker_slug(card)
             config_topic = f"homeassistant/device_tracker/{slug}/config"
-            state_topic = f"{getattr(mqtt_settings, 'base_topic', 'car')}/_device_tracker/{slug}/state"
+            legacy_state_topic = f"{getattr(mqtt_settings, 'base_topic', 'car')}/_device_tracker/{slug}/state"
             attrs_topic = f"{getattr(mqtt_settings, 'base_topic', 'car')}/_device_tracker/{slug}/attributes"
             if not enabled or not bool(card.get('device_tracker_enabled')):
                 client.publish(config_topic, '', retain=True)
@@ -725,18 +725,14 @@ def _publish_device_trackers(cards: list[dict[str, Any]], mqtt_settings, enabled
                 attrs['license_plate'] = license_plate
             if card.get('remote_server_name'):
                 attrs['server_name'] = card.get('remote_server_name')
-            state = 'not_home' if 'latitude' in attrs and 'longitude' in attrs else 'unknown'
             local_device_id = f"car2mqtt_{_slugify_identifier(manufacturer)}_{_slugify_identifier(_normalize_vehicle_id(license_plate) or label)}"
             device_identifier = slug if card.get('remote') else local_device_id
             device_payload = {
                 'name': label,
                 'object_id': slug,
                 'unique_id': slug,
-                'state_topic': state_topic,
                 'json_attributes_topic': attrs_topic,
                 'source_type': 'gps',
-                'payload_home': 'home',
-                'payload_not_home': 'not_home',
                 'icon': 'mdi:car',
                 'device': {
                     'identifiers': [device_identifier],
@@ -748,7 +744,10 @@ def _publish_device_trackers(cards: list[dict[str, Any]], mqtt_settings, enabled
             logger.info("Device Tracker: veröffentliche Discovery für %s via %s", slug, config_topic)
             client.publish(config_topic, device_payload, retain=True)
             client.publish(attrs_topic, attrs, retain=True)
-            client.publish(state_topic, state, retain=True)
+            # GPS trackers must not publish a forced home/not_home state. Home Assistant
+            # derives the current zone directly from latitude/longitude when no
+            # state_topic is configured. Clear the retained legacy state from <=1.2.60.
+            client.publish(legacy_state_topic, '', retain=True)
             published += 1
         logger.info("Device Tracker: %s Tracker veröffentlicht", published)
     except Exception:
