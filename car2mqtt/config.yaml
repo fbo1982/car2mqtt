@@ -1,5 +1,5 @@
 name: "Car2MQTT"
-version: "1.2.62"
+version: "1.2.63"
 slug: "car2mqtt"
 description: "Multi-vehicle MQTT bridge for BMW, GWM/ORA and ACCIONA/Silence for Home Assistant"
 url: "https://github.com/fbo1982/car2mqtt"

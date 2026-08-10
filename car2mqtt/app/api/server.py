@@ -27,7 +27,7 @@ from app.core.runtime_settings import load_runtime_mqtt_settings
 from app.core.state_store import StateStore
 from app.core.vehicle_log_store import VehicleLogStore
 from app.mqtt.client import LocalMqttClient, test_connection
-from app.mqtt.topic_builder import mapped_topic, raw_vehicle_topic
+from app.mqtt.topic_builder import mapped_topic, normalize_plate, raw_vehicle_topic
 from app.providers.bmw.oauth import poll_device_flow, save_token_file, start_device_flow
 from app.providers.registry import ProviderRegistry
 from app.providers.gwm_config import (

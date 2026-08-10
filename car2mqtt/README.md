@@ -1,14 +1,14 @@
 # Car2MQTT
 
+
+## v1.2.63 – Vehicle Save Hotfix
+
+- Behebt einen `500 Internal Server Error` beim Speichern bestehender Fahrzeuge.
+- `normalize_plate` wird im API-Server wieder korrekt importiert; betroffen waren alle Hersteller beim PUT auf `/api/vehicles/{id}`.
+- Regressionstest stellt sicher, dass der Save-Pfad den Normalizer zur Laufzeit auflösen kann.
+
 **Car2MQTT** ist ein Home-Assistant-Add-on für Fahrzeugdaten über MQTT.  
 Es bündelt mehrere Hersteller in einer Oberfläche, mappt Rohdaten auf ein einheitliches Schema, kann Daten an weitere MQTT-Broker weiterleiten und erzeugt pro Fahrzeug kopierbare Vorlagen für **EVCC**.
-
-### v1.2.62 – MQTT Geo Debug State
-
-- Neues retained Diagnose-Topic `mapped/evccGeoState` mit `home`, `not_home` oder `unknown`.
-- Der Wert ist rein diagnostisch und wird nicht als Home-Assistant `device_tracker`-State verwendet. HA bestimmt seinen echten Zonen-State weiterhin selbst aus GPS-Koordinaten.
-- `evccAtSite`, `evccDistance` und `evccGeoReason` bleiben unverändert erhalten.
-
 
 ## Highlights
 
