@@ -649,9 +649,11 @@ class EvccGeoFilterService:
             with self._lock:
                 self._presence_by_root[root] = decision.at_site
         self._schedule_relay_edge(root, previous_at_site, decision.at_site)
+        geo_state = "unknown" if decision.at_site is None else ("home" if decision.at_site else "not_home")
         payloads: dict[str, Any] = {
             "evccStatus": decision.status,
             "evccAtSite": decision.at_site if decision.at_site is not None else False,
+            "evccGeoState": geo_state,
             "evccDistance": round(decision.distance_m, 1) if decision.distance_m is not None else "unknown",
             "evccGeoReason": decision.reason,
         }

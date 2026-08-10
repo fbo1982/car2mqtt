@@ -146,6 +146,7 @@ def build_discovery_configs(
     add_sensor("longitude_ts", "Longitude Zeitstempel", device_class="timestamp", entity_category="diagnostic", enabled_by_default=False)
     add_sensor("evccStatus", "EVCC Status lokal", icon="mdi:ev-station", entity_category="diagnostic")
     add_sensor("evccDistance", "EVCC Entfernung zum Ladeort", unit="m", device_class="distance", state_class="measurement", entity_category="diagnostic")
+    add_sensor("evccGeoState", "EVCC Geo Status", icon="mdi:map-marker-radius", entity_category="diagnostic")
     add_sensor("evccGeoReason", "EVCC Geo Entscheidung", icon="mdi:map-marker-check", entity_category="diagnostic")
 
     # Friendly boolean representations in addition to the compatibility sensor

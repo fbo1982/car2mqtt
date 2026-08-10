@@ -352,3 +352,46 @@ def test_zone_resolver_exposes_http_diagnostics(monkeypatch):
     resolver = HomeAssistantZoneResolver()
     assert resolver.resolve("zone.home") is None
     assert "HTTP 403" in resolver.last_error
+
+
+def test_geo_service_publishes_readable_debug_state_topic():
+    service = _relay_service()
+
+    class FakeClient:
+        def __init__(self):
+            self.messages = []
+
+        def publish(self, topic, payload, qos=0, retain=False):
+            self.messages.append((topic, payload, qos, retain))
+
+    fake = FakeClient()
+    service._client = fake
+    service._zone = ZonePosition("zone.home", 49.0, 8.0)
+    service._geo_enabled = True
+    service._radius_m = 30.0
+    service._exit_radius_m = 50.0
+    service._publish_decision(
+        "car/acconia/TEST/mapped",
+        {"plugged": False, "charging": False, "latitude": 49.0001, "longitude": 8.0},
+    )
+    published = {topic: payload for topic, payload, _qos, _retain in fake.messages}
+    assert published["car/acconia/TEST/mapped/evccGeoState"] == "home"
+    assert published["car/acconia/TEST/mapped/evccAtSite"] == "true"
+
+    fake.messages.clear()
+    service._presence_by_root["car/acconia/TEST/mapped"] = False
+    service._publish_decision(
+        "car/acconia/TEST/mapped",
+        {"plugged": False, "charging": False, "latitude": 49.01, "longitude": 8.0},
+    )
+    published = {topic: payload for topic, payload, _qos, _retain in fake.messages}
+    assert published["car/acconia/TEST/mapped/evccGeoState"] == "not_home"
+
+    fake.messages.clear()
+    service._zone = None
+    service._publish_decision(
+        "car/acconia/TEST/mapped",
+        {"plugged": False, "charging": False, "latitude": 49.0, "longitude": 8.0},
+    )
+    published = {topic: payload for topic, payload, _qos, _retain in fake.messages}
+    assert published["car/acconia/TEST/mapped/evccGeoState"] == "unknown"

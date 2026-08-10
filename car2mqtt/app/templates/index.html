@@ -467,7 +467,7 @@ select, option {
             <div class="field"><label>Abfahrtsradius in Metern</label><input id="settingsEvccGeoExitRadius" type="number" min="1" max="2000" step="1" value="50" /></div>
           </div>
           <div class="field" style="margin-top:12px"><label>Verwendeter Standort</label><div class="muted" style="margin-top:8px">Die oben ausgewählte Home Zone wird verwendet. Die Hysterese verhindert Flattern: Eintritt z. B. bei ≤30 m, Austritt erst bei &gt;50 m. Fehlen Zone oder GPS, meldet Car2MQTT an EVCC sicher <strong>A = nicht verbunden</strong>; eine Shelly-Abschaltung wird bei unbekannter Position aber nicht ausgelöst.</div></div>
-          <div class="howto-note" style="margin-top:14px">Diagnose-Topics: <code>evccStatus</code>, <code>evccAtSite</code>, <code>evccDistance</code> und <code>evccGeoReason</code>.</div>
+          <div class="howto-note" style="margin-top:14px">Diagnose-Topics: <code>evccStatus</code>, <code>evccAtSite</code>, <code>evccGeoState</code>, <code>evccDistance</code> und <code>evccGeoReason</code>.</div>
         </div>
         <div class="howto-card">
           <div class="eyebrow">Geo Automation</div>
