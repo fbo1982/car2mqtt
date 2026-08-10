@@ -132,6 +132,7 @@ def calculate_evcc_geo_decision(
 class HomeAssistantZoneResolver:
     def __init__(self, timeout: float = 3.0):
         self.timeout = timeout
+        self.last_error = ""
 
     @staticmethod
     def _headers() -> dict[str, str]:
@@ -140,7 +141,6 @@ class HomeAssistantZoneResolver:
             return {}
         return {
             "Authorization": f"Bearer {token}",
-            "X-Supervisor-Token": token,
             "Content-Type": "application/json",
         }
 
@@ -155,16 +155,43 @@ class HomeAssistantZoneResolver:
             return None
         return ZonePosition(entity_id=entity_id, latitude=lat, longitude=lon)
 
+    @staticmethod
+    def _from_coordinates(entity_id: str, payload: Any) -> ZonePosition | None:
+        if not isinstance(payload, dict):
+            return None
+        lat = _as_float(payload.get("latitude"))
+        lon = _as_float(payload.get("longitude"))
+        if lat is None or lon is None:
+            return None
+        if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+            return None
+        return ZonePosition(entity_id=entity_id, latitude=lat, longitude=lon)
+
+    @staticmethod
+    def _response_error(resp: Any, url: str) -> str:
+        try:
+            body = str(resp.text or "").strip().replace("\n", " ")[:180]
+        except Exception:
+            body = ""
+        suffix = f": {body}" if body else ""
+        return f"HTTP {getattr(resp, 'status_code', '?')} {url}{suffix}"
+
     def resolve(self, entity_id: str) -> ZonePosition | None:
         entity_id = str(entity_id or "zone.home").strip() or "zone.home"
         headers = self._headers()
+        self.last_error = ""
         if not headers:
-            logger.warning("EVCC Geo: SUPERVISOR_TOKEN fehlt, Home-Assistant-Zone kann nicht gelesen werden")
+            self.last_error = "SUPERVISOR_TOKEN fehlt"
+            logger.warning("EVCC Geo: %s, Home-Assistant-Zone kann nicht gelesen werden", self.last_error)
             return None
 
+        errors: list[str] = []
+
+        # Preferred path: read the actual zone state directly from Home Assistant.
         encoded = quote(entity_id, safe="")
         single_urls = [
             f"http://supervisor/core/api/states/{encoded}",
+            # Kept only as a compatibility fallback for older Supervisor setups.
             f"http://supervisor/homeassistant/api/states/{encoded}",
         ]
         for url in single_urls:
@@ -173,28 +200,93 @@ class HomeAssistantZoneResolver:
                 if resp.ok:
                     zone = self._from_item(resp.json(), entity_id)
                     if zone:
+                        self.last_error = ""
                         return zone
-            except Exception:
-                continue
+                    errors.append(f"keine Koordinaten in {url}")
+                else:
+                    errors.append(self._response_error(resp, url))
+            except Exception as exc:
+                errors.append(f"{url}: {type(exc).__name__}: {exc}")
 
+        # zone.home is special: HA's /api/config is an official and very stable
+        # source for the Home Assistant installation latitude/longitude. This
+        # also works if the zone entity itself cannot currently be resolved.
+        if entity_id == "zone.home":
+            config_urls = [
+                "http://supervisor/core/api/config",
+                "http://supervisor/homeassistant/api/config",
+            ]
+            for url in config_urls:
+                try:
+                    resp = requests.get(url, headers=headers, timeout=self.timeout)
+                    if resp.ok:
+                        zone = self._from_coordinates(entity_id, resp.json())
+                        if zone:
+                            logger.info("EVCC Geo: zone.home über Home-Assistant /api/config aufgelöst")
+                            self.last_error = ""
+                            return zone
+                        errors.append(f"keine Koordinaten in {url}")
+                    else:
+                        errors.append(self._response_error(resp, url))
+                except Exception as exc:
+                    errors.append(f"{url}: {type(exc).__name__}: {exc}")
+
+        # Generic fallback for custom zones. Rendering state_attr through HA is
+        # useful on installations where a zone state is proxied differently but
+        # the template API is available.
+        entity_literal = json.dumps(entity_id)
+        template = (
+            "{{ {'latitude': state_attr(" + entity_literal + ", 'latitude'), "
+            "'longitude': state_attr(" + entity_literal + ", 'longitude')} | tojson }}"
+        )
+        template_urls = [
+            "http://supervisor/core/api/template",
+            "http://supervisor/homeassistant/api/template",
+        ]
+        for url in template_urls:
+            try:
+                resp = requests.post(url, headers=headers, json={"template": template}, timeout=self.timeout)
+                if resp.ok:
+                    try:
+                        payload = json.loads(str(resp.text or "").strip())
+                    except Exception:
+                        payload = None
+                    zone = self._from_coordinates(entity_id, payload)
+                    if zone:
+                        logger.info("EVCC Geo: Zone %s über Home-Assistant Template-API aufgelöst", entity_id)
+                        self.last_error = ""
+                        return zone
+                    errors.append(f"keine Koordinaten in Template-Antwort {url}")
+                else:
+                    errors.append(self._response_error(resp, url))
+            except Exception as exc:
+                errors.append(f"{url}: {type(exc).__name__}: {exc}")
+
+        # Last fallback: enumerate all HA states. This is slower, but it keeps
+        # compatibility with proxy variants that do not expose single-state
+        # lookups consistently.
         list_urls = [
             "http://supervisor/core/api/states",
-            "http://supervisor/core/states",
             "http://supervisor/homeassistant/api/states",
         ]
         for url in list_urls:
             try:
                 resp = requests.get(url, headers=headers, timeout=self.timeout)
                 if not resp.ok:
+                    errors.append(self._response_error(resp, url))
                     continue
                 payload = resp.json()
                 items = payload if isinstance(payload, list) else payload.get("result") or payload.get("data") or payload.get("states") or []
                 for item in items if isinstance(items, list) else []:
                     zone = self._from_item(item, entity_id)
                     if zone:
+                        self.last_error = ""
                         return zone
-            except Exception:
-                continue
+                errors.append(f"Zone {entity_id} nicht in {url} gefunden")
+            except Exception as exc:
+                errors.append(f"{url}: {type(exc).__name__}: {exc}")
+
+        self.last_error = " | ".join(errors[-4:]) if errors else "unbekannter Fehler"
         return None
 
 
@@ -295,7 +387,7 @@ class EvccGeoFilterService:
                     self._exit_radius_m,
                 )
             else:
-                logger.warning("EVCC Geo: Zone %s nicht verfügbar; Status fällt sicher auf A zurück", self._zone_entity_id)
+                logger.warning("EVCC Geo: Zone %s nicht verfügbar; Status fällt sicher auf A zurück (%s)", self._zone_entity_id, getattr(self.zone_resolver, "last_error", "") or "keine Details")
         self._republish_all()
 
     def _zone_refresh_loop(self) -> None:
@@ -582,6 +674,7 @@ class EvccGeoFilterService:
                 "zone_available": zone is not None,
                 "zone_latitude": zone.latitude if zone else None,
                 "zone_longitude": zone.longitude if zone else None,
+                "zone_resolver_error": getattr(self.zone_resolver, "last_error", "") or "",
                 "radius_m": self._radius_m,
                 "exit_radius_m": self._exit_radius_m,
                 "vehicles_seen": len(self._snapshots),

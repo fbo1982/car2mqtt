@@ -279,3 +279,7 @@ Das gemappte `limitSoc` ist ein langlebiger Fahrzeug-Einstellwert und kann unver
 
 Live-Werte wie SoC, Reichweite und `evccStatus` behalten weiterhin ihren konfigurierten Timeout (standardmäßig `24h`), damit eine ausgefallene Datenquelle dort weiterhin sichtbar wird. Ein periodisches künstliches Neu-Publizieren des Ladelimits ist dadurch nicht nötig und würde eine ausgefallene Datenquelle eher verschleiern.
 
+
+## EVCC Geo Home-Zone Resolver (ab 1.2.60)
+
+Die Geo-Erkennung liest die gewählte Home-Assistant-Zone über den offiziellen Home-Assistant-Core-API-Proxy des Add-ons. Für `zone.home` gibt es zusätzlich einen Fallback auf `/api/config` (Home-Assistant-Systemkoordinaten). Für benutzerdefinierte Zonen gibt es zusätzlich einen Template-API-Fallback. Fehler beim Zonenabruf werden mit HTTP-Status im Log und über `/api/evcc-geo/status` als `zone_resolver_error` ausgegeben, statt still verworfen zu werden.

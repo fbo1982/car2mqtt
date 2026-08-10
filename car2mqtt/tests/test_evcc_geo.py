@@ -275,3 +275,80 @@ def test_geo_shelly_multiple_selected_vehicles_only_switch_off_after_last_depart
     service._presence_by_root[a] = False
     service._schedule_relay_edge(b, True, False)
     assert service._relay_pending_off is True
+
+
+def test_home_zone_resolver_falls_back_to_ha_config(monkeypatch):
+    from app.services.evcc_geo import HomeAssistantZoneResolver
+
+    class Resp:
+        def __init__(self, status_code, payload=None, text=""):
+            self.status_code = status_code
+            self._payload = payload
+            self.text = text
+            self.ok = 200 <= status_code < 300
+
+        def json(self):
+            return self._payload
+
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "test-token")
+
+    def fake_get(url, **kwargs):
+        if url.endswith("/api/config"):
+            return Resp(200, {"latitude": 49.1234, "longitude": 8.5678})
+        return Resp(404, {}, "Not Found")
+
+    monkeypatch.setattr("app.services.evcc_geo.requests.get", fake_get)
+    resolver = HomeAssistantZoneResolver()
+    zone = resolver.resolve("zone.home")
+    assert zone == ZonePosition("zone.home", 49.1234, 8.5678)
+    assert resolver.last_error == ""
+
+
+def test_custom_zone_resolver_uses_template_fallback(monkeypatch):
+    from app.services.evcc_geo import HomeAssistantZoneResolver
+
+    class Resp:
+        def __init__(self, status_code, payload=None, text=""):
+            self.status_code = status_code
+            self._payload = payload
+            self.text = text
+            self.ok = 200 <= status_code < 300
+
+        def json(self):
+            return self._payload
+
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "test-token")
+    monkeypatch.setattr(
+        "app.services.evcc_geo.requests.get",
+        lambda *args, **kwargs: Resp(404, {}, "Not Found"),
+    )
+
+    def fake_post(url, **kwargs):
+        assert url.endswith("/api/template")
+        assert "zone.cae" in kwargs["json"]["template"]
+        return Resp(200, text='{"latitude":49.2222,"longitude":8.3333}')
+
+    monkeypatch.setattr("app.services.evcc_geo.requests.post", fake_post)
+    resolver = HomeAssistantZoneResolver()
+    zone = resolver.resolve("zone.cae")
+    assert zone == ZonePosition("zone.cae", 49.2222, 8.3333)
+    assert resolver.last_error == ""
+
+
+def test_zone_resolver_exposes_http_diagnostics(monkeypatch):
+    from app.services.evcc_geo import HomeAssistantZoneResolver
+
+    class Resp:
+        status_code = 403
+        ok = False
+        text = "Forbidden"
+
+        def json(self):
+            return {}
+
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "test-token")
+    monkeypatch.setattr("app.services.evcc_geo.requests.get", lambda *args, **kwargs: Resp())
+    monkeypatch.setattr("app.services.evcc_geo.requests.post", lambda *args, **kwargs: Resp())
+    resolver = HomeAssistantZoneResolver()
+    assert resolver.resolve("zone.home") is None
+    assert "HTTP 403" in resolver.last_error
