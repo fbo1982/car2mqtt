@@ -1,7 +1,7 @@
 # Car2MQTT
 
 
-## v1.2.63 – Vehicle Save Hotfix
+## v1.2.64 – Vehicle Save Hotfix
 
 - Behebt einen `500 Internal Server Error` beim Speichern bestehender Fahrzeuge.
 - `normalize_plate` wird im API-Server wieder korrekt importiert; betroffen waren alle Hersteller beim PUT auf `/api/vehicles/{id}`.

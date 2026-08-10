@@ -22,6 +22,7 @@ from app.providers.gwm_config import (
     has_usable_ora_tokens,
     publish_ora_token_backup,
     restore_ora_tokens_from_mqtt,
+    extract_ora_token_bundle,
 )
 
 
@@ -76,6 +77,7 @@ class GwmIntegratedWorker:
         on_detail: Callable[[str], None],
         on_message: Callable[[str, str], None],
         log_callback: Callable[[str], None],
+        on_tokens_updated: Callable[[dict], None] | None = None,
     ) -> None:
         self.vehicle = vehicle
         self.settings = mqtt_settings
@@ -87,6 +89,7 @@ class GwmIntegratedWorker:
         self.on_detail = on_detail
         self.on_message = on_message
         self.log = log_callback
+        self.on_tokens_updated = on_tokens_updated
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._monitor_client: mqtt.Client | None = None
@@ -139,14 +142,23 @@ class GwmIntegratedWorker:
         self.vehicle_dir.mkdir(parents=True, exist_ok=True)
         config_path = self.vehicle_dir / "ora2mqtt.yml"
 
-        # Reuse already persisted ORA tokens/session data before overwriting the config file.
+        # ora2mqtt rotates refresh tokens while the runner is active and writes the
+        # fresh pair back to ora2mqtt.yml.  That runtime file is therefore the
+        # authoritative source on restart.  Never overwrite it with an older but
+        # merely non-empty token copy from vehicles.json.
         usable, missing = has_usable_ora_tokens(self.vehicle.provider_config)
-        if config_path.exists() and not usable:
+        if config_path.exists():
             try:
+                before = extract_ora_token_bundle(self.vehicle.provider_config)
                 merge_ora_tokens(self.vehicle.provider_config, config_path)
                 usable, missing = has_usable_ora_tokens(self.vehicle.provider_config)
+                after = extract_ora_token_bundle(self.vehicle.provider_config)
                 if usable:
-                    self.log("ORA Tokens aus bestehender ora2mqtt.yml übernommen")
+                    if before.get("refresh_token") != after.get("refresh_token") or before.get("access_token") != after.get("access_token"):
+                        self.log("ORA aktuelle Runtime-Tokens aus bestehender ora2mqtt.yml übernommen")
+                        self._persist_runtime_tokens()
+                    else:
+                        self.log("ORA Tokens aus bestehender ora2mqtt.yml bestätigt")
                 else:
                     self.log(f"ORA Token-Übernahme aus bestehender Config unvollständig - fehlend: {', '.join(missing)}")
             except Exception as exc:
@@ -162,6 +174,39 @@ class GwmIntegratedWorker:
         if usable:
             publish_ora_token_backup(self.vehicle.provider_config, self.settings, self.vehicle.id, self.log)
         return config_path
+
+    def _persist_runtime_tokens(self) -> bool:
+        """Persist the current in-memory ORA token bundle to all Car2MQTT stores."""
+        bundle = extract_ora_token_bundle(self.vehicle.provider_config)
+        usable, _missing = has_usable_ora_tokens(bundle)
+        if not usable:
+            return False
+        if self.on_tokens_updated:
+            try:
+                self.on_tokens_updated(bundle)
+            except Exception as exc:
+                self.log(f"ORA Token-Sync nach vehicles.json fehlgeschlagen: {exc}")
+        publish_ora_token_backup(self.vehicle.provider_config, self.settings, self.vehicle.id, self.log)
+        return True
+
+    def _sync_runtime_tokens_from_file(self, reason: str = "Runtime-Refresh") -> bool:
+        config_path = self.vehicle_dir / "ora2mqtt.yml"
+        if not config_path.exists():
+            return False
+        try:
+            before = extract_ora_token_bundle(self.vehicle.provider_config)
+            merge_ora_tokens(self.vehicle.provider_config, config_path)
+            after = extract_ora_token_bundle(self.vehicle.provider_config)
+            usable, _missing = has_usable_ora_tokens(after)
+            if not usable:
+                return False
+            changed = before.get("refresh_token") != after.get("refresh_token") or before.get("access_token") != after.get("access_token")
+            self._persist_runtime_tokens()
+            self.log(f"ORA Tokens nach {reason} synchronisiert" + (" (neuer Token)" if changed else ""))
+            return True
+        except Exception as exc:
+            self.log(f"ORA Token-Sync nach {reason} fehlgeschlagen: {exc}")
+            return False
 
     def _run_configure(self, config_path: Path) -> None:
         env = os.environ.copy()
@@ -269,7 +314,7 @@ class GwmIntegratedWorker:
             except Exception:
                 pass
         merge_ora_tokens(self.vehicle.provider_config, config_path)
-        publish_ora_token_backup(self.vehicle.provider_config, self.settings, self.vehicle.id, self.log)
+        self._persist_runtime_tokens()
         self.log("ORA configure erfolgreich abgeschlossen")
 
     def _start_monitor(self, source_topic: str, source_base: str) -> None:
@@ -350,6 +395,12 @@ class GwmIntegratedWorker:
                 break
             cleaned = line.rstrip()
             self.log(f"[ora2mqtt run] {cleaned}")
+            lowered = cleaned.lower()
+            if "token refresh successful" in lowered:
+                # RunCommand has already saved the rotated token pair to the YAML
+                # before it emits this message. Mirror it immediately into the
+                # persistent Car2MQTT config and MQTT backup.
+                self._sync_runtime_tokens_from_file("erfolgreichem Token-Refresh")
             if self._is_reauth_required(cleaned):
                 self._reauth_required = True
 

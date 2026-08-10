@@ -1361,8 +1361,23 @@ def create_app() -> FastAPI:
             ora_config = render_ora2mqtt_yaml(vehicle.provider_config, settings, license_plate=vehicle.license_plate)
             (target_dir / "ora2mqtt.yml").write_text(ora_config, encoding="utf-8")
             publish_ora_token_backup(vehicle.provider_config, settings, vehicle.id, lambda msg: log_store.append(vehicle.id, msg))
-            vehicle.provider_state.auth_state = "authorized"
-            vehicle.provider_state.auth_message = "ORA Runner vorbereitet"
+            reauth_hint = " ".join([
+                str(getattr(vehicle.provider_state, "auth_message", "") or ""),
+                str(getattr(vehicle.provider_state, "last_error", "") or ""),
+            ]).lower()
+            known_reauth_required = (
+                "reauth erforderlich" in reauth_hint
+                or "refresh token abgelaufen" in reauth_hint
+                or "refresh token expired" in reauth_hint
+            )
+            if known_reauth_required:
+                vehicle.provider_state.auth_state = "error"
+                vehicle.provider_state.auth_message = "ReAuth erforderlich - Refresh Token abgelaufen"
+                vehicle.provider_state.last_error = "Refresh Token abgelaufen"
+            else:
+                vehicle.provider_state.auth_state = "authorized"
+                vehicle.provider_state.auth_message = "ORA Runner vorbereitet"
+                vehicle.provider_state.last_error = ""
             if not vehicle.provider_config.get("source_topic_base"):
                 vehicle.provider_config["source_topic_base"] = "GWM"
             log_store.append(vehicle.id, "ORA Konfiguration erzeugt: providers/%s/ora2mqtt.yml" % vehicle.id)
@@ -1426,7 +1441,15 @@ def create_app() -> FastAPI:
         if payload.manufacturer == "bmw" and mqtt_settings.host and vehicle.provider_state.auth_state == "authorized":
             worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
         if payload.manufacturer == "gwm":
-            if vehicle.enabled and mqtt_settings.host:
+            reauth_required = (
+                vehicle.provider_state.auth_state == "error"
+                and "refresh token abgelaufen" in str(vehicle.provider_state.last_error or "").lower()
+            )
+            if reauth_required:
+                log_store.append(vehicle.id, "ORA ReAuth weiterhin erforderlich - Speichern/Aktivieren startet keinen bekannten abgelaufenen Token neu")
+                worker_manager.stop_vehicle(vehicle.id)
+                worker_manager._set_runtime_state(vehicle.id, "reauth_required", "ReAuth erforderlich - Refresh Token abgelaufen")
+            elif vehicle.enabled and mqtt_settings.host:
                 log_store.append(vehicle.id, "ORA Fahrzeug gespeichert - automatischer Start aktiviert")
                 worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
             else:

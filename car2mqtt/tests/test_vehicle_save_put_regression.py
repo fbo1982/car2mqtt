@@ -93,3 +93,47 @@ def test_put_existing_vehicle_succeeds_for_all_providers(tmp_path, monkeypatch, 
 
     assert response.status_code == 200, response.text
     assert response.json() == {"status": "ok", "vehicle_id": vehicle_id}
+
+
+def test_gwm_save_does_not_clear_known_reauth_required(tmp_path, monkeypatch):
+    monkeypatch.setenv("APP_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("MQTT_HOST", "")
+    monkeypatch.setattr(WorkerManager, "start_or_restart_vehicle", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not restart expired ORA token")))
+    monkeypatch.setattr(WorkerManager, "stop_vehicle", lambda *args, **kwargs: None)
+    monkeypatch.setattr(WorkerManager, "publish_vehicle_saved_meta", lambda *args, **kwargs: None)
+    monkeypatch.setattr(WorkerManager, "sync_vehicle_to_forward_clients", lambda *args, **kwargs: None)
+
+    vehicle = VehicleConfig(
+        id="GGCA911E",
+        label="ORA",
+        manufacturer="gwm",
+        license_plate="GG-CA 911E",
+        provider_config={
+            "account": "a", "password": "p", "country": "DE", "language": "de",
+            "poll_interval": 60, "vehicle_id": "GGCA911E", "capacity_kwh": 65,
+            "access_token": "expired-access", "refresh_token": "expired-refresh",
+        },
+    )
+    vehicle.provider_state.auth_state = "error"
+    vehicle.provider_state.auth_message = "ReAuth erforderlich - Refresh Token abgelaufen"
+    vehicle.provider_state.last_error = "Refresh Token abgelaufen"
+    ConfigStore(str(tmp_path)).upsert_vehicle(vehicle)
+
+    client = TestClient(create_app())
+    response = client.put(
+        "/api/vehicles/GGCA911E",
+        json={
+            "id": "GGCA911E", "label": "ORA", "manufacturer": "gwm",
+            "license_plate": "GG-CA 911E", "enabled": True,
+            "provider_config": {
+                "account": "a", "password": "p", "country": "DE", "language": "de",
+                "poll_interval": 60, "vehicle_id": "GGCA911E", "capacity_kwh": 65,
+            },
+            "mqtt_client_ids": [], "device_tracker_enabled": False,
+            "geo_shelly_trigger_enabled": False,
+        },
+    )
+    assert response.status_code == 200, response.text
+    saved = ConfigStore(str(tmp_path)).get_vehicle("GGCA911E")
+    assert saved.provider_state.auth_state == "error"
+    assert saved.provider_state.last_error == "Refresh Token abgelaufen"

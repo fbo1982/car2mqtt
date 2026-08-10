@@ -116,3 +116,68 @@ def test_success_consumes_verification_code(tmp_path):
          patch("app.providers.gwm_runner.publish_ora_token_backup"):
         worker._run_configure(config)
     assert not code.exists()
+
+
+def _runtime_yaml(access: str, refresh: str) -> str:
+    return f'''DeviceId: stable-device
+Country: DE
+AuthFlow: eu_mygwm_front
+Account:
+  AccessToken: {access}
+  RefreshToken: {refresh}
+  GwId: gw-new
+  BeanId: bean-new
+Mqtt:
+  Host: mqtt
+  Username: ''
+  Password: ''
+  UseTls: false
+  HomeAssistantDiscoveryTopic: null
+  TopicPrefixTemplate: car/gwm/TEST/{{vin}}/status
+'''
+
+
+def test_prepare_runtime_files_prefers_rotated_runtime_tokens(tmp_path):
+    worker, logs = _worker(tmp_path)
+    worker.vehicle.provider_config.update({
+        "access_token": "stale-access",
+        "refresh_token": "stale-refresh",
+        "device_id": "stable-device",
+        "country": "DE",
+    })
+    config = tmp_path / "ora2mqtt.yml"
+    config.write_text(_runtime_yaml("fresh-access", "fresh-refresh"), encoding="utf-8")
+    persisted = []
+    worker.on_tokens_updated = lambda bundle: persisted.append(dict(bundle))
+
+    with patch("app.providers.gwm_runner.publish_ora_token_backup", return_value=True):
+        worker._prepare_runtime_files()
+
+    assert worker.vehicle.provider_config["access_token"] == "fresh-access"
+    assert worker.vehicle.provider_config["refresh_token"] == "fresh-refresh"
+    assert persisted and persisted[-1]["refresh_token"] == "fresh-refresh"
+    rendered = config.read_text(encoding="utf-8")
+    assert "RefreshToken: fresh-refresh" in rendered
+    assert "RefreshToken: stale-refresh" not in rendered
+    assert any("aktuelle Runtime-Tokens" in entry for entry in logs)
+
+
+def test_runtime_refresh_sync_persists_rotated_tokens(tmp_path):
+    worker, logs = _worker(tmp_path)
+    worker.vehicle.provider_config.update({
+        "access_token": "old-access",
+        "refresh_token": "old-refresh",
+        "device_id": "stable-device",
+        "country": "DE",
+    })
+    (tmp_path / "ora2mqtt.yml").write_text(_runtime_yaml("rotated-access", "rotated-refresh"), encoding="utf-8")
+    persisted = []
+    worker.on_tokens_updated = lambda bundle: persisted.append(dict(bundle))
+
+    with patch("app.providers.gwm_runner.publish_ora_token_backup", return_value=True):
+        assert worker._sync_runtime_tokens_from_file("Test-Refresh") is True
+
+    assert worker.vehicle.provider_config["refresh_token"] == "rotated-refresh"
+    assert persisted[-1]["access_token"] == "rotated-access"
+    assert persisted[-1]["refresh_token"] == "rotated-refresh"
+    assert any("Test-Refresh" in entry and "neuer Token" in entry for entry in logs)

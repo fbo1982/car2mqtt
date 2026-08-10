@@ -32,6 +32,7 @@ from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic, 
 from app.providers.acconia_runner import AcconiaPollingWorker
 from app.providers.bmw.streaming import BMWStreamWorker
 from app.providers.gwm_runner import GwmIntegratedWorker
+from app.providers.gwm_config import apply_ora_token_bundle
 
 
 class WorkerManager:
@@ -56,6 +57,14 @@ class WorkerManager:
         if worker:
             worker.stop()
             self.log_store.append(vehicle_id, "Worker gestoppt")
+
+    def _persist_gwm_runtime_tokens(self, vehicle_id: str, bundle: dict) -> None:
+        vehicle = self.config_store.get_vehicle(vehicle_id)
+        if not vehicle or vehicle.manufacturer != "gwm":
+            return
+        apply_ora_token_bundle(vehicle.provider_config, bundle)
+        self.config_store.upsert_vehicle(vehicle)
+        self.log_store.append(vehicle_id, "ORA rotierte Runtime-Tokens dauerhaft in vehicles.json gespeichert")
 
     def start_or_restart_vehicle(self, vehicle_id: str, mqtt_settings=None) -> None:
         mqtt_settings = mqtt_settings or load_runtime_mqtt_settings()
@@ -94,6 +103,7 @@ class WorkerManager:
                 on_detail=lambda message, vid=vehicle_id: self._set_runtime_state(vid, "starting", message),
                 on_message=lambda topic, payload, vid=vehicle_id: self._handle_gwm_payload(vid, topic, payload, mqtt_settings),
                 log_callback=lambda message, vid=vehicle_id: self.log_store.append(vid, message),
+                on_tokens_updated=lambda bundle, vid=vehicle_id: self._persist_gwm_runtime_tokens(vid, bundle),
             )
             self.log_store.append(vehicle_id, "ORA Workerstart angefordert")
             self._set_runtime_state(vehicle_id, "starting", "ORA Worker startet")
