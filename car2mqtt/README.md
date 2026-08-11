@@ -1,6 +1,14 @@
 # Car2MQTT
 
 
+## v1.2.65 – BMW Powertrain Classification Fix
+
+- Korrigiert die BMW-Antriebserkennung: `vehicle.drivetrain.lastRemainingRange` wird nicht mehr als Beweis für einen Kraftstofftank gewertet, da der Datenpunkt auch bei reinen Elektrofahrzeugen vorhanden ist.
+- `stateOfCharge.target` allein klassifiziert ein Fahrzeug nicht mehr als elektrifiziert. Dadurch wird ein Verbrenner/Mild-Hybrid ohne nutzbaren Traktionsakku nicht mehr fälschlich als Plug-in-Hybrid dargestellt.
+- Reine BMW-Elektrofahrzeuge veröffentlichen keine `fuelLevel`-/`fuelRange`-Werte mehr im `mapped`-Schema; veraltete retained MQTT-Werte werden beim nächsten sicheren Antriebstyp automatisch gelöscht.
+- Verbrenner werden analog von veralteten EV-Metriken bereinigt.
+- Regressionstests decken Verbrenner, BEV und PHEV anhand der beobachteten BMW-CarData-Struktur ab.
+
 ## v1.2.64 – Vehicle Save Hotfix
 
 - Behebt einen `500 Internal Server Error` beim Speichern bestehender Fahrzeuge.

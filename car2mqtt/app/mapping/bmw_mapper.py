@@ -232,24 +232,52 @@ def map_bmw_payload(raw: Dict[str, Any], previous: Optional[Dict[str, Any]] = No
             mapped["altitude_ts"] = str(altitude_ts)
             touched_ts.append(altitude_ts)
 
-    has_fuel = _has_value(fuel_level) or _has_value(fuel_range)
-    has_battery_signal = any(_has_value(v) for v in [soc, ev_range, limit_soc, capacity])
+    # BMW's vehicle.drivetrain.lastRemainingRange is a generic remaining-range
+    # datapoint. Pure EVs expose it as well (often with the same value as the
+    # dedicated electric range), so it must not be treated as proof of a fuel
+    # system. Likewise stateOfCharge.target can appear on cars without a usable
+    # traction-battery signal and is therefore too weak for powertrain detection.
+    #
+    # Classification is intentionally based on the two strong signal groups:
+    #   * fuel system: a real fuel-level datapoint
+    #   * electric drive: dedicated EV range or traction-battery capacity
+    # A generic battery SoC by itself is deliberately not enough because 48-V
+    # mild-hybrid/combustion BMWs can expose battery-management information too.
+    # This distinguishes BEV / PHEV / combustion correctly for the BMW CarData
+    # payloads while still retaining the previous type until a strong signal is
+    # available after stream startup.
+    has_fuel_system = _has_value(fuel_level)
+    has_electric_drive = any(_has_value(v) for v in [ev_range, capacity])
     previous_type = str(previous.get("vehicleType") or "").strip().lower()
     vehicle_type = ""
-    if has_fuel and has_battery_signal:
+    if has_fuel_system and has_electric_drive:
         vehicle_type = "hybrid"
-    elif has_fuel and previous_type != "ev":
+    elif has_fuel_system:
         vehicle_type = "combustion"
+    elif has_electric_drive:
+        vehicle_type = "ev"
     elif previous_type in {"hybrid", "combustion", "ev"}:
         vehicle_type = previous_type
-    elif has_battery_signal:
-        vehicle_type = "ev"
 
     if vehicle_type:
         mapped["vehicleType"] = vehicle_type
         type_ts = _latest_ts([fuel_level_ts, fuel_range_ts, soc_ts, range_ts, limit_soc_ts, capacity_ts])
         if type_ts:
             mapped["vehicleType_ts"] = type_ts
+
+    # Do not emit metrics that belong to another powertrain. This prevents a
+    # generic BMW datapoint (for example lastRemainingRange on a BEV) from being
+    # exposed as a tank metric and keeps combustion cars free of stale EV values.
+    if vehicle_type == "combustion":
+        for key in (
+            "soc", "soc_ts", "range", "range_ts", "charging", "charging_ts",
+            "plugged", "plugged_ts", "limitSoc", "limitSoc_ts",
+            "capacityKwh", "capacityKwh_ts",
+        ):
+            mapped.pop(key, None)
+    elif vehicle_type == "ev":
+        for key in ("fuelLevel", "fuelLevel_ts", "fuelRange", "fuelRange_ts"):
+            mapped.pop(key, None)
 
     # BMW does not always publish the charge target. For EVs the UI/EVCC helper
     # should still have a sane value, but only emit it when missing locally.
@@ -259,7 +287,7 @@ def map_bmw_payload(raw: Dict[str, Any], previous: Optional[Dict[str, Any]] = No
         if fallback_ts:
             mapped["limitSoc_ts"] = fallback_ts
 
-    if vehicle_type != "ev":
+    if vehicle_type in {"hybrid", "combustion"}:
         fuel_level_value = _to_float_or_none(fuel_level)
         if fuel_level_value is not None:
             mapped["fuelLevel"] = fuel_level_value

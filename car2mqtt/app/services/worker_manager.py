@@ -27,6 +27,24 @@ GWM_OBSOLETE_MAPPED_KEYS = {
     "chargingPortConnected_ts",
 }
 
+BMW_FUEL_METRIC_KEYS = {"fuelLevel", "fuelLevel_ts", "fuelRange", "fuelRange_ts"}
+BMW_EV_METRIC_KEYS = {
+    "soc", "soc_ts", "range", "range_ts", "charging", "charging_ts",
+    "plugged", "plugged_ts", "limitSoc", "limitSoc_ts",
+    "capacityKwh", "capacityKwh_ts",
+}
+
+
+def _bmw_obsolete_metric_keys(vehicle_type: str, metrics: Dict[str, Any]) -> set[str]:
+    """Return retained mapped keys that contradict the normalized BMW powertrain."""
+    normalized = str(vehicle_type or "").strip().lower()
+    candidates: set[str] = set()
+    if normalized == "ev":
+        candidates = BMW_FUEL_METRIC_KEYS
+    elif normalized == "combustion":
+        candidates = BMW_EV_METRIC_KEYS
+    return {key for key in candidates if key in metrics}
+
 from app.mqtt.client import LocalMqttClient
 from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic, vehicle_root_topic
 from app.providers.acconia_runner import AcconiaPollingWorker
@@ -578,15 +596,32 @@ class WorkerManager:
 
             mapped_delta = map_bmw_payload(merged, previous_metrics)
             full_metrics.update(mapped_delta)
+
+            # A previous release could persist fuelRange/fuelLevel on BEVs or EV
+            # metrics on combustion cars. Once the current payload yields a strong
+            # powertrain classification, remove those stale values from state and
+            # clear their retained MQTT topics instead of merely hiding them in UI.
+            current_vehicle_type = str(mapped_delta.get("vehicleType") or full_metrics.get("vehicleType") or "")
+            obsolete_keys = _bmw_obsolete_metric_keys(current_vehicle_type, full_metrics)
+            removed_keys = {key for key in obsolete_keys if key in previous_metrics}
+            for key in obsolete_keys:
+                full_metrics.pop(key, None)
+                mapped_delta.pop(key, None)
+
             changed_keys = {key for key, value in mapped_delta.items() if previous_metrics.get(key) != value}
             meaningful_changed_keys = {
-                key for key in changed_keys
+                key for key in (changed_keys | removed_keys)
                 if not str(key).endswith("_ts") and key not in {"lastUpdate", "vehicleType_ts"}
             }
 
             # Publish BMW mapped values as diff only. Missing BMW datapoints do not
             # overwrite earlier valid mapped values, which is essential because the
             # BMW stream usually sends one changed datapoint per MQTT message.
+            # Obsolete retained topics are explicitly tombstoned.
+            for key in sorted(removed_keys):
+                topic = f"{mapped}/{key}"
+                client.publish(topic, "", retain=True)
+                self._forward_publish(vehicle, mqtt_settings, topic, "", is_raw=False)
             for key in sorted(changed_keys):
                 topic = f"{mapped}/{key}"
                 value = full_metrics.get(key)
