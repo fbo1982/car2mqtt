@@ -239,8 +239,8 @@ def map_bmw_payload(raw: Dict[str, Any], previous: Optional[Dict[str, Any]] = No
     # traction-battery signal and is therefore too weak for powertrain detection.
     #
     # Classification is intentionally based on the two strong signal groups:
-    #   * fuel system: a real fuel-level datapoint
-    #   * electric drive: dedicated EV range or traction-battery capacity
+    # * fuel system: a real fuel-level datapoint
+    # * electric drive: dedicated EV range or traction-battery capacity
     # A generic battery SoC by itself is deliberately not enough because 48-V
     # mild-hybrid/combustion BMWs can expose battery-management information too.
     # This distinguishes BEV / PHEV / combustion correctly for the BMW CarData

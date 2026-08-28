@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local runtime data / secrets
+*.log
+*.pid
+.env
+.env.*
+!*.env.example
+ora2mqtt.yml
+**/providers/
+**/data/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.zip

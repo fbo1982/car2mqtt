@@ -7,6 +7,6 @@ def test_jwt_padding_switch_parenthesized():
     assert "payload += payload.Length % 4 switch" not in src
 
 
-def test_release_version_1251():
+def test_release_version_1265():
     assert Path("VERSION").read_text().strip() == "1.2.65"
     assert 'version: "1.2.65"' in Path("config.yaml").read_text()
