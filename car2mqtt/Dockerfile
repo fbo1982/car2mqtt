@@ -28,7 +28,7 @@ LABEL \
     io.hass.arch="${BUILD_ARCH}" \
     org.opencontainers.image.title="Car2MQTT" \
     org.opencontainers.image.description="Multi-vehicle MQTT bridge with BMW wizard/auth flow for Home Assistant" \
-    org.opencontainers.image.source="https://github.com/fbo1982/car2mqtt"
+    org.opencontainers.image.source="https://github.com/tbo1982/car2mqtt"
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
