@@ -1,6 +1,6 @@
 # Car2MQTT
 
-## v1.2.66 – BMW Streaming Reconnect Fix
+## v1.2.67 – BMW Streaming Reconnect Fix
 
 - Entfernt den Reconnect-Watchdog, der bei einem legitimerweise inaktiven BMW-Stream nach drei Stunden alle 30 Sekunden eine neue Verbindung aufgebaut hat.
 - MQTT-Verbindungsfehler wie `Connection reset by peer`, Timeouts oder temporäre BMW-Serverfehler beenden den BMW-Worker nicht mehr.
