@@ -145,12 +145,18 @@ class BMWCarDataClient:
         self.mqtt_client = mqtt.Client(protocol=mqtt.MQTTv5, callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
         self.mqtt_client.tls_set()
         self.mqtt_client.username_pw_set(self.mqtt_username, token)
+        self.mqtt_client.reconnect_delay_set(min_delay=30, max_delay=600)
         self.mqtt_client.on_connect = self._on_connect
         self.mqtt_client.on_message = self._on_message
         self.mqtt_client.on_disconnect = self._on_disconnect
         self.mqtt_client.connect(self.mqtt_host, self.mqtt_port, 30)
         self.mqtt_client.loop_start()
-        return self._connected.wait(15)
+        connected = self._connected.wait(15)
+        if not connected:
+            # Do not leave paho's own reconnect loop running in parallel with
+            # the worker's rate-limited retry schedule.
+            self.disconnect_mqtt()
+        return connected
 
     def is_connected(self) -> bool:
         return self._connected.is_set()
@@ -168,6 +174,10 @@ class BMWCarDataClient:
 
 
 class BMWStreamWorker:
+    LOOP_INTERVAL_SECONDS = 5
+    RECONNECT_BACKOFF_SECONDS = (30, 60, 120, 300, 600)
+    TOKEN_REFRESH_RETRY_SECONDS = 300
+
     def __init__(self, vehicle, mqtt_settings, state_store, local_mqtt_client_factory, on_payload: Callable[[str, Dict[str, Any]], None], on_connect=None, on_disconnect=None, on_error=None, on_detail=None, log_callback=None):
         self.vehicle = vehicle
         self.mqtt_settings = mqtt_settings
@@ -184,6 +194,9 @@ class BMWStreamWorker:
         self.client: Optional[BMWCarDataClient] = None
         self.last_message_at = 0.0
         self.last_reconnect_at = 0.0
+        self.reconnect_failures = 0
+        self.next_reconnect_at = 0.0
+        self.next_token_refresh_at = 0.0
 
     def _log(self, message: str) -> None:
         if self.log_callback:
@@ -207,6 +220,67 @@ class BMWStreamWorker:
         if self.on_detail_cb:
             self.on_detail_cb(message)
 
+    def _report_error(self, message: str) -> None:
+        self._log(message)
+        if self.on_error_cb:
+            self.on_error_cb(message)
+
+    def _schedule_reconnect(self, reason: str) -> None:
+        delay = self.RECONNECT_BACKOFF_SECONDS[
+            min(self.reconnect_failures, len(self.RECONNECT_BACKOFF_SECONDS) - 1)
+        ]
+        self.reconnect_failures += 1
+        self.next_reconnect_at = time.time() + delay
+        self._detail(f"{reason}; neuer Versuch in {delay} Sekunden")
+
+    def _attempt_connect(self, reason: str) -> bool:
+        if not self.client or self.stop_event.is_set():
+            return False
+
+        self._detail(reason)
+        self.last_reconnect_at = time.time()
+        try:
+            connected = self.client.connect_mqtt()
+        except Exception as exc:
+            logger.exception("BMW MQTT Verbindungsversuch fehlgeschlagen: %s", exc)
+            message = f"BMW MQTT Verbindungsversuch fehlgeschlagen: {exc}"
+            self._report_error(message)
+            self._schedule_reconnect(message)
+            return False
+
+        if not connected:
+            message = "BMW MQTT Verbindung konnte nicht aufgebaut werden"
+            self._report_error(message)
+            self._schedule_reconnect(message)
+            return False
+
+        self.reconnect_failures = 0
+        self.next_reconnect_at = 0.0
+        return True
+
+    def _refresh_tokens_and_reconnect(self) -> None:
+        if not self.client:
+            return
+
+        self._detail("Token läuft bald ab, BMW Verbindung wird automatisch erneuert")
+        try:
+            refreshed = self.client.refresh_tokens()
+        except Exception as exc:
+            logger.exception("BMW Token-Refresh fehlgeschlagen: %s", exc)
+            message = f"BMW Token-Refresh fehlgeschlagen: {exc}"
+            self._report_error(message)
+            self.next_token_refresh_at = time.time() + self.TOKEN_REFRESH_RETRY_SECONDS
+            return
+
+        if not refreshed:
+            message = "BMW Token-Refresh fehlgeschlagen"
+            self._report_error(message)
+            self.next_token_refresh_at = time.time() + self.TOKEN_REFRESH_RETRY_SECONDS
+            return
+
+        self.next_token_refresh_at = 0.0
+        self._attempt_connect("Token erneuert, BMW Verbindung wird neu aufgebaut")
+
     def _run(self):
         token_file = Path(os.getenv("APP_DATA_DIR", "/config/car2mqtt")) / "providers" / self.vehicle.id / "bmw_tokens.json"
         if not token_file.exists():
@@ -220,55 +294,59 @@ class BMWStreamWorker:
                 vin=self.vehicle.provider_config["vin"],
                 mqtt_username=self.vehicle.provider_state.mqtt_username or self.vehicle.provider_config.get("mqtt_username", ""),
                 token_file=str(token_file),
-                # Multiple BMWs can share one GCID. Subscribing only to the
-                # configured VIN avoids cross-vehicle data mixing.
+                # Each configured BMW keeps its own account/GCID connection.
+                # Restricting the subscription to the configured VIN also
+                # prevents accidental cross-vehicle data mixing.
                 subscribe_wildcard=False,
             )
             self.client.set_message_callback(self._handle_message)
             self.client.set_connect_callback(self._handle_connect)
             self.client.set_disconnect_callback(self._handle_disconnect)
-            self._detail("BMW Verbindung wird aufgebaut")
             self._log(f"BMW VIN: {self.vehicle.provider_config.get('vin','')}")
-            if not self.client.connect_mqtt():
-                if self.on_error_cb:
-                    self.on_error_cb("BMW MQTT Verbindung konnte nicht aufgebaut werden")
-                self._log("BMW MQTT Verbindung konnte nicht aufgebaut werden")
-                return
-            auto_reconnect = bool(self.vehicle.provider_config.get("auto_reconnect", True))
-            manual_reconnect_minutes = max(15, min(60, int(self.vehicle.provider_config.get("manual_reconnect_minutes", 15) or 15)))
-            self.last_reconnect_at = time.time()
-            while not self.stop_event.wait(30):
-                if self.client and auto_reconnect and self.client._is_token_expiring("id_token", minutes=5):
-                    self._detail("Token läuft bald ab, BMW Verbindung wird automatisch erneuert")
-                    if self.client.refresh_tokens():
-                        self._detail("Token erneuert, BMW Verbindung wird neu aufgebaut")
-                        self.client.connect_mqtt()
-                        self.last_reconnect_at = time.time()
-                    else:
-                        if self.on_error_cb:
-                            self.on_error_cb("Token-Refresh fehlgeschlagen")
-                        self._log("Token-Refresh fehlgeschlagen")
-                if self.client and (not auto_reconnect):
-                    if time.time() - self.last_reconnect_at >= manual_reconnect_minutes * 60:
-                        self._detail(f"Manueller Reconnect-Zyklus ({manual_reconnect_minutes} min) wird ausgeführt")
-                        self.client.connect_mqtt()
-                        self.last_reconnect_at = time.time()
-                if self.client and not self.client.is_connected():
-                    self._detail("BMW Verbindung wird erneut aufgebaut")
-                    self.client.connect_mqtt()
-                    self.last_reconnect_at = time.time()
-                if self.last_message_at and time.time() - self.last_message_at > 10800:
-                    self._detail("Watchdog: Keine BMW Live-Daten, Reconnect")
-                    if self.client:
-                        self.client.connect_mqtt()
-                        self.last_reconnect_at = time.time()
         except Exception as exc:
-            logger.exception("BMW Worker Fehler: %s", exc)
-            self._log(f"BMW Worker Fehler: {exc}")
-            if self.on_error_cb:
-                self.on_error_cb(str(exc))
+            logger.exception("BMW Worker konnte nicht initialisiert werden: %s", exc)
+            self._report_error(f"BMW Worker konnte nicht initialisiert werden: {exc}")
+            return
+
+        auto_reconnect = bool(self.vehicle.provider_config.get("auto_reconnect", True))
+        manual_reconnect_minutes = max(15, min(60, int(self.vehicle.provider_config.get("manual_reconnect_minutes", 15) or 15)))
+        self._attempt_connect("BMW Verbindung wird aufgebaut")
+
+        while not self.stop_event.wait(self.LOOP_INTERVAL_SECONDS):
+            try:
+                now = time.time()
+
+                if (
+                    self.client
+                    and auto_reconnect
+                    and self.client.is_connected()
+                    and now >= self.next_token_refresh_at
+                    and self.client._is_token_expiring("id_token", minutes=5)
+                ):
+                    self._refresh_tokens_and_reconnect()
+                    continue
+
+                if self.client and not self.client.is_connected():
+                    if now >= self.next_reconnect_at:
+                        self._attempt_connect("BMW Verbindung wird erneut aufgebaut")
+                    continue
+
+                if self.client and not auto_reconnect:
+                    if now - self.last_reconnect_at >= manual_reconnect_minutes * 60:
+                        self._attempt_connect(
+                            f"Manueller Reconnect-Zyklus ({manual_reconnect_minutes} min) wird ausgeführt"
+                        )
+            except Exception as exc:
+                # A transient MQTT, token or callback failure must never end the
+                # worker. The next loop iteration can recover the connection.
+                logger.exception("BMW Worker-Zyklus fehlgeschlagen: %s", exc)
+                self._report_error(f"BMW Worker-Zyklus fehlgeschlagen: {exc}")
+                if self.client and not self.client.is_connected() and not self.next_reconnect_at:
+                    self._schedule_reconnect("BMW Verbindung ist unterbrochen")
 
     def _handle_connect(self):
+        self.reconnect_failures = 0
+        self.next_reconnect_at = 0.0
         self._log("BMW MQTT verbunden")
         if self.client:
             self._log(f"BMW MQTT Username/GCID: {self.client.mqtt_username}")
@@ -285,6 +363,8 @@ class BMWStreamWorker:
         if self.stop_event.is_set() and rc == 0:
             return
         self._log(f"BMW MQTT getrennt (rc={rc})")
+        if not self.stop_event.is_set() and self.next_reconnect_at <= time.time():
+            self.next_reconnect_at = time.time() + self.RECONNECT_BACKOFF_SECONDS[0]
         # BMW CarData often closes the stream between burst updates. Do not flip
         # the UI to disconnected for these short-lived technical reconnects; the
         # worker reconnects automatically and will report a hard error if that fails.

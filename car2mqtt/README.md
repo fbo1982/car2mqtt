@@ -1,242 +1,172 @@
-# 🚗 Car2MQTT
+# Car2MQTT
 
-[![Add Car2MQTT repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Ffbo1982%2Fcar2mqtt)
+## v1.2.66 – BMW Streaming Reconnect Fix
 
-**Car2MQTT** ist eine Home-Assistant-App (früher Add-on) für Fahrzeugdaten über MQTT. Sie bündelt mehrere Hersteller in einer Oberfläche, mappt Rohdaten auf ein gemeinsames Schema und stellt die Daten für **Home Assistant**, **MQTT** und **EVCC** bereit.
+- Entfernt den Reconnect-Watchdog, der bei einem legitimerweise inaktiven BMW-Stream nach drei Stunden alle 30 Sekunden eine neue Verbindung aufgebaut hat.
+- MQTT-Verbindungsfehler wie `Connection reset by peer`, Timeouts oder temporäre BMW-Serverfehler beenden den BMW-Worker nicht mehr.
+- Fehlgeschlagene Verbindungen werden automatisch mit einem begrenzten Backoff von 30, 60, 120, 300 und maximal 600 Sekunden erneut versucht.
+- Temporäre Token-Refresh-Fehler werden nach fünf Minuten erneut versucht, ohne den laufenden Worker zu beenden.
+- Jeder konfigurierte BMW verwendet weiterhin seinen eigenen Account/GCID-Stream und abonniert ausschließlich seine eigene VIN.
+- Regressionstests decken den automatischen Wiederaufbau, inaktive ereignisbasierte Streams und temporäre Token-Fehler ab.
 
-## Installation
 
-### Direkt zu Home Assistant hinzufügen
+## v1.2.65 – BMW Powertrain Classification Fix
 
-Klicke auf den Button ganz oben. Home Assistant öffnet den Dialog zum Hinzufügen des Repositorys mit dieser Adresse bereits vorausgefüllt:
-
-```text
-https://github.com/fbo1982/car2mqtt
-```
-
-Danach:
-
-1. Repository in Home Assistant hinzufügen.
-2. Im **App Store** nach **Car2MQTT** suchen.
-3. Car2MQTT installieren und starten.
-4. Die Weboberfläche öffnen.
-5. MQTT konfigurieren und anschließend die gewünschten Fahrzeuge anlegen.
-
-### Manuelle Installation
-
-1. Öffne in Home Assistant **Einstellungen → Apps → App Store**.
-2. Öffne oben rechts das **⋮-Menü** und wähle **Repositories**.
-3. Füge dieses Repository hinzu:
-
-   ```text
-   https://github.com/fbo1982/car2mqtt
-   ```
-
-4. Öffne anschließend **Car2MQTT** im App Store und installiere die App.
-
-### Voraussetzungen
-
-- Home Assistant OS bzw. eine Installation mit Supervisor/App-Unterstützung
-- erreichbarer MQTT-Broker
-- gültiger Zugang für die jeweils verwendete Fahrzeugquelle
-
----
-
-## Version 1.2.66
-
-**1.2.66 basiert funktional unverändert auf der getesteten Version 1.2.65.**
-
-Diese Version aktualisiert die öffentliche Projektdokumentation, die Installationshinweise und die Repository-Darstellung. Die Fahrzeuglogik der funktionierenden 1.2.65 wurde für diese Veröffentlichung nicht verändert.
-
-### Enthaltener Stand aus 1.2.65
-
-- BMW-Antriebserkennung korrigiert: `vehicle.drivetrain.lastRemainingRange` gilt nicht mehr als Beweis für einen Kraftstofftank.
-- `stateOfCharge.target` allein klassifiziert ein Fahrzeug nicht mehr als elektrifiziert.
-- Reine BMW-Elektrofahrzeuge veröffentlichen keine `fuelLevel`-/`fuelRange`-Werte mehr im `mapped`-Schema.
-- Veraltete retained MQTT-Werte werden bei sicher erkanntem Antriebstyp bereinigt.
+- Korrigiert die BMW-Antriebserkennung: `vehicle.drivetrain.lastRemainingRange` wird nicht mehr als Beweis für einen Kraftstofftank gewertet, da der Datenpunkt auch bei reinen Elektrofahrzeugen vorhanden ist.
+- `stateOfCharge.target` allein klassifiziert ein Fahrzeug nicht mehr als elektrifiziert. Dadurch wird ein Verbrenner/Mild-Hybrid ohne nutzbaren Traktionsakku nicht mehr fälschlich als Plug-in-Hybrid dargestellt.
+- Reine BMW-Elektrofahrzeuge veröffentlichen keine `fuelLevel`-/`fuelRange`-Werte mehr im `mapped`-Schema; veraltete retained MQTT-Werte werden beim nächsten sicheren Antriebstyp automatisch gelöscht.
 - Verbrenner werden analog von veralteten EV-Metriken bereinigt.
-- Regressionstests decken BMW-Verbrenner, BEV und PHEV anhand der beobachteten CarData-Strukturen ab.
+- Regressionstests decken Verbrenner, BEV und PHEV anhand der beobachteten BMW-CarData-Struktur ab.
 
----
+## v1.2.64 – Vehicle Save Hotfix
 
-## Unterstützte Fahrzeugquellen
+- Behebt einen `500 Internal Server Error` beim Speichern bestehender Fahrzeuge.
+- `normalize_plate` wird im API-Server wieder korrekt importiert; betroffen waren alle Hersteller beim PUT auf `/api/vehicles/{id}`.
+- Regressionstest stellt sicher, dass der Save-Pfad den Normalizer zur Laufzeit auflösen kann.
 
-| Hersteller / Quelle | Integration | Status |
-|---|---|---|
-| BMW CarData (EU Data Act) | native Integration | ✅ getestet |
-| GWM / ORA | native Integration | ✅ getestet |
-| ACCIONA / Silence (MySilence) | native Cloud-Integration | ✅ getestet |
-| Remote MQTT | generische MQTT-Quelle | ✅ unterstützt |
-
-> Car2MQTT ist ein Community-Projekt und steht in keiner offiziellen Verbindung zu BMW, GWM, ORA, ACCIONA, Silence, Home Assistant oder EVCC. Nicht öffentlich dokumentierte Hersteller-Schnittstellen können sich jederzeit ändern.
+**Car2MQTT** ist ein Home-Assistant-Add-on für Fahrzeugdaten über MQTT.  
+Es bündelt mehrere Hersteller in einer Oberfläche, mappt Rohdaten auf ein einheitliches Schema, kann Daten an weitere MQTT-Broker weiterleiten und erzeugt pro Fahrzeug kopierbare Vorlagen für **EVCC**.
 
 ## Highlights
 
-- eine Weboberfläche für mehrere Fahrzeuge und Hersteller
-- Fahrzeugdaten lokal per MQTT veröffentlichen
-- einheitliches `mapped`-Schema über Hersteller hinweg
-- Home Assistant MQTT Discovery
-- optionaler MQTT Device Tracker
-- Fahrzeugdaten an zusätzliche / entfernte MQTT-Broker weiterleiten
-- Remote-Fahrzeuge aus MQTT automatisch erkennen und im Dashboard anzeigen
-- EVCC-Konfiguration pro Fahrzeug direkt aus der UI erzeugen
-- standortabhängige EVCC-Fahrzeugerkennung über GPS und Home-Assistant-Zonen
-- Geo-Shelly-Automationen für Ladepunkte
+- Home-Assistant-Add-on mit Weboberfläche
+- Fahrzeugdaten lokal nach MQTT schreiben
+- Fahrzeugdaten an **externe / remote MQTT-Clients** weiterleiten
+- **Remote-Fahrzeuge** aus MQTT automatisch erkennen und im Dashboard anzeigen
+- Einheitliches `mapped`-Schema über Hersteller hinweg
+- **Home Assistant MQTT Discovery** für Fahrzeug-Entitäten
+- Optionaler **MQTT Device Tracker**
+- **EVCC YAML / Copy Helper** pro Fahrzeug
+- **EVCC Geo Detection**: lokaler A/B/C-Status aus Fahrzeugverbindung + GPS + Home-Assistant-Zone
+- **Geo-Shelly Automation**: standortlokales EIN/AUS bei Ankunft/Abfahrt, Trigger pro lokalem oder Remote-Fahrzeug auswählbar
+- Copy-Helper für `configuration.yaml`, `automations.yaml` und fahrzeugspezifische Variablenblöcke
 - Live-Logs sowie ReAuth-/Reconnect-Hilfen für unterstützte Hersteller
+
+## Getesteter Stand
+
+### Verifiziert und im Einsatz
+- **BMW CarData (EU Data Act)** ✅
+- **GWM / ORA** ✅
+- **ACCIONA / Silence über MySilence** ✅
+
+### Weitere unterstützte Strukturen
+- Weitere Hersteller-/Topic-Strukturen, die als **Remote-Fahrzeug über MQTT** gespiegelt werden ⚠️
+
+> Hinweis: BMW, GWM/ORA und ACCIONA/Silence (MySilence) sind praktisch mit produktiven Konten getestet.  
+> Die MySilence-Anbindung ist vollständig in UI, Worker und Mapping integriert und liefert unter anderem SoC, Reichweite und GPS-Daten.
+
+## Integrationen
+
+### Home Assistant
+- Add-on mit eigener Weboberfläche
+- Home Assistant MQTT Discovery
+- optionaler Device Tracker
+- Home Zone Auswahl für EVCC-Automationen
+
+### ACCIONA / Silence (MySilence)
+- read-only Cloud-Abfrage mit den Zugangsdaten der MySilence App
+- GPS-Position als `latitude`, `longitude` und optional `altitude`
+- Ladezustand als `soc`
+- Restreichweite als `range`
+- optional feste Fahrzeugauswahl über FrameNo, IMEI oder Name
+- konfigurierbares Polling, standardmäßig alle 60 Sekunden
+
+Die MySilence-Schnittstelle ist nicht offiziell dokumentiert und kann sich durch App-/Backend-Änderungen ändern.
+
+### MQTT
+- lokaler MQTT-Broker als Hauptziel
+- Weiterleitung an beliebig viele **zusätzliche MQTT-Clients**
+- optional nur `mapped` oder zusätzlich `raw`
+- Remote-Fahrzeuge werden aus MQTT wieder eingelesen und angezeigt
+
+### EVCC
+- pro Fahrzeug generierte **EVCC-Vorlage**
+- per UI direkt kopierbar
+- standortabhängiger `evccStatus` (`A`/`B`/`C`) direkt über MQTT
+- optionaler Geo-Filter gegen die lokal ausgewählte Home-Assistant-Zone
+- zusätzlich Copy-Helper für passende MQTT-Sensoren und Automationen
 
 ## Was Car2MQTT macht
 
 Car2MQTT verarbeitet Fahrzeugdaten in mehreren Stufen:
 
-1. **Herstellerdaten abrufen** – beispielsweise BMW CarData, GWM/ORA oder MySilence.
-2. **Rohdaten nach MQTT schreiben** – unter dem jeweiligen Hersteller-/Fahrzeugpfad.
-3. **Daten auf ein gemeinsames Schema mappen** – beispielsweise SoC, Reichweite, Kilometerstand, Ladezustand, Anschlussstatus und Fahrzeugtyp.
-4. **Daten optional an weitere MQTT-Server weiterleiten.**
-5. **Remote-Fahrzeuge aus MQTT wieder einlesen** und im Dashboard darstellen.
-6. **Home-Assistant- und EVCC-Helfer erzeugen**, die direkt aus der Oberfläche kopiert werden können.
+1. **Herstellerdaten abrufen**  
+   z. B. BMW CarData oder GWM/ORA
 
-## MQTT-Struktur
+2. **Rohdaten nach MQTT schreiben**  
+   unter dem jeweiligen Hersteller-/Fahrzeugpfad
 
-Typische Topics sind:
+3. **Daten auf ein gemeinsames Schema mappen**  
+   z. B. SoC, Reichweite, Kilometerstand, Ladezustand, Tankinhalt, Fahrzeugtyp
 
-```text
-car/<manufacturer>/<plate>/_meta/...
-car/<manufacturer>/<plate>/mapped/...
-car/<manufacturer>/<plate>/...
-```
+4. **Daten optional an weitere MQTT-Server weiterleiten**
 
-Beispiele:
+5. **Remote-Fahrzeuge aus MQTT zurück ins Dashboard einlesen**  
+   So lassen sich Fahrzeuge auf mehreren Home-Assistant-Systemen sichtbar machen
 
-```text
-car/bmw/GGCA501E/mapped/soc
-car/gwm/GGCA911E/mapped/range
-car/acconia/SIL123/mapped/soc
-car/acconia/SIL123/mapped/latitude
-car/acconia/SIL123/mapped/longitude
-car/bmw/GGCA1056/_meta/last_update
-```
+6. **EVCC- und Home-Assistant-Helfer erzeugen**  
+   per Copy-Button direkt aus der UI
 
-Je nach Hersteller und verfügbarem Datenumfang werden unter anderem folgende Werte bereitgestellt:
+## Unterstützte Fahrzeugdarstellung
 
-- SoC
-- Restreichweite
-- Kilometerstand
-- Ladezustand
-- Anschlussstatus
-- GPS-Position
-- Tankinhalt / Kraftstoffreichweite bei passenden Fahrzeugen
-- Ladelimit, sofern vom Hersteller geliefert
+Je nach erkanntem Fahrzeugtyp wird die Kachel unterschiedlich aufgebaut:
 
-## Fahrzeugtypen
+- **EV / Elektrofahrzeug**
+  - SoC
+  - Reichweite
+  - Lädt
+  - Angesteckt
+  - Kilometer
+  - Ladelimit
 
-Car2MQTT unterscheidet die Fahrzeugdarstellung nach erkanntem Antrieb.
+- **Hybrid**
+  - SoC / E-Reichweite
+  - Tankinhalt / Restreichweite
+  - Lädt
+  - Angesteckt
+  - Kilometer
+  - Ladelimit
 
-### Elektrofahrzeug
+- **Verbrenner**
+  - Tankinhalt
+  - Restreichweite
+  - Kilometer
+  - Antrieb
 
-- SoC
-- elektrische Reichweite
-- lädt
-- angesteckt
-- Kilometerstand
-- Ladelimit, sofern verfügbar
+## Remote MQTT / verteilte Setups
 
-### Plug-in-Hybrid / Hybrid mit nutzbarem Traktionsakku
+Car2MQTT kann Fahrzeugdaten nicht nur lokal veröffentlichen, sondern auch an **weitere MQTT-Server** verteilen.
 
-- SoC / E-Reichweite
-- Tankinhalt / Kraftstoffreichweite
-- lädt
-- angesteckt
-- Kilometerstand
-- Ladelimit, sofern verfügbar
+Dadurch sind folgende Szenarien möglich:
 
-### Verbrenner
+- ein zentraler Hauptserver liefert Fahrzeugdaten
+- mehrere weitere Home-Assistant-Instanzen konsumieren diese Daten
+- Remote-Fahrzeuge erscheinen dort automatisch im Dashboard
+- lokale Fahrzeuge und Remote-Fahrzeuge können parallel angezeigt werden
 
-- Tankinhalt
-- Kraftstoffreichweite
-- Kilometerstand
-- Antrieb
+Die Remote-Ansicht ist bewusst reduziert:
+- Status und Fahrdaten sichtbar
+- Kennzeichnung als **REMOTE**
+- Bearbeiten-Dialog mit Informationsfeldern
+- Copy-Configs weiterhin verfügbar
 
 ## Home Assistant MQTT Discovery
 
-Car2MQTT kann Fahrzeug-Entitäten über **MQTT Discovery** automatisch in Home Assistant bereitstellen.
+Car2MQTT kann die Home-Assistant-Entitäten für lokale Fahrzeuge direkt über MQTT Discovery bereitstellen. Nach einmaliger Aktivierung unter **Einstellungen → Home Assistant → MQTT Discovery** werden die Entitäten beim Start sowie beim Anlegen oder Ändern eines Fahrzeugs automatisch veröffentlicht.
 
-Die Funktion wird unter **Einstellungen → Home Assistant → MQTT Discovery** aktiviert. Discovery-Nachrichten werden anschließend beim Start sowie beim Anlegen oder Ändern eines Fahrzeugs veröffentlicht.
+Für die Migration aus einer bestehenden manuellen `configuration.yaml` ist die Discovery-Funktion bei Upgrades zunächst deaktiviert. Entferne zuerst die bisherigen vier Car2MQTT-Fahrzeugsensoren (`plugged`, `plugged_ts`, `latitude`, `longitude`) aus der manuellen MQTT-Sensor-Konfiguration und aktiviere anschließend Discovery. Die automatisch erzeugten Sensoren behalten absichtlich die bisherigen Entity-IDs wie `sensor.car_bmw_<kennzeichen>_plugged`, sodass die vorhandenen Fahrzeugerkennungs-Automationen nicht angepasst werden müssen.
 
-Bei einer Migration von manuell angelegten MQTT-Sensoren sollte die bestehende Konfiguration zunächst geprüft bzw. bereinigt werden, damit keine doppelten Entitäten entstehen.
+Zusätzlich werden – soweit der jeweilige Hersteller den Wert liefert – unter anderem SoC, Reichweite, Kilometerstand, Ladelimit, Akkukapazität, Ladezustand und weitere Fahrzeugzustände als Entitäten angelegt. Nicht vorhandene Herstellerwerte bleiben in Home Assistant einfach unbekannt. Der separat konfigurierbare Device Tracker bleibt davon unabhängig.
 
-Je nach Fahrzeugquelle können unter anderem SoC, Reichweite, Kilometerstand, Ladezustand, Anschlussstatus, Ladelimit, Akkukapazität und weitere Zustände angelegt werden. Nicht verfügbare Herstellerwerte bleiben in Home Assistant unbekannt.
+## Silence / ACCIONA EVCC-Hinweis (ab 1.2.55)
 
-Der optionale Device Tracker ist davon unabhängig konfigurierbar.
+Für MySilence-Fahrzeuge verwendet die erzeugte EVCC-Konfiguration standardmäßig `phases: 1` und lässt `limitsoc` weg, weil MySilence derzeit keinen entsprechenden Fahrzeug-Limitwert liefert. Der EVCC-Status wird wie bei den anderen Fahrzeugen ausschließlich aus dem lokal erzeugten `mapped/evccStatus` gelesen.
 
-## BMW CarData
+Beim MySilence-Mapping hat ein expliziter Anschlusswert (`plugged`, `connected`, `chargerConnected` oder `chargingConnected`) Vorrang vor dem Ladeflag. Nur wenn kein separater Anschlusswert vorhanden ist, dient `charging` als Fallback für `plugged`. Dadurch kann `charging=false` ein vorhandenes `connected=true` nicht mehr überschreiben.
 
-Die BMW-Integration verwendet BMW CarData / EU-Data-Act-Daten und mappt die verfügbaren Fahrzeugwerte in das gemeinsame Car2MQTT-Schema.
+## EVCC Geo Detection
 
-Ab 1.2.65 wurde die Antriebsklassifizierung insbesondere für folgende Fälle robuster gemacht:
-
-- reine Verbrenner / Mild-Hybride
-- reine Elektrofahrzeuge
-- Plug-in-Hybride
-
-Dadurch sollen bei BEVs keine alten Tankwerte und bei Verbrennern keine alten EV-Werte im retained MQTT-Zustand verbleiben.
-
-## GWM / ORA
-
-Die GWM-/ORA-Integration ist in Car2MQTT integriert und unterstützt die für den Betrieb benötigten Authentifizierungs-, ReAuth- und Fahrzeugdatenpfade.
-
-Der GWM-/ORA-Teil verwendet bzw. enthält technische Arbeit, die auf dem ursprünglichen Projekt **ora2mqtt von zivillian** basiert:
-
-```text
-https://github.com/zivillian/ora2mqtt
-```
-
-Car2MQTT hat diese Funktionalität für den eigenen Multi-Fahrzeug-, Home-Assistant-, MQTT- und EVCC-Workflow umfangreich erweitert und integriert. Die Herkunft des ursprünglichen ORA-Ansatzes soll ausdrücklich transparent bleiben.
-
-## ACCIONA / Silence (MySilence)
-
-Die MySilence-Anbindung fragt die Fahrzeugdaten read-only über die von der MySilence-App verwendete Cloud-Schnittstelle ab.
-
-Unterstützt werden – sofern vom Backend geliefert – unter anderem:
-
-- SoC
-- Restreichweite
-- GPS-Position (`latitude`, `longitude`, optional `altitude`)
-- Ladezustand
-- Anschlussstatus
-- feste Fahrzeugauswahl über FrameNo, IMEI oder Name
-- konfigurierbares Polling
-
-Die MySilence-Schnittstelle ist nicht offiziell dokumentiert. Änderungen an App oder Backend können daher Anpassungen in Car2MQTT erforderlich machen.
-
-Beim Mapping hat ein expliziter Anschlusswert (`plugged`, `connected`, `chargerConnected` oder `chargingConnected`) Vorrang vor dem Ladeflag. Nur wenn kein separater Anschlusswert vorhanden ist, wird `charging` als Fallback für `plugged` verwendet.
-
-## Remote MQTT / verteilte Installationen
-
-Car2MQTT kann Fahrzeugdaten zusätzlich an weitere MQTT-Broker verteilen.
-
-Damit sind zum Beispiel folgende Setups möglich:
-
-- ein zentraler Car2MQTT-Standort ruft Herstellerdaten ab
-- weitere Home-Assistant-Installationen erhalten diese Daten per MQTT
-- Remote-Fahrzeuge erscheinen dort automatisch im Dashboard
-- lokale und Remote-Fahrzeuge können gleichzeitig verwendet werden
-
-Die Remote-Darstellung ist bewusst reduziert. Status- und Fahrdaten sowie Copy-Konfigurationen bleiben verfügbar, die Fahrzeugquelle selbst wird jedoch am Ursprungssystem verwaltet.
-
-## EVCC
-
-Für jedes Fahrzeug kann Car2MQTT eine passende EVCC-Konfiguration erzeugen.
-
-Der Copy Helper stellt unter anderem Vorlagen bereit für:
-
-- EVCC-Fahrzeugabschnitt
-- `configuration.yaml`
-- `automations.yaml`
-- fahrzeugspezifische Variablenblöcke
-
-### EVCC Geo Detection
-
-Car2MQTT kann auf jedem Standort lokal einen EVCC-Zustand aus Fahrzeugverbindung, GPS und einer Home-Assistant-Zone ableiten:
+Ab Version 1.2.54 erzeugt jede Car2MQTT-Installation auf ihrem **lokalen MQTT-Broker** einen zusätzlichen EVCC-Status pro Fahrzeug:
 
 ```text
 car/<manufacturer>/<plate>/mapped/evccStatus
@@ -245,101 +175,135 @@ car/<manufacturer>/<plate>/mapped/evccDistance
 car/<manufacturer>/<plate>/mapped/evccGeoReason
 ```
 
-`evccStatus` verwendet die EVCC-Zustände:
+`evccStatus` verwendet die EVCC-Fahrzeugzustände `A` (nicht verbunden), `B` (verbunden) und `C` (lädt). Ist der Geo-Filter deaktiviert, wird der bisherige Zustand aus `plugged` und `charging` gespiegelt. Ist er aktiviert, werden `B` und `C` nur ausgegeben, wenn die aktuelle Fahrzeugposition innerhalb des konfigurierten Radius um die ausgewählte Home-Assistant-Zone liegt. Fehlen Zone oder GPS-Daten, fällt die Entscheidung absichtlich auf `A` zurück.
 
-- `A` – nicht verbunden / nicht am Standort
-- `B` – verbunden
-- `C` – lädt
+Der Filter verändert **nicht** die Herstellerwerte `mapped/plugged` oder `mapped/charging`. Dadurch bleiben Home Assistant, Diagnose und andere MQTT-Verbraucher unverfälscht. Weil die Berechnung lokal aus den auf dem Broker vorhandenen `mapped`-Topics erfolgt, funktioniert sie auch mit Remote-Fahrzeugen: derselbe Wagen kann an Standort A `A` und an Standort B gleichzeitig `B` oder `C` liefern. Der abgeleitete Status wird nicht über die Car2MQTT-MQTT-Weiterleitung an andere Standorte gespiegelt.
 
-Ist der Geo-Filter aktiviert, werden `B` und `C` nur ausgegeben, wenn sich das Fahrzeug innerhalb des konfigurierten Radius um die ausgewählte Home-Assistant-Zone befindet.
+Aktivierung: **Einstellungen → EVCC → Standortabhängige Fahrzeugerkennung**. Dort wird auch der Radius in Metern festgelegt; als Mittelpunkt dient die oben ausgewählte Home Zone. Die EVCC-Copy-Vorlage liest anschließend direkt `mapped/evccStatus`.
 
-Die ursprünglichen Herstellerwerte `mapped/plugged` und `mapped/charging` werden dabei nicht verändert.
+## Geo-Shelly Automation (ab 1.2.58, Fahrzeugauswahl ab 1.2.59)
 
-Das ist insbesondere für verteilte Installationen wichtig: Dasselbe Fahrzeug kann an Standort A lokal `A` und an Standort B gleichzeitig `B` oder `C` liefern.
+Für schaltbare Lade-Steckdosen kann Car2MQTT einen Shelly bei Geo-Ankunft einmal einschalten und bei echter Abfahrt wieder ausschalten. EVCC bleibt danach für die normale Lade- und Fahrzeugsteuerung zuständig; es gibt keine feste EVCC-Fahrzeugzuordnung. Die Ankunfts-/Abfahrtsradien verwenden dieselbe Home-Zone und die Geo-Hysterese wie `evccAtSite`.
 
-### Home-Zone Resolver
+Ab 1.2.59 wird das Trigger-Fahrzeug **nicht mehr global in den Einstellungen** gewählt. Stattdessen besitzt jedes lokale Fahrzeug in seinen Fahrzeugeinstellungen die Checkbox **„Geo-Shelly an diesem Standort auslösen“**. Remote-Fahrzeuge besitzen dieselbe Checkbox; deren Auswahl wird ausschließlich lokal auf dem jeweiligen Car2MQTT-Standort gespeichert. Dadurch kann dasselbe Remote-Fahrzeug Standort A triggern, Standort B aber nicht. Mehrere Fahrzeuge können gleichzeitig ausgewählt werden; AUS wird erst ausgelöst, wenn keines der ausgewählten Fahrzeuge mehr vor Ort ist.
 
-Die Geo-Erkennung liest die ausgewählte Home-Assistant-Zone über die Home-Assistant-API. Für `zone.home` existiert zusätzlich ein Fallback auf die Home-Assistant-Systemkoordinaten. Fehler beim Zonenabruf werden im Log und im Geo-Status sichtbar gemacht.
+Unter **Einstellungen → Geo Automation** werden nur die standortbezogenen Shelly-Daten gepflegt: Host/IP, Shelly `Switch ID` und die maximale Leistung für sicheres Ausschalten. Beim Shelly Pro 1PM ist die `Switch ID` üblicherweise `0`; sie bezeichnet den Shelly-RPC-Kanal `Switch:0` und ist **keine EVCC-Datenbank-ID**. Eine EVCC-DB-ID wird für die Geo-Shelly-Funktion bewusst nicht benötigt.
 
-## Geo-Shelly Automation
+## EVCC Copy Helper
 
-Für schaltbare Lade-Steckdosen kann Car2MQTT einen Shelly bei Geo-Ankunft einschalten und bei tatsächlicher Abfahrt wieder ausschalten.
+Zu jedem Fahrzeug wird eine direkt kopierbare Vorlage erzeugt, u. a. für:
 
-Je lokalem oder Remote-Fahrzeug kann festgelegt werden, ob es die Geo-Shelly-Automation an diesem Standort auslösen darf. Mehrere Fahrzeuge können gleichzeitig ausgewählt werden. Ausgeschaltet wird erst, wenn keines der ausgewählten Fahrzeuge mehr vor Ort ist.
+- `evcc` Fahrzeug-Abschnitt
+- `configuration.yaml`
+- `automations.yaml`
+- Variablenblöcke für Fahrzeugentscheidungen / Ladeautomationen
 
-Unter **Einstellungen → Geo Automation** werden die standortbezogenen Shelly-Daten gepflegt:
+Dadurch lässt sich das Fahrzeug schneller in EVCC und Home Assistant einbinden, ohne die YAML-Blöcke manuell zusammensuchen zu müssen.
 
-- Host / IP
-- Shelly `Switch ID`
-- maximale Leistung für sicheres Ausschalten
+## Screenshots
 
-Beim Shelly Pro 1PM ist die `Switch ID` üblicherweise `0` und bezeichnet den RPC-Kanal `Switch:0`.
+> Die Beispielbilder unten wurden für die README **anonymisiert / unkenntlich gemacht**  
+> (Kennzeichen, Namen, Hosts, Logins und ähnliche sensible Daten sind geschwärzt bzw. weichgezeichnet).
 
-## EVCC-Ladelimit
+### UI-Beispiel 1
+![Car2MQTT Screenshot 1](docs/screenshots/screenshot_ui_redacted_01.png)
 
-Das gemappte `limitSoc` ist ein langlebiger Fahrzeug-Einstellwert und kann unverändert bleiben, obwohl die Fahrzeugverbindung in Ordnung ist.
+### UI-Beispiel 2
+![Car2MQTT Screenshot 2](docs/screenshots/screenshot_ui_redacted_02.png)
 
-Die erzeugte EVCC-Konfiguration setzt für `limitsoc` deshalb keinen MQTT-Timeout. Live-Werte wie SoC, Reichweite und `evccStatus` behalten dagegen ihren konfigurierten Timeout, damit ein Ausfall der Datenquelle weiterhin sichtbar bleibt.
+## MQTT-Struktur
 
-## Wichtige Bereiche der Weboberfläche
-
-### Fahrzeuge
-
-- lokale Fahrzeuge anlegen und bearbeiten
-- Hersteller auswählen
-- Zugangsdaten bzw. fahrzeugspezifische Parameter pflegen
-- MQTT-Clients je Fahrzeug zuweisen
-- Device Tracker je Fahrzeug konfigurieren
-- Geo-Shelly-Trigger je Standort auswählen
-
-### Einstellungen
-
-- MQTT
-- Home-Assistant-Zone
-- MQTT Discovery
-- Device Tracker
-- EVCC Geo Detection
-- Geo Automation
-
-### MQTT Clients
-
-- zusätzliche MQTT-Zielserver definieren
-- Clients aktivieren / deaktivieren
-- `mapped` und optional `raw` weitergeben
-- Verbindungsstatus prüfen
-
-### Copy Helper
-
-- EVCC-Konfiguration kopieren
-- Home-Assistant-Konfiguration kopieren
-- Automations- und Variablenblöcke kopieren
-
-## Sicherheit und Datenschutz
-
-Bitte veröffentliche in Logs oder Issue-Berichten keine Zugangsdaten oder personenbezogenen Fahrzeugdaten.
-
-Insbesondere sollten folgende Informationen entfernt bzw. anonymisiert werden:
-
-- Kennzeichen
-- Namen / Benutzernamen
-- E-Mail-Adressen
-- Hostnamen und interne Domains
-- Passwörter
-- Tokens / Refresh-Tokens
-- VIN / Fahrgestellnummern, sofern sie für die Fehlersuche nicht zwingend erforderlich sind
-
-## Projektstatus
-
-Car2MQTT ist ein praxisorientiertes Community-Projekt mit Fokus auf Home Assistant, MQTT und EVCC. Die Herstellerintegrationen hängen teilweise von externen bzw. nicht öffentlich dokumentierten Schnittstellen ab. Änderungen seitens der Hersteller können deshalb jederzeit Anpassungen erforderlich machen.
-
-Fehlerberichte und technische Rückmeldungen können über GitHub eingereicht werden:
+Typisch sind folgende Topics:
 
 ```text
-https://github.com/fbo1982/car2mqtt/issues
+car/<manufacturer>/<plate>/_meta/...
+car/<manufacturer>/<plate>/mapped/...
+car/<manufacturer>/<plate>/...
 ```
 
-## Hinweis zu Marken und Drittprojekten
+Beispiele:
+- `car/bmw/GGCA501E/mapped/soc`
+- `car/gwm/GGCA911E/mapped/range`
+- `car/acconia/SIL123/mapped/soc`
+- `car/acconia/SIL123/mapped/latitude`
+- `car/acconia/SIL123/mapped/longitude`
+- `car/bmw/GGCA1056/_meta/last_update`
 
-Alle genannten Marken und Produktnamen gehören den jeweiligen Rechteinhabern. Car2MQTT ist nicht offiziell mit den genannten Fahrzeugherstellern, Home Assistant oder EVCC verbunden.
+## Wichtige Funktionen in der Oberfläche
 
-Der GWM-/ORA-Bereich enthält bzw. basiert teilweise auf Arbeit aus **zivillian/ora2mqtt**. Die entsprechenden Herkunftshinweise bleiben im Projekt erhalten.
+### Fahrzeuge
+- lokale Fahrzeuge anlegen
+- Hersteller auswählen
+- Zugangsdaten / fahrzeugspezifische Parameter pflegen
+- MQTT-Clients je Fahrzeug zuweisen
+- Device Tracker je Fahrzeug aktivieren
+
+### Einstellungen
+- Home Zone für EVCC-/Automations-Helfer und EVCC Geo Detection
+- MQTT Discovery für Fahrzeug-Entitäten aktivieren
+- Entitäten bei Start / Fahrzeugänderung automatisch erzeugen
+- Discovery Prefix und Retain konfigurieren
+- Device Tracker global aktivieren
+- Discovery manuell erneut senden
+
+### MQTT Clients
+- zusätzliche MQTT-Zielserver definieren
+- Client aktiv / inaktiv
+- `raw` mit übertragen oder nur `mapped`
+- Online-Status des Zielclients prüfen
+
+### Copy Helper
+- fertige Textbausteine direkt aus der UI kopieren
+- für Home Assistant und EVCC
+
+## Herstellerstatus im Überblick
+
+| Hersteller / Quelle | Typ | Status |
+|---|---|---|
+| BMW CarData (EU Data Act) | native Integration | getestet |
+| GWM / ORA | native Integration | getestet |
+| ACCIONA / Silence (MySilence) | native Cloud-Polling-Integration | integriert, Praxistest mit echtem Konto ausstehend |
+| Remote MQTT Fahrzeuge | generisch aus MQTT | funktioniert für Anzeige/Weitergabe, je Quelle abhängig |
+
+## Sicherheit / Datenschutz
+
+Bitte beachte vor dem Veröffentlichen von Screenshots oder Logs:
+
+- Kennzeichen unkenntlich machen
+- Namen / Benutzernamen unkenntlich machen
+- Hostnamen und Domains prüfen
+- Logins, Tokens und Passwörter niemals veröffentlichen
+- VIN nur veröffentlichen, wenn ausdrücklich gewünscht
+
+## Hinweis zum Projektstatus
+
+Car2MQTT ist stark auf praktische Home-Assistant-/MQTT-/EVCC-Workflows ausgerichtet.  
+Der Fokus liegt auf:
+- robuster Fahrzeuganzeige
+- MQTT-Verteilung lokal und remote
+- EVCC-Unterstützung
+- einfacher Bedienung direkt in Home Assistant
+
+BMW und GWM/ORA sind derzeit die am besten verifizierten Integrationen.  
+ACCIONA/Silence ist ab Version 1.2.32 als MySilence-Integration für GPS, SoC und Restreichweite enthalten.
+
+## Lizenz / Nutzung
+
+Ergänze hier bei Bedarf deine gewünschte Lizenz, z. B.:
+
+```text
+MIT License
+```
+
+oder eine projektspezifische Lizenz.
+
+## EVCC Ladelimit ohne künstliche Veralterung (ab 1.2.56)
+
+Das gemappte `limitSoc` ist ein langlebiger Fahrzeug-Einstellwert und kann unverändert bleiben, obwohl die Fahrzeugdatenverbindung vollkommen in Ordnung ist. Die von Car2MQTT erzeugte EVCC-Konfiguration setzt deshalb für `limitsoc` **keinen MQTT-`timeout` mehr**. EVCC akzeptiert den zuletzt empfangenen (retained) Wert damit so lange, bis Car2MQTT tatsächlich einen neuen Ladelimitwert veröffentlicht.
+
+Live-Werte wie SoC, Reichweite und `evccStatus` behalten weiterhin ihren konfigurierten Timeout (standardmäßig `24h`), damit eine ausgefallene Datenquelle dort weiterhin sichtbar wird. Ein periodisches künstliches Neu-Publizieren des Ladelimits ist dadurch nicht nötig und würde eine ausgefallene Datenquelle eher verschleiern.
+
+
+## EVCC Geo Home-Zone Resolver (ab 1.2.60)
+
+Die Geo-Erkennung liest die gewählte Home-Assistant-Zone über den offiziellen Home-Assistant-Core-API-Proxy des Add-ons. Für `zone.home` gibt es zusätzlich einen Fallback auf `/api/config` (Home-Assistant-Systemkoordinaten). Für benutzerdefinierte Zonen gibt es zusätzlich einen Template-API-Fallback. Fehler beim Zonenabruf werden mit HTTP-Status im Log und über `/api/evcc-geo/status` als `zone_resolver_error` ausgegeben, statt still verworfen zu werden.
