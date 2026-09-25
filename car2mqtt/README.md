@@ -1,5 +1,13 @@
 # Car2MQTT
 
+## v1.2.68 – EVCC Smart Charging Mode Update
+
+- Passt die erzeugten EVCC-Fahrzeugvorlagen an die neuen Lademodi `off`, `smart` und `now` an.
+- Der bisherige Standardmodus `pv` wird in neuen Vorlagen durch `smart` ersetzt.
+- Bestehende Legacy-Werte `pv` und `minpv` werden beim Einlesen auf `smart` normalisiert.
+- Silence behält den bisherigen Standard `now`; die REG95-/Wallbox-Logik bleibt unverändert.
+
+
 ## v1.2.67 – BMW Streaming Reconnect Fix
 
 - Entfernt den Reconnect-Watchdog, der bei einem legitimerweise inaktiven BMW-Stream nach drei Stunden alle 30 Sekunden eine neue Verbindung aufgebaut hat.

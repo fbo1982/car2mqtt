@@ -61,8 +61,10 @@ def _evcc_onidentify_mode(cfg: dict[str, Any]) -> str:
     mode = str(cfg.get("evcc_onidentify_mode") or cfg.get("onidentify_mode") or "off").strip().lower()
     aliases = {
         "aus": "off", "off": "off",
-        "pv": "pv",
-        "min+pv": "minpv", "minpv": "minpv", "min_pv": "minpv", "min-pv": "minpv",
+        "smart": "smart",
+        # Legacy evcc modes map to the new unified Smart mode.
+        "pv": "smart",
+        "min+pv": "smart", "minpv": "smart", "min_pv": "smart", "min-pv": "smart",
         "schnell": "now", "now": "now",
     }
     return aliases.get(mode, "off")

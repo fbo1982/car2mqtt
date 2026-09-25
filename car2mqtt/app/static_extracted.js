@@ -26,8 +26,9 @@ function getCurrentEditCard(){
 function normalizeEvccOnIdentifyMode(value){
   const mode = String(value || '').trim().toLowerCase();
   if(mode === 'aus' || mode === 'off') return 'off';
-  if(mode === 'pv') return 'pv';
-  if(mode === 'min+pv' || mode === 'minpv' || mode === 'min_pv' || mode === 'min-pv') return 'minpv';
+  if(mode === 'smart') return 'smart';
+  if(mode === 'pv') return 'smart';
+  if(mode === 'min+pv' || mode === 'minpv' || mode === 'min_pv' || mode === 'min-pv') return 'smart';
   if(mode === 'schnell' || mode === 'now') return 'now';
   return 'off';
 }
@@ -586,7 +587,7 @@ soc:
   timeout: 72h
 
 onIdentify: #<- genau ein Lademodus aktiv
-  mode: ${onIdentifyMode} # off=Aus, pv=PV, minpv=Min+PV, now=Schnell
+  mode: ${onIdentifyMode} # off=Aus, smart=Smart, now=Schnell
 
 range:
   source: mqtt
