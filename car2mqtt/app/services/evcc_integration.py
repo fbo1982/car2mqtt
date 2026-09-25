@@ -61,9 +61,7 @@ def _evcc_onidentify_mode(cfg: dict[str, Any]) -> str:
     mode = str(cfg.get("evcc_onidentify_mode") or cfg.get("onidentify_mode") or "off").strip().lower()
     aliases = {
         "aus": "off", "off": "off",
-        "smart": "smart",
-        # Legacy evcc modes map to the new unified Smart mode.
-        "pv": "smart",
+        "smart": "smart", "pv": "smart",
         "min+pv": "smart", "minpv": "smart", "min_pv": "smart", "min-pv": "smart",
         "schnell": "now", "now": "now",
     }
@@ -106,8 +104,11 @@ def evcc_payload_to_yaml(payload: dict[str, Any]) -> str:
                 lines.append(f"  timeout: {_yaml_scalar(cfg.get('timeout'))}")
     oi = payload.get("onIdentify")
     if isinstance(oi, dict) and oi.get("mode"):
-        lines.append("onIdentify:")
-        lines.append(f"  mode: {_yaml_scalar(oi.get('mode'))}")
+        mode = _evcc_onidentify_mode({"evcc_onidentify_mode": oi.get("mode")})
+        lines.append("onIdentify: #<- es darf nur ein Lademodus aktiv sein.")
+        lines.append(("  " if mode == "smart" else "  #") + "mode: smart # Smart")
+        lines.append(("  " if mode == "now" else "  #") + "mode: now # Schnell")
+        lines.append(("  " if mode == "off" else "  #") + "mode: off # Aus")
     status = payload.get("status")
     if isinstance(status, dict):
         lines.append("status:")

@@ -512,8 +512,8 @@ soc:
   topic: ${topicBase}/soc
   timeout: 72h
 
-onIdentify: #<- genau ein Lademodus aktiv
-  mode: ${identifyMode} # Silence=now, andere Standardvorlage=smart
+onIdentify: #<- es darf nur ein Lademodus aktiv sein.
+${identifyMode === 'now' ? '  #mode: smart # Smart\n  mode: now # Schnell\n  #mode: off # Aus' : '  mode: smart # Smart\n  #mode: now # Schnell\n  #mode: off # Aus'}
 
 range:
   source: mqtt
