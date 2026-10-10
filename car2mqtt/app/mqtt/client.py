@@ -57,12 +57,16 @@ class LocalMqttClient:
         info.wait_for_publish(timeout=5)
         if info.rc != mqtt.MQTT_ERR_SUCCESS:
             raise RuntimeError(f"MQTT publish fehlgeschlagen: {info.rc}")
+        if not info.is_published():
+            raise TimeoutError("MQTT publish wurde nicht innerhalb von 5 Sekunden bestätigt")
 
 
 def test_connection(settings: RuntimeMqttSettings) -> dict:
     client = LocalMqttClient(settings)
-    client.connect()
-    topic = f"{settings.base_topic}/_meta/healthcheck"
-    client.publish(topic, {"status": "ok", "source": "car2mqtt"}, retain=False)
-    client.disconnect()
-    return {"status": "ok", "topic": topic}
+    try:
+        client.connect()
+        topic = f"{settings.base_topic}/_meta/healthcheck"
+        client.publish(topic, {"status": "ok", "source": "car2mqtt"}, retain=False)
+        return {"status": "ok", "topic": topic}
+    finally:
+        client.disconnect()

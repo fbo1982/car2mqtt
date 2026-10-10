@@ -667,6 +667,7 @@ function getHelperCards(){
 function mqttStatusLabel(status){
   if(status === 'online') return 'Online';
   if(status === 'offline') return 'Offline';
+  if(status === 'unknown') return 'Wird geprüft';
   return 'Deaktiviert';
 }
 function renderMqttClientsGrid(){
@@ -709,7 +710,11 @@ function editMqttClient(id){ const client=(mqttClients||[]).find(c=>c.id===id); 
 window.editMqttClient = editMqttClient;
 async function deleteMqttClient(id){ if(!confirm('MQTT Client wirklich löschen?')) return; await fetch(`./api/mqtt-clients/${id}`, {method:'DELETE'}); const res = await fetch('./api/mqtt-clients'); mqttClients = (await res.json()).clients || []; renderMqttClientsGrid(); const card = getCurrentEditCard(); if(card) renderEditMqttClientAssignments(card); if(mqttClientState.editingId===id){ resetMqttClientForm(true); } }
 window.deleteMqttClient = deleteMqttClient;
-async function openMqttClientsDialog(){ renderMqttClientsGrid(); resetMqttClientForm(true); field('mqttClientsDialog').showModal(); }
+async function openMqttClientsDialog(){
+  renderMqttClientsGrid(); resetMqttClientForm(true); field('mqttClientsDialog').showModal();
+  try{ const res = await fetchRead('./api/mqtt-clients'); if(!res.ok) throw new Error('MQTT-Status konnte nicht geladen werden'); mqttClients = (await res.json()).clients || []; renderMqttClientsGrid(); }
+  catch(err){ showNotice('mqttClientsError', err.message); }
+}
 function buildHelperConfigurationYamlTemplate(){
   const helperCards = getHelperCards();
   const blocks = [];
@@ -1356,9 +1361,32 @@ function toggleEditGwmOptions(){
 }
 function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity','gwmVerificationCode','acconiaAccount','acconiaPassword','acconiaScooterId','acconiaCapacity','acconiaApiKey'].forEach(id=>field(id).value=''); field('gwmSourceTopicBase').value='GWM'; field('bmwRegion').value='EU'; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('acconiaPollInterval').value='60'; field('gwmPollingEnabled').checked=true; field('gwmAutoReconnect').checked=true; field('gwmDelayedRetryEnabled').checked=true; field('gwmRetryDelayMinutes').value='55'; field('gwmFallbackOnSilence').checked=true; field('createDeviceTrackerEnabled').checked=false; if(field('createGeoShellyTriggerEnabled')) field('createGeoShellyTriggerEnabled').checked=false; toggleCreateGwmOptions(); field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; setCreateManufacturerLayout(null); }
 function openWizard(){ resetCreate(); field('wizardDialog').showModal(); }
-async function loadDashboard(){ const res = await fetch('./api/dashboard'); const data = await res.json(); cards = data.vehicles || []; renderCards(); }
+async function fetchRead(url){
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), 10000);
+  try {
+    const response = await fetch(url, {signal:controller.signal});
+    const body = await response.blob();
+    return new Response(body, {status:response.status, statusText:response.statusText, headers:response.headers});
+  }
+  finally { clearTimeout(timer); }
+}
+let dashboardRequest = null;
+function loadDashboard(force=false){
+  if(dashboardRequest){
+    return force ? dashboardRequest.catch(()=>{}).then(()=>loadDashboard()) : dashboardRequest;
+  }
+  dashboardRequest = (async()=>{
+    const res = await fetchRead('./api/dashboard');
+    if(!res.ok) throw new Error(`Dashboard: HTTP ${res.status}`);
+    const data = await res.json();
+    const nextCards = data.vehicles || [];
+    if(JSON.stringify(nextCards) !== JSON.stringify(cards)){ cards = nextCards; renderCards(); }
+  })().finally(()=>{ dashboardRequest = null; });
+  return dashboardRequest;
+}
 async function postJson(url,payload,method='POST'){ const res = await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})}); const text = await res.text(); let data={}; try{ data = text ? JSON.parse(text) : {}; }catch{ data = { detail: text }; } if(!res.ok) throw new Error(data.detail || 'Unbekannter Fehler'); return data; }
-async function fetchText(url){ const res = await fetch(url); const text = await res.text(); if(!res.ok) throw new Error(text || 'Unbekannter Fehler'); return text; }
+async function fetchText(url){ const res = await fetchRead(url); const text = await res.text(); if(!res.ok) throw new Error(text || 'Unbekannter Fehler'); return text; }
 
 field('closeWizardBtn').onclick = field('cancelWizardBtn').onclick = () => field('wizardDialog').close();
 
@@ -1636,7 +1664,25 @@ window.editVehicle = editVehicle;
 
 function setLiveLogUi(){ const state = field('liveLogState'); const btn = field('toggleLiveLogsBtn'); state.textContent = editState.liveLogsEnabled ? 'Live an' : 'Live aus'; state.classList.toggle('active', editState.liveLogsEnabled); btn.textContent = editState.liveLogsEnabled ? 'Live-Log stoppen' : 'Live-Log einschalten'; }
 function stopLiveLogs(){ if(editState.liveLogTimer){ clearInterval(editState.liveLogTimer); editState.liveLogTimer = null; } editState.liveLogsEnabled = false; setLiveLogUi(); }
-async function refreshVehicleLogs(){ if(!editState.vehicleId) return; try{ const text = await fetchText(`./api/vehicles/${editState.vehicleId}/logs`); const viewer = field('vehicleLogViewer'); const changed = text !== editState.lastLogText; viewer.textContent = text || 'Noch keine Logs vorhanden.'; if(changed){ viewer.scrollTop = viewer.scrollHeight; } editState.lastLogText = text; }catch(err){ field('vehicleLogViewer').textContent = err.message; } }
+let logRequest = null;
+async function refreshVehicleLogs(){
+  if(!editState.vehicleId) return;
+  if(logRequest) return logRequest;
+  const vehicleId = editState.vehicleId;
+  logRequest = (async()=>{
+    try{
+      const text = await fetchText(`./api/vehicles/${vehicleId}/logs`);
+      if(editState.vehicleId !== vehicleId) return;
+      const viewer = field('vehicleLogViewer');
+      if(text !== editState.lastLogText || viewer.textContent !== (text || 'Noch keine Logs vorhanden.')){
+        viewer.textContent = text || 'Noch keine Logs vorhanden.';
+        viewer.scrollTop = viewer.scrollHeight;
+        editState.lastLogText = text;
+      }
+    }catch(err){ if(editState.vehicleId === vehicleId) field('vehicleLogViewer').textContent = err.message; }
+  })().finally(()=>{ logRequest = null; });
+  return logRequest;
+}
 function startLiveLogs(){ if(!editState.vehicleId) return; stopLiveLogs(); editState.liveLogsEnabled = true; setLiveLogUi(); refreshVehicleLogs(); editState.liveLogTimer = setInterval(refreshVehicleLogs, 2000); }
 field('refreshLogsBtn').onclick = refreshVehicleLogs;
 async function submitGwmCode(){
@@ -1704,12 +1750,25 @@ field('closeEditBtn').onclick = field('cancelEditBtn').onclick = () => { stopLiv
 field('editReauthStartBtn').onclick = async()=>{ if(!editState.vehicleId) return; showNotice('editError'); try{ const vehicle = await (await fetch(`./api/vehicles/${editState.vehicleId}`)).json(); if(vehicle.manufacturer === 'gwm'){ const d = await postJson(`./api/vehicles/${editState.vehicleId}/gwm/reauth/start`,{}); editState.authReady = false; field('editAuthState').textContent = d.message || 'ORA ReAuth gestartet.'; field('editAuthInfo').classList.add('hidden'); setGwmVerifyVisibility(true, false); await loadDashboard(); await refreshVehicleLogs(); return; } const d = await postJson(`./api/vehicles/${editState.vehicleId}/reauth/start`,{}); editState.reauthSessionId = d.session_id; editState.authReady = false; field('editAuthState').textContent = d.message || 'Re-Auth gestartet.'; field('editUserCode').textContent = d.user_code; field('editVerificationUrl').href = d.verification_uri_complete; field('editVerificationUrl').textContent = d.verification_uri_complete; field('editAuthInfo').classList.remove('hidden'); window.open(d.verification_uri_complete,'_blank'); await refreshVehicleLogs(); }catch(err){ showNotice('editError', err.message); } };
 field('editReauthQuickBtn').onclick = ()=> field('editReauthStartBtn').click();
 field('editPollAuthBtn').onclick = async()=>{ if(!editState.reauthSessionId) return showNotice('editError','Bitte zuerst Re-Auth starten.'); try{ const d = await postJson('./api/providers/bmw/auth/poll',{ session_id: editState.reauthSessionId }); if(d.state === 'authorized'){ editState.authReady = true; field('editAuthState').textContent = 'BMW Re-Auth erfolgreich abgeschlossen.'; await refreshVehicleLogs(); } else { field('editAuthState').textContent = d.message || d.state; } }catch(err){ showNotice('editError', err.message); } };
-async function saveEdit(closeAfter){ try{ const manufacturer = field('editManufacturer').value; const derivedId = normalizeVehicleIdFromPlate(field('editPlate').value.trim()); const payload = { id: derivedId, label: field('editLabel').value.trim(), manufacturer, license_plate: field('editPlate').value.trim(), enabled: field('editEnabled').checked, provider_config: {}, auth_session_id: editState.reauthSessionId || null, mqtt_client_ids: Array.from(document.querySelectorAll('.edit-mqtt-client-check:checked')).map(el=>el.value), device_tracker_enabled: !!field('editDeviceTrackerEnabled')?.checked, geo_shelly_trigger_enabled: !!field('editGeoShellyTriggerEnabled')?.checked };
+let editSavePending = false;
+async function saveEdit(closeAfter){
+  if(editSavePending) return;
+  editSavePending = true;
+  const saveButtons = [field('saveEditBtn'), field('saveEditKeepOpenBtn')];
+  saveButtons.forEach(button=>{ button.disabled = true; });
+  try{ const manufacturer = field('editManufacturer').value; const derivedId = normalizeVehicleIdFromPlate(field('editPlate').value.trim()); const payload = { id: derivedId, label: field('editLabel').value.trim(), manufacturer, license_plate: field('editPlate').value.trim(), enabled: field('editEnabled').checked, provider_config: {}, auth_session_id: editState.reauthSessionId || null, mqtt_client_ids: Array.from(document.querySelectorAll('.edit-mqtt-client-check:checked')).map(el=>el.value), device_tracker_enabled: !!field('editDeviceTrackerEnabled')?.checked, geo_shelly_trigger_enabled: !!field('editGeoShellyTriggerEnabled')?.checked };
   if(!payload.label || !payload.license_plate || !derivedId) throw new Error('Bitte Titel und Kennzeichen ausfüllen.');
   if(manufacturer === 'bmw'){ payload.provider_config = { client_id: field('editBmwClientId').value.trim(), mqtt_username: field('editBmwClientId').value.trim(), vin: field('editBmwVin').value.trim(), region: field('editBmwRegion').value.trim(), auto_reconnect: field('editBmwAutoReconnect').checked, manual_reconnect_minutes: Math.max(15, Math.min(60, parseInt(field('editBmwManualReconnectMinutes').value || '15', 10))) }; if(!payload.provider_config.client_id || !payload.provider_config.vin) throw new Error('Bitte BMW Client ID und VIN eintragen.'); }
   if(manufacturer === 'gwm'){ payload.provider_config = { account: field('editGwmAccount').value.trim(), password: field('editGwmPassword').value.trim(), country: field('editGwmCountry').value.trim(), language: field('editGwmLanguage').value.trim(), polling_enabled: field('editGwmPollingEnabled').checked, poll_interval: field('editGwmPollInterval').value.trim(), vehicle_id: field('editGwmVehicleId').value.trim() || derivedId, capacity_kwh: field('editGwmCapacity').value.trim(), source_topic_base: field('editGwmSourceTopicBase').value.trim(), auto_reconnect: field('editGwmAutoReconnect').checked, delayed_retry_enabled: field('editGwmDelayedRetryEnabled').checked, retry_delay_minutes: field('editGwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('editGwmFallbackOnSilence').checked }; if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.'); }
   if(manufacturer === 'acconia'){ payload.provider_config = { account: field('editAcconiaAccount').value.trim(), password: field('editAcconiaPassword').value, scooter_id: field('editAcconiaScooterId').value.trim(), poll_interval: field('editAcconiaPollInterval').value.trim() || '60', capacity_kwh: field('editAcconiaCapacity').value.trim(), api_key: field('editAcconiaApiKey').value.trim() }; if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte MySilence E-Mail und Passwort eintragen.'); }
-  await postJson(`./api/vehicles/${editState.vehicleId}`, payload, 'PUT'); await loadDashboard(); if(closeAfter){ field('editDialog').close(); } } catch(err){ showNotice('editError', err.message); } }
+  const result = await postJson(`./api/vehicles/${editState.vehicleId}`, payload, 'PUT');
+  editState.vehicleId = result.vehicle_id || editState.vehicleId;
+  if(closeAfter){ stopLiveLogs(); field('editDialog').close(); }
+  else { field('editAuthState').textContent = 'Gespeichert. Die Änderung wird im Hintergrund übernommen.'; }
+  await loadDashboard(true);
+  } catch(err){ showNotice('editError', err.message); }
+  finally { editSavePending = false; saveButtons.forEach(button=>{ button.disabled = false; }); }
+}
 field('saveEditKeepOpenBtn').onclick = ()=>saveEdit(false);
 field('saveEditBtn').onclick = ()=>saveEdit(true);
 
@@ -1740,7 +1799,7 @@ field('saveMqttClientBtn').onclick = async()=>{
 };
 field('editBmwAutoReconnect').onchange = toggleBmwReconnectMode;
 toggleBmwReconnectMode();
-field('createManufacturer').onchange = toggleCreateSections; setLiveLogUi(); renderCards(); renderProviderList(); fillManufacturerSelect(); setInterval(loadDashboard, 15000);
+field('createManufacturer').onchange = toggleCreateSections; setLiveLogUi(); renderCards(); renderProviderList(); fillManufacturerSelect(); setInterval(()=>{ if(!document.hidden) loadDashboard().catch(()=>{}); }, 15000);
 </script>
 </body>
 </html>

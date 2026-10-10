@@ -68,3 +68,54 @@ class BackgroundJob:
             except Exception:
                 logger.exception("Car2MQTT Hintergrund: %s konnte nicht sauber stoppen", self.name)
             self.state = "stopped"
+
+
+class ActionQueue:
+    """One daemon executes follow-up actions in order, outside HTTP requests."""
+
+    def __init__(self, name):
+        from collections import deque
+        self.name = name
+        self._pending = deque()
+        self._condition = threading.Condition()
+        self._stopped = False
+        self._thread = None
+        self.idle = threading.Event()
+        self.idle.set()
+
+    def submit(self, name, operation):
+        with self._condition:
+            if self._stopped:
+                raise RuntimeError("Car2MQTT wird beendet")
+            self._pending.append((name, operation))
+            self.idle.clear()
+            if self._thread is None:
+                self._thread = threading.Thread(target=self._run, name=f"car2mqtt-{self.name}", daemon=True)
+                self._thread.start()
+            self._condition.notify()
+
+    def stop(self):
+        with self._condition:
+            self._stopped = True
+            self._pending.clear()
+            self._condition.notify_all()
+
+    def _run(self):
+        import time
+        while True:
+            with self._condition:
+                while not self._pending and not self._stopped:
+                    self.idle.set()
+                    self._condition.wait()
+                if self._stopped:
+                    self.idle.set()
+                    return
+                name, operation = self._pending.popleft()
+            started = time.monotonic()
+            logger.info("Car2MQTT: %s beginnt", name)
+            try:
+                operation()
+            except Exception:
+                logger.exception("Car2MQTT: %s fehlgeschlagen", name)
+            else:
+                logger.info("Car2MQTT: %s abgeschlossen (%.2f s)", name, time.monotonic() - started)

@@ -1,5 +1,17 @@
 # Car2MQTT
 
+## v1.2.71 – Reaktionsfähige Oberfläche und unabhängige MQTT-Weiterleitung
+
+- Aktivieren, Deaktivieren und Speichern bestätigen die lokale Speicherung sofort; Fahrzeugstart und Verbindungssynchronisierung folgen im Hintergrund. Fortschritt und Fehler erscheinen im Protokoll.
+- Ein ausgefallener Weiterleitungsserver blockiert weder andere Ziele noch die lokale Verarbeitung durch die Weiterleitung: jedes Ziel hat einen eigenen Hintergrunddienst. Fehlgeschlagene Versuche werden frühestens nach 30 Sekunden wiederholt.
+- Pro Ziel werden höchstens 2.000 ausstehende Datenpunkte im Speicher gehalten. Neuere Werte ersetzen ältere desselben Datenpunkts; bei vollem Puffer entfallen die ältesten. Nach Neustart besteht keine Zustellgarantie für den Puffer.
+- Mehrere Werte verwenden eine gemeinsame MQTT-Verbindung. Nicht bestätigte Veröffentlichungen werden als Fehler erkannt; fehlgeschlagene Verbindungstests werden aufgeräumt.
+- Auch die MQTT-Statusprüfungen beim Öffnen der Startseite und beim Speichern der Clients laufen im Hintergrund. Noch ungeprüfte Ziele zeigen „Wird geprüft“; der Status wird alle 30 Sekunden abgefragt und beim Öffnen des Client-Dialogs geladen.
+- Einfaches Aktivieren/Deaktivieren startet den Geo-Dienst nicht mehr unnötig neu. Langsame manuelle Netzwerkaktionen blockieren die übrige Oberfläche nicht mehr.
+- Dashboard- und Log-Abfragen überlappen sich nicht; unveränderte Karten werden nicht neu gezeichnet. Doppelte Speicherklicks werden verhindert.
+- 123 Python-Tests und 5 Tests für die Browserlogik erfolgreich. Ausfälle und Verzögerungen sind simuliert; kein Test auf dem betroffenen Home-Assistant-Server.
+- Lokaler Korrekturstand auf Basis von 1.2.70. Behebt keine Störung der MySilence-Cloud oder des Netzwerkwegs zu ihr.
+
 ## v1.2.70 – Start und Oberfläche unabhängig von MQTT und Home Assistant
 
 - Lokaler Korrekturstand auf Basis von 1.2.69, noch nicht veröffentlicht.

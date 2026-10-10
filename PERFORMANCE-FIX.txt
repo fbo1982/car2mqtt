@@ -1,0 +1,64 @@
+Car2MQTT 1.2.71 – GUI und MQTT-Weiterleitung
+Stand: 10.10.2026
+
+Grundlage
+Dieses vollständige Quellpaket baut auf dem vorbereiteten Update 1.2.70 auf.
+Die Startkorrektur aus 1.2.70 bleibt enthalten (siehe STARTUP-FIX.txt).
+Das Paket wurde lokal vorbereitet; es wurde nicht durch diesen Chat auf dem
+Home-Assistant-Server installiert oder in ein entferntes Repository übertragen.
+
+Ursache der langsamen Oberfläche
+Beim Speichern von Fahrzeugen liefen Fahrzeugstart, MQTT-Veröffentlichungen
+und weitere Verbindungsarbeiten direkt im Web-Aufruf. Auch das Öffnen der
+Startseite prüfte entfernte MQTT-Clients synchron. Ein nicht erreichbares
+Weiterleitungsziel wie HoGo erzeugte wiederholt Wartezeiten je Datenpunkt.
+Diese Weiterleitung lief zudem in der Verarbeitung eingehender Fahrzeugdaten.
+
+Korrektur
+- Lokale Speicherung und Hintergrundübernahme sind getrennt. Die Rückmeldung
+  bestätigt die Speicherung, nicht den Abschluss aller Verbindungsarbeiten.
+- Fahrzeug- und Integrationsaktionen laufen in getrennten Warteschlangen.
+  Fortschritt/Fehler sind im Fahrzeug- und App-Protokoll sichtbar.
+- Jede MQTT-Weiterleitung hat einen eigenen Hintergrunddienst. Beim Fehler
+  Pause von mindestens 30 Sekunden vor dem erneuten Versuch; aktuellste Werte
+  ersetzen ältere. Andere Ziele warten nicht auf den ausgefallenen Server.
+- Höchstens 2.000 ausstehende Datenpunkte pro Ziel. Kein dauerhafter Puffer;
+  bei voller Warteschlange entfallen älteste Einträge. Keine Historienzustellung.
+- Vor Versand/Wiederholung werden aktuelles Ziel, Fahrzeugzuordnung und
+  Rohdatenfreigabe erneut geprüft. Entfernte Zuordnungen werden verworfen.
+- MQTT-Verbindungen werden für Wertepakete wiederverwendet.
+- MQTT-Statusprüfungen im Hintergrund, Bestätigungs-Timeouts und sauberes
+  Beenden fehlgeschlagener Verbindungstests.
+- Weniger unnötige Geo-Neustarts, keine überlappenden Browserabfragen,
+  keine unnötige Neuzeichnung unveränderter Karten, Schutz vor Doppelklicks.
+- Konfigurationsdatei wird atomar ersetzt; Zugriff innerhalb des Prozesses
+  ist zwischen Hintergrunddiensten und Oberfläche gesperrt.
+
+Prüfung
+123 Python-Tests erfolgreich; 5 Tests der JavaScript-Browserlogik erfolgreich.
+Darunter: blockierter Fahrzeugstart/-stopp, Einstellungen, MQTT-Zielausfall,
+unabhängige Ziele, Wiederholung mit Pause und neuesten Werten, begrenzter
+Puffer, entfernte Fahrzeugzuordnung, schnelle Startseite und MQTT-Verwaltung.
+Vergleich mit 1.2.70: Bei simulierten zwei Sekunden Verzögerung im Start-/Stopp-
+Dienst wartet das alte Speichern ca. 2,03 Sekunden; die neue Version erfüllt
+die Testgrenze unter 0,5 Sekunden. Das sind lokale Simulationen, keine Messung
+auf dem Home-Assistant-Server. Kein Containerbau oder Live-Test auf diesem Server.
+
+Einordnung der gemeldeten Logs
+HoGo ist laut Nutzer derzeit nicht erreichbar. Das erklärt die gemeldeten
+Weiterleitungs-Timeouts. Die Korrektur soll deren Auswirkungen begrenzen;
+sie stellt keine Netzwerkverbindung zu einem ausgefallenen Ziel her.
+MySilence meldet separat einen API-Lese-Timeout nach 30 Sekunden. Auf dem
+Handy aktualisiert sich laut Nutzer der Standort. Ein vollständiger
+Cloud-Ausfall ist damit nicht belegt; die Ursache dieses API-Timeouts bleibt
+offen. Zugangsdaten, API-Aufrufe und das Silence-Polling werden nicht geändert.
+
+Übernahme
+Wie beim bisherigen Quellpaket 1.2.70 in das verwendete Add-on-Repository
+übernehmen; anschließend in Home Assistant das angebotene Update 1.2.71
+installieren. Dieses ZIP ist ein Quellpaket, kein direkt importierbares
+Home-Assistant-Backup oder vorkompiliertes Add-on-Image.
+Nach Installation Version 1.2.71 prüfen und Aktivieren/Deaktivieren testen.
+Das Speichern soll sofort bestätigt werden; Abschluss und eventuelle
+Verbindungsfehler folgen im Protokoll. HoGo kann bis zur Wiederherstellung
+alternativ als Weiterleitungsziel beim Fahrzeug abgewählt bleiben.

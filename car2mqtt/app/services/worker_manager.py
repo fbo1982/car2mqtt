@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 import json
 import os
+import threading
 
 import requests
 from typing import Any, Dict
@@ -45,6 +46,7 @@ def _bmw_obsolete_metric_keys(vehicle_type: str, metrics: Dict[str, Any]) -> set
         candidates = BMW_EV_METRIC_KEYS
     return {key for key in candidates if key in metrics}
 
+from app.services.forward_buffer import ForwardBuffer
 from app.mqtt.client import LocalMqttClient
 from app.mqtt.topic_builder import mapped_topic, meta_topic, raw_vehicle_topic, vehicle_root_topic
 from app.providers.acconia_runner import AcconiaPollingWorker
@@ -60,6 +62,11 @@ class WorkerManager:
         self.state_store = state_store
         self.log_store = VehicleLogStore(data_dir)
         self.workers: dict[str, object] = {}
+        self._server_name_cache = None
+        self._forwarders = {}
+        self._forwarders_lock = threading.Lock()
+        self._forward_status_lock = threading.RLock()
+        self._forwarding_stopped = False
         self._bmw_raw_cache: dict[str, dict] = {}
         self.mqtt_client_status_file = self.data_dir / "mqtt_client_status.json"
 
@@ -147,7 +154,7 @@ class WorkerManager:
 
     def sync_vehicle_to_forward_clients(self, vehicle_id: str) -> None:
         vehicle = self.config_store.get_vehicle(vehicle_id)
-        if not vehicle:
+        if not vehicle or not self._target_clients_for_vehicle(vehicle):
             return
         mqtt_settings = load_runtime_mqtt_settings()
         if not mqtt_settings.host:
@@ -172,14 +179,15 @@ class WorkerManager:
         }
         if runtime.last_update:
             meta_values[f"{meta_base}/last_update"] = runtime.last_update
-        for topic, value in meta_values.items():
-            self._forward_publish(vehicle, mqtt_settings, topic, value, is_raw=False)
+        messages = list(meta_values.items())
 
         # Forward current mapped values
         mapped_base = mapped_topic(mqtt_settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
         for key, value in (runtime.metrics or {}).items():
             topic = f"{mapped_base}/{key}"
-            self._forward_publish(vehicle, mqtt_settings, topic, value, is_raw=False)
+            messages.append((topic, value))
+
+        self._forward_batch(vehicle, mqtt_settings, messages, is_raw=False)
 
         # Forward BMW raw cache immediately when available and requested
         raw_cache = self._bmw_raw_cache.get(vehicle_id)
@@ -239,6 +247,9 @@ class WorkerManager:
         return ""
 
     def _resolve_server_name(self) -> str:
+        cached = self._server_name_cache
+        if cached and time.monotonic() < cached[1]:
+            return cached[0]
         headers = self._ha_supervisor_headers()
         urls = [
             os.getenv("SUPERVISOR_HOST_INFO_URL", "").strip(),
@@ -257,6 +268,7 @@ class WorkerManager:
                     continue
                 name = self._extract_server_name_from_payload(resp.json())
                 if name:
+                    self._server_name_cache = (name, time.monotonic() + 60.0)
                     return name
             except Exception:
                 continue
@@ -272,17 +284,19 @@ class WorkerManager:
         return "unknown"
 
     def _mark_forward_client_status(self, client_id: str, *, ok: bool, error: str = "") -> None:
-        status_map = self._load_forward_status()
-        entry = dict(status_map.get(client_id, {}) or {})
-        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        entry["checked_at"] = now
-        if ok:
-            entry["last_ok"] = now
-            entry["last_error"] = ""
-        else:
-            entry["last_error"] = error or "publish_failed"
-        status_map[client_id] = entry
-        self._save_forward_status(status_map)
+        with self._forward_status_lock:
+            status_map = self._load_forward_status()
+            entry = dict(status_map.get(client_id, {}) or {})
+            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            entry["checked_at"] = now
+            if ok:
+                entry["last_ok"] = now
+                entry["last_error"] = ""
+            else:
+                entry["last_error"] = error or "publish_failed"
+            status_map[client_id] = entry
+            self._save_forward_status(status_map)
+
 
     def _forward_topic(self, source_topic: str, target_base: str, local_base: str) -> str:
         source_topic = str(source_topic or '').strip('/')
@@ -294,6 +308,9 @@ class WorkerManager:
         return f"{target_base}/{suffix}" if target_base else source_topic
 
     def _publish_to_forward_client(self, client_cfg, topic: str, payload: Any) -> None:
+        self._publish_batch_to_forward_client(client_cfg, [(topic, payload)])
+
+    def _publish_batch_to_forward_client(self, client_cfg, messages) -> None:
         if not getattr(client_cfg, 'host', ''):
             raise RuntimeError('MQTT Client ohne Host konfiguriert')
         local = load_runtime_mqtt_settings()
@@ -311,7 +328,8 @@ class WorkerManager:
         client = LocalMqttClient(settings)
         try:
             client.connect()
-            client.publish(topic, payload)
+            for topic, payload in messages:
+                client.publish(topic, payload)
         finally:
             client.disconnect()
 
@@ -327,17 +345,57 @@ class WorkerManager:
                     self._forward_publish(vehicle, mqtt_settings, f"{metric_topic}/{key}", value, is_raw=True)
 
     def _forward_publish(self, vehicle, mqtt_settings, source_topic: str, payload: Any, *, is_raw: bool) -> None:
+        self._forward_batch(vehicle, mqtt_settings, [(source_topic, payload)], is_raw=is_raw)
+
+    def _forward_batch(self, vehicle, mqtt_settings, messages, *, is_raw: bool) -> None:
+        messages = list(messages)
+        if not messages:
+            return
         local_base = str(getattr(mqtt_settings, 'base_topic', 'car') or 'car')
         for client_cfg in self._target_clients_for_vehicle(vehicle):
             if is_raw and not client_cfg.send_raw:
                 continue
-            target_topic = self._forward_topic(source_topic, client_cfg.base_topic, local_base)
-            try:
-                self._publish_to_forward_client(client_cfg, target_topic, payload)
-                self._mark_forward_client_status(client_cfg.id, ok=True)
-            except Exception as exc:
-                self._mark_forward_client_status(client_cfg.id, ok=False, error=str(exc))
-                self.log_store.append(vehicle.id, f"MQTT Client {client_cfg.name or client_cfg.id}: Publish fehlgeschlagen ({exc})")
+            with self._forwarders_lock:
+                if self._forwarding_stopped:
+                    return
+                sender = self._forwarders.get(client_cfg.id)
+                if sender is None:
+                    sender = ForwardBuffer(client_cfg.id, lambda batch, cid=client_cfg.id: self._deliver_forward_batch(cid, batch))
+                    self._forwarders[client_cfg.id] = sender
+            sender.submit([((vehicle.id, local_base, topic, is_raw), value) for topic, value in messages])
+
+    def stop_forwarding(self):
+        with self._forwarders_lock:
+            self._forwarding_stopped = True
+            for sender in self._forwarders.values():
+                sender.stop()
+
+    def _deliver_forward_batch(self, client_id, batch):
+        # Recheck current assignments before a retry; do not send deleted vehicles
+        # or data to a destination that has since been disabled or unassigned.
+        cfg = self.config_store.load()
+        client = next((c for c in cfg.mqtt_clients if c.id == client_id and c.enabled), None)
+        if client is None:
+            return
+        vehicles = {v.id: v for v in cfg.vehicles}
+        messages = []
+        involved = set()
+        for (vehicle_id, local_base, topic, is_raw), value in batch.items():
+            vehicle = vehicles.get(vehicle_id)
+            if not vehicle or client_id not in vehicle.mqtt_client_ids or (is_raw and not client.send_raw):
+                continue
+            messages.append((self._forward_topic(topic, client.base_topic, local_base), value))
+            involved.add(vehicle_id)
+        if not messages:
+            return
+        try:
+            self._publish_batch_to_forward_client(client, messages)
+            self._mark_forward_client_status(client.id, ok=True)
+        except Exception as exc:
+            self._mark_forward_client_status(client.id, ok=False, error=str(exc))
+            for vehicle_id in involved:
+                self.log_store.append(vehicle_id, f"MQTT Client {client.name or client.id}: Publish fehlgeschlagen ({exc}); neuer Versuch frühestens in 30 Sekunden")
+            raise
 
     def _handle_acconia_error(self, vehicle_id: str, message: str) -> None:
         vehicle = self.config_store.get_vehicle(vehicle_id)
@@ -370,7 +428,7 @@ class WorkerManager:
         )
         return raw_topic, mapped_topic(settings.base_topic, vehicle.manufacturer, vehicle.license_plate)
 
-    def _set_runtime_state(self, vehicle_id: str, state: str, detail: str) -> None:
+    def _set_runtime_state(self, vehicle_id: str, state: str, detail: str, *, publish_meta: bool = True) -> None:
         vehicle = self.config_store.get_vehicle(vehicle_id)
         if not vehicle:
             return
@@ -402,7 +460,8 @@ class WorkerManager:
             runtime.mapped_topic = mapped
             self.state_store.upsert(runtime)
             self.log_store.append(vehicle_id, f"Status unverändert (ReAuth hat Vorrang): {state}: {detail}")
-            self._publish_meta(vehicle, runtime, settings)
+            if publish_meta:
+                self._publish_meta(vehicle, runtime, settings)
             return
 
         runtime.connection_state = state
@@ -413,7 +472,8 @@ class WorkerManager:
         self.state_store.upsert(runtime)
         if previous_state != state or previous_detail != detail:
             self.log_store.append(vehicle_id, f"Status -> {state}: {detail}")
-        self._publish_meta(vehicle, runtime, settings)
+        if publish_meta:
+            self._publish_meta(vehicle, runtime, settings)
 
     def _publish_meta(self, vehicle, runtime: VehicleRuntimeState, settings) -> None:
         if not settings.host:
@@ -442,8 +502,7 @@ class WorkerManager:
                 client.publish(meta_topic_name, meta_value)
         finally:
             client.disconnect()
-        for meta_topic_name, meta_value in meta_values.items():
-            self._forward_publish(vehicle, settings, meta_topic_name, meta_value, is_raw=False)
+        self._forward_batch(vehicle, settings, meta_values.items(), is_raw=False)
 
     def _flatten_publish(self, client: LocalMqttClient, base_topic_prefix: str, data: Dict[str, Any]) -> Dict[str, Any]:
         data_points = data.get("data", {})

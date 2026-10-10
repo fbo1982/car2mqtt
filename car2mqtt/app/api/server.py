@@ -6,6 +6,7 @@ import shutil
 import re
 from copy import deepcopy
 import logging
+import threading
 from pathlib import Path
 from typing import Any, Dict
 import time
@@ -39,7 +40,7 @@ from app.providers.gwm_config import (
     clear_ora_token_bundle,
     clear_ora_token_backup,
 )
-from app.services.background import BackgroundJob
+from app.services.background import BackgroundJob, ActionQueue
 from app.services.worker_manager import WorkerManager
 from app.services.ha_discovery import (
     clear_vehicle_discovery,
@@ -806,8 +807,52 @@ def create_app() -> FastAPI:
 
     app.state.device_tracker_tokens = {}
     app.state.remote_cards = []
+    app.state.mqtt_client_checks = {}
     app.state.ha_zones = []
     app.state.background_jobs = []
+    app.state.stopping = False
+    runtime_actions = ActionQueue("Fahrzeugänderungen")
+    integration_actions = ActionQueue("Konfigurationsübernahme")
+    app.state.action_queues = [runtime_actions, integration_actions]
+    worker_lifecycle_lock = threading.RLock()
+    geo_lifecycle_lock = threading.RLock()
+
+    def _start_geo():
+        with geo_lifecycle_lock:
+            if not app.state.stopping:
+                evcc_geo_filter.start()
+
+    def _stop_geo():
+        with geo_lifecycle_lock:
+            evcc_geo_filter.stop()
+
+    def _restart_geo():
+        with geo_lifecycle_lock:
+            if not app.state.stopping:
+                evcc_geo_filter.restart()
+
+    def _start_vehicle(vehicle_id, settings):
+        with worker_lifecycle_lock:
+            if not app.state.stopping:
+                worker_manager.start_or_restart_vehicle(vehicle_id, settings)
+
+    def _stop_vehicle(vehicle_id):
+        with worker_lifecycle_lock:
+            worker_manager.stop_vehicle(vehicle_id)
+
+    def _enqueue_vehicle_step(queue, vehicle_id, name, operation):
+        def apply():
+            log_store.append(vehicle_id, f"{name}: beginnt")
+            try:
+                operation()
+            except Exception:
+                log_store.append(vehicle_id, f"{name}: fehlgeschlagen – siehe App-Protokoll")
+                if queue is runtime_actions:
+                    worker_manager._set_runtime_state(vehicle_id, "error", "Übernahme fehlgeschlagen – siehe Fahrzeug-Log", publish_meta=False)
+                raise
+            log_store.append(vehicle_id, f"{name}: abgeschlossen")
+        queue.submit(name, apply)
+
     started_workers: set[str] = set()
     tracker_initialized = False
 
@@ -820,7 +865,7 @@ def create_app() -> FastAPI:
             if vehicle.manufacturer not in {"bmw", "gwm", "acconia"} or not vehicle.enabled or vehicle.provider_state.auth_state != "authorized":
                 continue
             try:
-                worker_manager.start_or_restart_vehicle(vehicle.id, settings)
+                _start_vehicle(vehicle.id, settings)
             except Exception:
                 failures += 1
                 logger.exception("Fahrzeug konnte beim Start nicht gestartet werden: %s", vehicle.id)
@@ -832,7 +877,7 @@ def create_app() -> FastAPI:
     def _stop_workers():
         for vehicle_id in list(worker_manager.workers):
             try:
-                worker_manager.stop_vehicle(vehicle_id)
+                _stop_vehicle(vehicle_id)
             except Exception:
                 logger.exception("Fahrzeug konnte nicht sauber stoppen: %s", vehicle_id)
 
@@ -869,10 +914,11 @@ def create_app() -> FastAPI:
         # Neither startup nor HTTP page rendering may wait for HA or MQTT.
         app.state.background_jobs = [
             BackgroundJob("Fahrzeuge", _start_workers, cleanup=_stop_workers),
-            BackgroundJob("EVCC Geo", evcc_geo_filter.start, cleanup=evcc_geo_filter.stop),
+            BackgroundJob("EVCC Geo", _start_geo, cleanup=_stop_geo),
             BackgroundJob("MQTT Discovery", _publish_initial_discovery),
             BackgroundJob("Remote-Fahrzeuge", _refresh_remote_cards, interval=15.0),
             BackgroundJob("HA-Zonen", _refresh_ha_zones, interval=30.0),
+            BackgroundJob("MQTT Client Status", _refresh_mqtt_client_status, interval=30.0),
             BackgroundJob("Device Tracker", _sync_device_trackers, interval=15.0),
         ]
         for job in app.state.background_jobs:
@@ -883,6 +929,10 @@ def create_app() -> FastAPI:
 
     @app.on_event("shutdown")
     async def shutdown_event():
+        app.state.stopping = True
+        worker_manager.stop_forwarding()
+        for queue in app.state.action_queues:
+            queue.stop()
         for job in app.state.background_jobs:
             job.stop()
 
@@ -911,19 +961,30 @@ def create_app() -> FastAPI:
         except Exception:
             return "offline"
 
+    def _refresh_mqtt_client_status():
+        for client in store.load().mqtt_clients:
+            if app.state.stopping:
+                return
+            fingerprint = client.model_dump(mode="json")
+            status = mqtt_client_status(client)
+            app.state.mqtt_client_checks[client.id] = (fingerprint, status)
+
     def build_mqtt_clients() -> list[dict[str, Any]]:
         cfg = store.load()
         status_map = worker_manager._load_forward_status()
         now = datetime.now(timezone.utc)
         result = []
         for client in cfg.mqtt_clients:
-            status = "disabled" if not client.enabled else mqtt_client_status(client)
+            checked = app.state.mqtt_client_checks.get(client.id)
+            status = 'disabled' if not client.enabled else 'unknown'
+            if client.enabled and checked and checked[0] == client.model_dump(mode="json"):
+                status = checked[1]
             status_info = dict(status_map.get(client.id, {}) or {})
             last_ok = _parse_iso_ts(status_info.get('last_ok'))
-            if client.enabled and last_ok and (now - last_ok).total_seconds() <= 900:
-                status = 'online'
-            elif client.enabled and status_info.get('last_error') and not last_ok:
+            if client.enabled and status_info.get('last_error'):
                 status = 'offline'
+            elif client.enabled and status == 'unknown' and last_ok and (now - last_ok).total_seconds() <= 900:
+                status = 'online'
             result.append(dict(client.model_dump(mode="json"), status=status, status_info=status_info))
         return result
 
@@ -1032,27 +1093,29 @@ def create_app() -> FastAPI:
         except Exception:
             cfg.ui_settings.geo_shelly_power_off_threshold_w = 50.0
         store.save(cfg)
-        try:
-            evcc_geo_filter.restart()
-        except Exception:
-            logger.exception("EVCC Geo Filter nach Einstellungsänderung konnte nicht neu gestartet werden")
-        try:
-            cards, _ = build_cards()
-            _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(cfg.ui_settings.device_tracker_enabled))
-            app.state.device_tracker_tokens = {str(card.get('id') or ''): _device_tracker_token(card) for card in cards}
-        except Exception:
-            logger.exception("Device Tracker nach Einstellungsänderung konnte nicht veröffentlicht werden")
+        def apply_settings():
+            try:
+                _restart_geo()
+            except Exception:
+                logger.exception("EVCC Geo Filter nach Einstellungsänderung konnte nicht neu gestartet werden")
+            try:
+                cards, _ = build_cards()
+                _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(cfg.ui_settings.device_tracker_enabled))
+                app.state.device_tracker_tokens = {str(card.get('id') or ''): _device_tracker_token(card) for card in cards}
+            except Exception:
+                logger.exception("Device Tracker nach Einstellungsänderung konnte nicht veröffentlicht werden")
 
-        try:
-            settings = load_runtime_mqtt_settings()
-            new_enabled, new_prefix, _ = _ui_discovery_settings(cfg)
-            if settings.host and old_enabled and (not new_enabled or old_prefix != new_prefix):
-                for vehicle in cfg.vehicles:
-                    _clear_discovery_for_vehicle(vehicle, cfg, prefix=old_prefix)
-            if settings.host and new_enabled:
-                publish_all_discovery(cfg, settings)
-        except Exception:
-            logger.exception("Home Assistant MQTT Discovery nach Einstellungsänderung fehlgeschlagen")
+            try:
+                settings = load_runtime_mqtt_settings()
+                new_enabled, new_prefix, _ = _ui_discovery_settings(cfg)
+                if settings.host and old_enabled and (not new_enabled or old_prefix != new_prefix):
+                    for vehicle in cfg.vehicles:
+                        _clear_discovery_for_vehicle(vehicle, cfg, prefix=old_prefix)
+                if settings.host and new_enabled:
+                    publish_all_discovery(cfg, settings)
+            except Exception:
+                logger.exception("Home Assistant MQTT Discovery nach Einstellungsänderung fehlgeschlagen")
+        integration_actions.submit("Einstellungen übernehmen", apply_settings)
 
         return {
             "status": "ok",
@@ -1062,7 +1125,7 @@ def create_app() -> FastAPI:
 
 
     @app.post("/api/ha-discovery/publish")
-    async def publish_ha_discovery():
+    def publish_ha_discovery():
         cfg = store.load()
         settings = load_runtime_mqtt_settings()
         if not settings.host:
@@ -1076,7 +1139,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "published": count}
 
     @app.post("/api/vehicles/{vehicle_id}/ha-discovery/publish")
-    async def publish_vehicle_ha_discovery(vehicle_id: str):
+    def publish_vehicle_ha_discovery(vehicle_id: str):
         vehicle = store.get_vehicle(vehicle_id)
         if not vehicle:
             raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
@@ -1124,15 +1187,18 @@ def create_app() -> FastAPI:
         if not replaced:
             cfg.mqtt_clients.append(client)
         store.save(cfg)
-        for vehicle in cfg.vehicles:
-            if client.id in (vehicle.mqtt_client_ids or []):
-                worker_manager.sync_vehicle_to_forward_clients(vehicle.id)
-        try:
-            cards, _ = build_cards()
-            _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(getattr(getattr(cfg, "ui_settings", None), "device_tracker_enabled", False)))
-        except Exception:
-            pass
-        return {"status": "ok", "client": dict(client.model_dump(mode="json"), status=mqtt_client_status(client)), "clients": build_mqtt_clients()}
+        def apply_mqtt_clients():
+            for vehicle in cfg.vehicles:
+                if client.id in (vehicle.mqtt_client_ids or []):
+                    worker_manager.sync_vehicle_to_forward_clients(vehicle.id)
+            try:
+                cards, _ = build_cards()
+                _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(getattr(getattr(cfg, "ui_settings", None), "device_tracker_enabled", False)))
+            except Exception:
+                pass
+        integration_actions.submit("MQTT Clients übernehmen", apply_mqtt_clients)
+        clients = build_mqtt_clients()
+        return {"status": "ok", "client": next(c for c in clients if c["id"] == client.id), "clients": clients}
 
     @app.delete("/api/mqtt-clients/{client_id}")
     async def delete_mqtt_client(client_id: str):
@@ -1158,12 +1224,7 @@ def create_app() -> FastAPI:
             ids.discard(vehicle_id)
         cfg.ui_settings.remote_device_tracker_ids = sorted(ids)
         store.save(cfg)
-        cards, _ = build_cards()
-        try:
-            _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(getattr(getattr(cfg, 'ui_settings', None), 'device_tracker_enabled', False)))
-            app.state.device_tracker_tokens = {str(card.get('id') or ''): _device_tracker_token(card) for card in cards}
-        except Exception:
-            pass
+        integration_actions.submit("Remote Device Tracker übernehmen", _sync_device_trackers)
         return {'status':'ok','vehicle_id':vehicle_id,'device_tracker_enabled': enabled}
 
     @app.post("/api/remote-vehicles/{vehicle_id}/geo-shelly")
@@ -1184,10 +1245,7 @@ def create_app() -> FastAPI:
         # selector so it cannot silently re-enable a vehicle later.
         cfg.ui_settings.geo_shelly_vehicle_mapped_topic = ""
         store.save(cfg)
-        try:
-            evcc_geo_filter.restart()
-        except Exception:
-            logger.exception("EVCC Geo Filter nach Remote Geo-Shelly Änderung konnte nicht neu gestartet werden")
+        integration_actions.submit("Remote Geo-Auswahl übernehmen", _restart_geo)
         return {'status':'ok','vehicle_id':vehicle_id,'geo_shelly_trigger_enabled': enabled}
 
     @app.get("/api/providers")
@@ -1241,7 +1299,7 @@ def create_app() -> FastAPI:
         return render_ora2mqtt_yaml(provider_config, settings, license_plate=vehicle.license_plate)
 
     @app.post("/api/mqtt/test")
-    async def mqtt_test():
+    def mqtt_test():
         settings = load_runtime_mqtt_settings()
         if not settings.host:
             raise HTTPException(status_code=400, detail="MQTT Host ist nicht gesetzt")
@@ -1251,7 +1309,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @app.post("/api/providers/bmw/auth/start")
-    async def bmw_auth_start(payload: BmwAuthStartPayload):
+    def bmw_auth_start(payload: BmwAuthStartPayload):
         try:
             session = start_device_flow(payload.client_id.strip(), payload.vin.strip().upper(), payload.license_plate.strip())
         except Exception as exc:
@@ -1260,7 +1318,7 @@ def create_app() -> FastAPI:
         return session.model_dump(mode="json")
 
     @app.post("/api/providers/bmw/auth/poll")
-    async def bmw_auth_poll(payload: BmwAuthPollPayload):
+    def bmw_auth_poll(payload: BmwAuthPollPayload):
         session = auth_store.get(payload.session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Auth-Session nicht gefunden")
@@ -1293,10 +1351,12 @@ def create_app() -> FastAPI:
                 log_store.append(vehicle.id, "BMW Re-Auth erfolgreich abgeschlossen")
                 settings = load_runtime_mqtt_settings()
                 if settings.host:
-                    worker_manager.start_or_restart_vehicle(vehicle.id, settings)
+                    _start_vehicle(vehicle.id, settings)
         return {"state": "authorized", "message": session.message, "session_id": session.session_id, "gcid": result.get("gcid", "")}
 
     def _save_vehicle(payload: VehiclePayload, vehicle_id_to_replace: str | None = None):
+        integration_steps = []
+        renamed_from = None
         try:
             provider = registry.get(payload.manufacturer)
         except KeyError as exc:
@@ -1384,7 +1444,7 @@ def create_app() -> FastAPI:
             settings = load_runtime_mqtt_settings()
             ora_config = render_ora2mqtt_yaml(vehicle.provider_config, settings, license_plate=vehicle.license_plate)
             (target_dir / "ora2mqtt.yml").write_text(ora_config, encoding="utf-8")
-            publish_ora_token_backup(vehicle.provider_config, settings, vehicle.id, lambda msg: log_store.append(vehicle.id, msg))
+            integration_steps.append(("ORA Token-Backup", lambda: publish_ora_token_backup(vehicle.provider_config, settings, vehicle.id, lambda msg: log_store.append(vehicle.id, msg))))
             reauth_hint = " ".join([
                 str(getattr(vehicle.provider_state, "auth_message", "") or ""),
                 str(getattr(vehicle.provider_state, "last_error", "") or ""),
@@ -1411,10 +1471,7 @@ def create_app() -> FastAPI:
             old_identity = (existing.manufacturer, normalize_plate(existing.license_plate), existing.id)
             new_identity = (vehicle.manufacturer, normalize_plate(vehicle.license_plate), vehicle.id)
             if old_identity != new_identity or (existing.enabled and not vehicle.enabled):
-                try:
-                    _clear_discovery_for_vehicle(existing, discovery_cfg_before_save)
-                except Exception:
-                    logger.exception("Alte Home Assistant Discovery für %s konnte nicht entfernt werden", existing.id)
+                integration_steps.append(("Alte Discovery entfernen", lambda: _clear_discovery_for_vehicle(existing, discovery_cfg_before_save)))
 
         if vehicle_id_to_replace and vehicle_id_to_replace != vehicle.id:
             if payload.manufacturer == "gwm":
@@ -1427,7 +1484,7 @@ def create_app() -> FastAPI:
             config = store.load()
             config.vehicles = [v for v in config.vehicles if v.id != vehicle_id_to_replace]
             store.save(config)
-            worker_manager.stop_vehicle(vehicle_id_to_replace)
+            renamed_from = vehicle_id_to_replace
             log_store.append(vehicle.id, f"Fahrzeug-ID geändert von {vehicle_id_to_replace} auf {vehicle.id}")
         store.upsert_vehicle(vehicle)
         # Per-vehicle Geo-Shelly selection supersedes the v1.2.58 global topic.
@@ -1441,47 +1498,59 @@ def create_app() -> FastAPI:
         if bool(payload.geo_shelly_trigger_enabled) or selection_changed or (legacy_root and legacy_root == this_root):
             cfg_after_vehicle.ui_settings.geo_shelly_vehicle_mapped_topic = ""
             store.save(cfg_after_vehicle)
-        try:
-            evcc_geo_filter.restart()
-        except Exception:
-            logger.exception("EVCC Geo Filter nach Fahrzeugänderung konnte nicht neu gestartet werden")
-        worker_manager.publish_vehicle_saved_meta(vehicle.id)
-        worker_manager.sync_vehicle_to_forward_clients(vehicle.id)
-        try:
-            _publish_discovery_for_vehicle(vehicle, store.load())
-        except Exception:
-            logger.exception("Home Assistant Discovery für %s konnte nicht veröffentlicht werden", vehicle.id)
-        try:
-            cards, _ = build_cards()
-            _publish_device_trackers(cards, load_runtime_mqtt_settings(), bool(getattr(getattr(store.load(), "ui_settings", None), "device_tracker_enabled", False)))
-        except Exception:
-            pass
-        if not vehicle.enabled:
-            vehicle.provider_state.auth_message = "Fahrzeug ist inaktiv"
-            worker_manager.stop_vehicle(vehicle.id)
-            worker_manager.publish_vehicle_saved_meta(vehicle.id)
-            return {"status": "ok", "vehicle_id": vehicle.id}
-
-        if payload.manufacturer == "bmw" and mqtt_settings.host and vehicle.provider_state.auth_state == "authorized":
-            worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
-        if payload.manufacturer == "gwm":
+        def apply_runtime():
+            # Always use the latest saved state, including a newer disable/delete.
+            if renamed_from:
+                _stop_vehicle(renamed_from)
+            current = store.get_vehicle(vehicle.id)
+            if current is None or app.state.stopping:
+                return
+            if not current.enabled:
+                _stop_vehicle(current.id)
+                worker_manager._set_runtime_state(current.id, "inactive", "Fahrzeug ist inaktiv", publish_meta=False)
+                return
             reauth_required = (
-                vehicle.provider_state.auth_state == "error"
-                and "refresh token abgelaufen" in str(vehicle.provider_state.last_error or "").lower()
+                current.manufacturer == "gwm"
+                and current.provider_state.auth_state == "error"
+                and "refresh token abgelaufen" in str(current.provider_state.last_error or "").lower()
             )
             if reauth_required:
-                log_store.append(vehicle.id, "ORA ReAuth weiterhin erforderlich - Speichern/Aktivieren startet keinen bekannten abgelaufenen Token neu")
-                worker_manager.stop_vehicle(vehicle.id)
-                worker_manager._set_runtime_state(vehicle.id, "reauth_required", "ReAuth erforderlich - Refresh Token abgelaufen")
-            elif vehicle.enabled and mqtt_settings.host:
-                log_store.append(vehicle.id, "ORA Fahrzeug gespeichert - automatischer Start aktiviert")
-                worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
-            else:
-                log_store.append(vehicle.id, "ORA Fahrzeug gespeichert - kein automatischer Start")
-                worker_manager.publish_vehicle_saved_meta(vehicle.id)
-        if payload.manufacturer == "acconia" and vehicle.enabled:
-            log_store.append(vehicle.id, "Silence Fahrzeug gespeichert - MySilence Polling wird gestartet")
-            worker_manager.start_or_restart_vehicle(vehicle.id, mqtt_settings)
+                _stop_vehicle(current.id)
+                worker_manager._set_runtime_state(current.id, "reauth_required", "ReAuth erforderlich - Refresh Token abgelaufen", publish_meta=False)
+                log_store.append(current.id, "ORA ReAuth weiterhin erforderlich")
+                return
+            settings = load_runtime_mqtt_settings()
+            if current.manufacturer == "acconia" or (
+                current.manufacturer in {"bmw", "gwm"} and settings.host
+                and current.provider_state.auth_state == "authorized"
+            ):
+                _start_vehicle(current.id, settings)
+
+        if not vehicle.enabled:
+            worker_manager._set_runtime_state(vehicle.id, "inactive", "Deaktivierung wird übernommen", publish_meta=False)
+        elif vehicle.provider_state.auth_state == "authorized":
+            worker_manager._set_runtime_state(vehicle.id, "starting", "Aktivierung wird übernommen", publish_meta=False)
+        log_store.append(vehicle.id, "Konfiguration gespeichert; Aktivierung/Deaktivierung wird im Hintergrund übernommen")
+        _enqueue_vehicle_step(runtime_actions, vehicle.id, "Fahrzeugzustand übernehmen", apply_runtime)
+        # Restart Geo only if its per-vehicle selection actually changed.
+        if (existing is None or existing.manufacturer != vehicle.manufacturer
+                or existing.id != vehicle.id or selection_changed
+                or legacy_root != cfg_after_vehicle.ui_settings.geo_shelly_vehicle_mapped_topic):
+            integration_steps.append(("Geo-Konfiguration übernehmen", _restart_geo))
+        def publish_current_meta():
+            current = store.get_vehicle(vehicle.id)
+            runtime = state_store.get_all().get(vehicle.id)
+            if current and runtime:
+                worker_manager._publish_meta(current, runtime, load_runtime_mqtt_settings())
+
+        integration_steps.extend([
+            ("MQTT Status veröffentlichen", publish_current_meta),
+            ("MQTT Weiterleitung synchronisieren", lambda: worker_manager.sync_vehicle_to_forward_clients(vehicle.id)),
+            ("Discovery veröffentlichen", lambda: _publish_discovery_for_vehicle(store.get_vehicle(vehicle.id), store.load()) if store.get_vehicle(vehicle.id) else None),
+            ("Device Tracker synchronisieren", _sync_device_trackers),
+        ])
+        for name, operation in integration_steps:
+            _enqueue_vehicle_step(integration_actions, vehicle.id, name, operation)
         return {"status": "ok", "vehicle_id": vehicle.id}
 
     @app.post("/api/vehicles")
@@ -1506,7 +1575,7 @@ def create_app() -> FastAPI:
         return _save_vehicle(payload, vehicle_id_to_replace=vehicle_id)
 
     @app.post("/api/vehicles/{vehicle_id}/reauth/start")
-    async def reauth_start_vehicle(vehicle_id: str):
+    def reauth_start_vehicle(vehicle_id: str):
         vehicle = store.get_vehicle(vehicle_id)
         if not vehicle or vehicle.manufacturer != "bmw":
             raise HTTPException(status_code=404, detail="BMW Fahrzeug nicht gefunden")
@@ -1528,7 +1597,7 @@ def create_app() -> FastAPI:
 
 
     @app.post("/api/vehicles/{vehicle_id}/gwm/reauth/start")
-    async def gwm_reauth_start(vehicle_id: str):
+    def gwm_reauth_start(vehicle_id: str):
         vehicle = store.get_vehicle(vehicle_id)
         if not vehicle or vehicle.manufacturer != "gwm":
             raise HTTPException(status_code=404, detail="ORA Fahrzeug nicht gefunden")
@@ -1567,7 +1636,7 @@ def create_app() -> FastAPI:
 
 
     @app.post("/api/vehicles/{vehicle_id}/gwm/test-map")
-    async def gwm_test_map(vehicle_id: str):
+    def gwm_test_map(vehicle_id: str):
         vehicle = store.get_vehicle(vehicle_id)
         if not vehicle or vehicle.manufacturer != "gwm":
             raise HTTPException(status_code=404, detail="ORA Fahrzeug nicht gefunden")
@@ -1578,7 +1647,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "processed": result["count"], "vehicle_id": vehicle_id}
 
     @app.post("/api/vehicles/{vehicle_id}/gwm/submit-code")
-    async def gwm_submit_code(vehicle_id: str, payload: GwmVerificationPayload):
+    def gwm_submit_code(vehicle_id: str, payload: GwmVerificationPayload):
         vehicle = store.get_vehicle(vehicle_id)
         if not vehicle or vehicle.manufacturer != "gwm":
             raise HTTPException(status_code=404, detail="ORA Fahrzeug nicht gefunden")
@@ -1597,7 +1666,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "vehicle_id": vehicle_id}
 
     @app.delete("/api/vehicles/{vehicle_id}")
-    async def delete_vehicle(vehicle_id: str):
+    def delete_vehicle(vehicle_id: str):
         vehicle = store.get_vehicle(vehicle_id)
         if not vehicle:
             raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
