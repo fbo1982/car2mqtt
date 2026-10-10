@@ -8,5 +8,5 @@ def test_jwt_padding_switch_parenthesized():
 
 
 def test_release_version_current():
-    assert Path("VERSION").read_text().strip() == "1.2.71"
-    assert 'version: "1.2.71"' in Path("config.yaml").read_text()
+    assert Path("VERSION").read_text().strip() == "1.2.72"
+    assert 'version: "1.2.72"' in Path("config.yaml").read_text()

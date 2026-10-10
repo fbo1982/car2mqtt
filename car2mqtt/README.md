@@ -1,5 +1,15 @@
 # Car2MQTT
 
+## v1.2.72 – MySilence-Verbindungsdiagnose
+
+- Neuer Knopf „Verbindung prüfen“ beim Bearbeiten eines ACCIONA/MySilence-Fahrzeugs.
+- Verwendet die bereits gespeicherten Zugangsdaten und führt den Test im Hintergrund direkt im Add-on aus. Keine erneute Eingabe oder Weitergabe von Passwort/Token erforderlich.
+- Prüft Erreichbarkeit ohne Anmeldung, Anmeldung und drei Fahrzeugabrufe: ohne dynamische Daten/ohne Polling (C), mit dynamischen Daten/ohne Polling (B) sowie den bisherigen Aufruf (A).
+- Das Fahrzeugprotokoll enthält HTTP-Status, Antwortzeit und Angaben dazu, ob Fahrzeug-, Standort- und Akkustandfelder vorhanden sind. Keine Ausgabe von Passwort, Token, Fahrzeugkennung, Koordinaten oder Antwortinhalt.
+- Nur eine Diagnose läuft gleichzeitig. Keine automatischen Wiederholungen; bei HTTP 401, 403 oder 429 nach Anmeldung werden weitere Varianten ausgelassen.
+- Diagnoseantworten werden nicht in Fahrzeugstatus, Mapping oder MQTT übernommen. Der reguläre MySilence-Abruf bleibt unverändert; dies ist eine Diagnoseversion, keine bestätigte Behebung des API-Timeouts.
+- 132 Python-Tests und 6 Tests für die Browserlogik erfolgreich. Tests verwenden simulierte API-Antworten; der angemeldete Abruf auf dem betroffenen Server steht noch aus.
+
 ## v1.2.71 – Reaktionsfähige Oberfläche und unabhängige MQTT-Weiterleitung
 
 - Aktivieren, Deaktivieren und Speichern bestätigen die lokale Speicherung sofort; Fahrzeugstart und Verbindungssynchronisierung folgen im Hintergrund. Fortschritt und Fehler erscheinen im Protokoll.

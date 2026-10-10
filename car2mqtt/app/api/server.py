@@ -31,6 +31,7 @@ from app.mqtt.client import LocalMqttClient, test_connection
 from app.mqtt.topic_builder import mapped_topic, normalize_plate, raw_vehicle_topic
 from app.providers.bmw.oauth import poll_device_flow, save_token_file, start_device_flow
 from app.providers.registry import ProviderRegistry
+from app.providers.acconia_diagnostics import run_silence_diagnostics
 from app.providers.gwm_config import (
     render_ora2mqtt_yaml,
     merge_ora_tokens,
@@ -811,6 +812,8 @@ def create_app() -> FastAPI:
     app.state.ha_zones = []
     app.state.background_jobs = []
     app.state.stopping = False
+    app.state.silence_diagnostic_job = None
+    silence_diagnostic_lock = threading.Lock()
     runtime_actions = ActionQueue("Fahrzeugänderungen")
     integration_actions = ActionQueue("Konfigurationsübernahme")
     app.state.action_queues = [runtime_actions, integration_actions]
@@ -931,6 +934,8 @@ def create_app() -> FastAPI:
     async def shutdown_event():
         app.state.stopping = True
         worker_manager.stop_forwarding()
+        if app.state.silence_diagnostic_job:
+            app.state.silence_diagnostic_job.stop()
         for queue in app.state.action_queues:
             queue.stop()
         for job in app.state.background_jobs:
@@ -1280,6 +1285,33 @@ def create_app() -> FastAPI:
         if not store.get_vehicle(vehicle_id):
             raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
         return log_store.read(vehicle_id)
+
+    @app.post("/api/vehicles/{vehicle_id}/mysilence/diagnostics", status_code=202)
+    async def start_silence_diagnostics(vehicle_id: str):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle or vehicle.manufacturer != "acconia":
+            raise HTTPException(status_code=404, detail="MySilence Fahrzeug nicht gefunden")
+        with silence_diagnostic_lock:
+            if app.state.stopping:
+                raise HTTPException(status_code=503, detail="Car2MQTT wird beendet")
+            previous = app.state.silence_diagnostic_job
+            if previous and previous._thread and previous._thread.is_alive():
+                raise HTTPException(status_code=409, detail="Eine MySilence-Diagnose läuft bereits. Ergebnisse stehen im Fahrzeugprotokoll.")
+            def diagnose():
+                try:
+                    run_silence_diagnostics(
+                        dict(vehicle.provider_config),
+                        lambda message: log_store.append(vehicle_id, message),
+                        cancelled=lambda: app.state.stopping or store.get_vehicle(vehicle_id) is None,
+                    )
+                except Exception:
+                    # No traceback here: avoid exposing request contents and do not
+                    # automatically retry a diagnostic started explicitly by the user.
+                    log_store.append(vehicle_id, "MySilence Diagnose: interner Fehler; Test beendet")
+            job = BackgroundJob("MySilence Diagnose", diagnose)
+            app.state.silence_diagnostic_job = job
+            job.start()
+        return {"status": "started", "vehicle_id": vehicle_id}
 
     @app.post("/api/vehicles/{vehicle_id}/logs/clear")
     async def clear_vehicle_logs(vehicle_id: str):

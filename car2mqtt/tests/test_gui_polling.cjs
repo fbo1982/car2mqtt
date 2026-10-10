@@ -55,3 +55,15 @@ test('save buttons reject duplicate submissions and restore after completion',as
   assert.equal(posts,1);assert.equal(elements.saveEditBtn.disabled,true);waiting.resolve();await Promise.all([first,second]);
   assert.equal(elements.saveEditBtn.disabled,false);assert.equal(elements.saveEditKeepOpenBtn.disabled,false);assert.equal(closes,1);
 });
+
+
+test('MySilence diagnostic starts once and does not update another vehicle dialog', async()=>{
+  const waiting=deferred();let calls=0,logs=0;const button={disabled:false};
+  const context=vm.createContext({editState:{vehicleId:'OLD'},field:()=>button,encodeURIComponent,
+    postJson:async()=>{calls++;await waiting.promise;},startLiveLogs:()=>logs++,showNotice:()=>{}});
+  vm.runInContext(segment('async function startSilenceDiagnostics(', "field('silenceDiagnosticsBtn').onclick"),context);
+  const first=context.startSilenceDiagnostics();const second=context.startSilenceDiagnostics();
+  assert.equal(calls,1);assert.equal(button.disabled,true);
+  context.editState.vehicleId='NEW';waiting.resolve();await Promise.all([first,second]);
+  assert.equal(logs,0);assert.equal(button.disabled,false);
+});

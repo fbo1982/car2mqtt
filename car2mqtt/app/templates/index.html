@@ -308,6 +308,11 @@ select, option {
       </div>
 
       <div id="editAcconiaSection" class="info-box dialog-narrow hidden">
+        <div class="info-box dialog-narrow" style="grid-column:1/-1">
+          <strong>MySilence-Verbindung prüfen</strong>
+          <div class="muted" style="margin-top:8px">Prüft mit den gespeicherten Zugangsdaten. Änderungen im Formular bitte vorher speichern. Die Ergebnisse erscheinen im Live-Protokoll; der Test kann etwa zwei Minuten dauern.</div>
+          <div class="btn-row" style="margin-top:12px"><button type="button" id="silenceDiagnosticsBtn" class="ghost-btn">Verbindung prüfen</button></div>
+        </div>
         <div class="eyebrow">ACCIONA / Silence – MySilence</div>
         <div class="muted" style="margin-top:10px">Die Zugangsdaten werden beim nächsten Poll geprüft. Die Anbindung ist read-only.</div>
         <div class="field" style="margin-top:14px"><label>MySilence E-Mail</label><input id="editAcconiaAccount" /></div>
@@ -1684,6 +1689,22 @@ async function refreshVehicleLogs(){
   return logRequest;
 }
 function startLiveLogs(){ if(!editState.vehicleId) return; stopLiveLogs(); editState.liveLogsEnabled = true; setLiveLogUi(); refreshVehicleLogs(); editState.liveLogTimer = setInterval(refreshVehicleLogs, 2000); }
+async function startSilenceDiagnostics(){
+  const vehicleId = editState.vehicleId;
+  const button = field('silenceDiagnosticsBtn');
+  if(!vehicleId || button.disabled) return;
+  button.disabled = true;
+  try{
+    await postJson(`./api/vehicles/${encodeURIComponent(vehicleId)}/mysilence/diagnostics`, {});
+    if(editState.vehicleId === vehicleId){
+      startLiveLogs();
+      field('vehicleLogViewer').scrollIntoView({block:'nearest'});
+    }
+  }catch(err){
+    if(editState.vehicleId === vehicleId) showNotice('editError', err.message);
+  }finally{ button.disabled = false; }
+}
+field('silenceDiagnosticsBtn').onclick = startSilenceDiagnostics;
 field('refreshLogsBtn').onclick = refreshVehicleLogs;
 async function submitGwmCode(){
   if(!editState.vehicleId) return;
