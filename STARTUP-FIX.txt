@@ -1,0 +1,46 @@
+Car2MQTT 1.2.70 – lokaler Korrekturstand, nicht veröffentlicht oder installiert
+
+Ausgangslage
+Die Logzeilen HTTP 502 und "System is not ready with state: shutdown" zeigen,
+dass Home Assistant beim Abruf der Zone nicht verfügbar war. Sie belegen keine
+gelöschte Zone. Nach dem Neustart fehlt "Application startup complete".
+Welcher konkrete Aufruf auf dem betroffenen Server hängt, ist nicht bewiesen.
+
+Im Quellcode 1.2.69 wurden synchrone Netzwerkzugriffe beim App-Start und beim
+Öffnen der Oberfläche bestätigt. Das Paket entkoppelt diese Zugriffe vom
+Webserver. Jeder Hintergrunddienst führt höchstens einen Aufruf zugleich aus.
+Fehlgeschlagene Initialisierungen werden nach 15 Sekunden erneut versucht.
+Erfolgreich gestartete Fahrzeuge werden dabei nicht nochmals gestartet.
+Das Beenden signalisiert den Hintergrunddiensten den Stopp. Bereits laufende
+Netzwerkaufrufe werden nicht gewaltsam abgebrochen; ihre Bereinigung erfolgt
+nach Rückkehr des Aufrufs im zugehörigen Hintergrundthread.
+
+Betroffene Dateien
+car2mqtt/app/api/server.py
+car2mqtt/app/services/background.py (neu)
+car2mqtt/tests/test_startup_resilience.py (neu)
+car2mqtt/config.yaml, car2mqtt/VERSION, car2mqtt/README.md
+
+Prüfung
+53 ausgewählte Python-Tests bestanden, darunter 5 neue Ausfalltests sowie
+bestehende Prüfungen für EVCC Geo, Device Tracker, MQTT Discovery, Speichern,
+BMW-Reconnect, BMW-Antriebserkennung, Silence und Versionskonsistenz.
+Kein Docker-/Supervisor-Build und kein Test auf dem betroffenen HA-Server.
+
+Einspielen in das bestehende Repository
+1. Den Home-Assistant-Core-Updatevorgang zuerst vollständig abschließen.
+2. Car2MQTT neu starten und im Log auf "Application startup complete" achten.
+3. Falls die Korrektur benötigt wird: Änderungen aus diesem Paket in das
+   bestehende Car2MQTT-Repository übernehmen und Version 1.2.70 veröffentlichen.
+   Dieses Paket wurde nicht zu GitHub übertragen.
+4. Anschließend das bestehende Car2MQTT über den App Store aktualisieren.
+   Das ZIP ist Quellcode und kann nicht direkt als App-Update hochgeladen werden.
+
+Erwartetes Verhalten
+Die Oberfläche startet, während MQTT/HA-Verbindungen im Hintergrund anlaufen.
+Remote-Fahrzeuge werden alle 15 Sekunden und die Zonenliste alle 30 Sekunden
+abgerufen. Direkt nach dem Start können sie noch fehlen. Die Zonenliste wird
+beim erneuten Öffnen der Einstellungen sichtbar.
+Der Geo-Filter behält bei nicht verfügbarer Zone den sicheren Status A.
+Vorhandene Konfigurations- und Fahrzeugdaten werden nicht migriert oder gelöscht.
+Die Dateien unter sources/ wurden nicht verändert.

@@ -1,5 +1,14 @@
 # Car2MQTT
 
+## v1.2.70 – Start und Oberfläche unabhängig von MQTT und Home Assistant
+
+- Lokaler Korrekturstand auf Basis von 1.2.69, noch nicht veröffentlicht.
+- Fahrzeugstart, EVCC-Geo-Initialisierung und MQTT Discovery laufen im Hintergrund. Fehlgeschlagene Startversuche werden nach 15 Sekunden wiederholt.
+- Startseite, Dashboard und Einstellungen verwenden Hintergrundabfragen für Remote-Fahrzeuge (alle 15 Sekunden) und HA-Zonen (alle 30 Sekunden). Beim ersten Öffnen können diese noch fehlen und erscheinen nach dem Abruf; die Zonenliste wird beim erneuten Öffnen der Einstellungen geladen.
+- Device-Tracker-Synchronisierung blockiert den Webserver nicht mehr.
+- Fehlende Zonen führen bei aktivem Geo-Filter weiterhin sicher zum EVCC-Status A.
+- Tests simulieren blockierte Dienste, spätere Erholung und das Beenden während des Starts. Kein Test auf dem betroffenen Home-Assistant-Server.
+
 ## v1.2.69 – EVCC Lademodi Smart/Now/Off
 
 - Aktualisiert die kopierbaren EVCC-Fahrzeugvorlagen auf die aktuellen Lademodi `smart`, `now` und `off`.

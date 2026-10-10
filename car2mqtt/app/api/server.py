@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 import re
-import asyncio
+from copy import deepcopy
 import logging
 from pathlib import Path
 from typing import Any, Dict
@@ -39,6 +39,7 @@ from app.providers.gwm_config import (
     clear_ora_token_bundle,
     clear_ora_token_backup,
 )
+from app.services.background import BackgroundJob
 from app.services.worker_manager import WorkerManager
 from app.services.ha_discovery import (
     clear_vehicle_discovery,
@@ -803,71 +804,94 @@ def create_app() -> FastAPI:
             _, prefix, _ = _ui_discovery_settings(cfg)
         return clear_vehicle_discovery(vehicle, settings, discovery_prefix=prefix or "homeassistant")
 
-    app.state.device_tracker_task = None
     app.state.device_tracker_tokens = {}
+    app.state.remote_cards = []
+    app.state.ha_zones = []
+    app.state.background_jobs = []
+    started_workers: set[str] = set()
+    tracker_initialized = False
 
-    async def _device_tracker_sync_loop():
-        while True:
+    def _start_workers():
+        failures = 0
+        settings = load_runtime_mqtt_settings()
+        for vehicle in store.load().vehicles:
+            if vehicle.id in started_workers:
+                continue
+            if vehicle.manufacturer not in {"bmw", "gwm", "acconia"} or not vehicle.enabled or vehicle.provider_state.auth_state != "authorized":
+                continue
             try:
-                cfg = store.load()
-                cards, mqtt_settings = build_cards()
-                global_enabled = bool(getattr(getattr(cfg, "ui_settings", None), "device_tracker_enabled", False))
-                tokens = {}
-                changed = False
-                for card in cards:
-                    token = _device_tracker_token(card)
-                    tokens[str(card.get('id') or '')] = token
-                    if app.state.device_tracker_tokens.get(str(card.get('id') or '')) != token:
-                        changed = True
-                if changed or set(app.state.device_tracker_tokens.keys()) != set(tokens.keys()):
-                    _publish_device_trackers(cards, load_runtime_mqtt_settings(), global_enabled)
-                    app.state.device_tracker_tokens = tokens
+                worker_manager.start_or_restart_vehicle(vehicle.id, settings)
             except Exception:
-                logger.exception("Device Tracker Sync Loop fehlgeschlagen")
-            await asyncio.sleep(15)
+                failures += 1
+                logger.exception("Fahrzeug konnte beim Start nicht gestartet werden: %s", vehicle.id)
+            else:
+                started_workers.add(vehicle.id)
+        if failures:
+            raise RuntimeError(f"{failures} Fahrzeugstarts werden erneut versucht")
+
+    def _stop_workers():
+        for vehicle_id in list(worker_manager.workers):
+            try:
+                worker_manager.stop_vehicle(vehicle_id)
+            except Exception:
+                logger.exception("Fahrzeug konnte nicht sauber stoppen: %s", vehicle_id)
+
+    def _publish_initial_discovery():
+        cfg = store.load()
+        discovery_enabled, _, _ = _ui_discovery_settings(cfg)
+        mqtt_settings = load_runtime_mqtt_settings()
+        if discovery_enabled and mqtt_settings.host:
+            published = publish_all_discovery(cfg, mqtt_settings)
+            logger.info("Home Assistant MQTT Discovery initial veröffentlicht: %s Entitäten", published)
+
+    def _refresh_remote_cards():
+        cfg = store.load()
+        app.state.remote_cards = _discover_remote_vehicle_snapshots(
+            load_runtime_mqtt_settings(), worker_manager._resolve_server_name(), cfg.vehicles,
+        )
+
+    def _refresh_ha_zones():
+        app.state.ha_zones = _load_homeassistant_zones()
+
+    def _sync_device_trackers():
+        nonlocal tracker_initialized
+        cfg = store.load()
+        cards, _ = build_cards()
+        global_enabled = bool(getattr(cfg.ui_settings, "device_tracker_enabled", False))
+        tokens = {str(card.get("id") or ""): _device_tracker_token(card) for card in cards}
+        if (not tracker_initialized and global_enabled) or tokens != app.state.device_tracker_tokens:
+            _publish_device_trackers(cards, load_runtime_mqtt_settings(), global_enabled)
+            app.state.device_tracker_tokens = tokens
+        tracker_initialized = True
 
     @app.on_event("startup")
     async def startup_event():
-        worker_manager.start_all()
-        try:
-            evcc_geo_filter.start()
-        except Exception:
-            logger.exception("EVCC Geo Filter konnte nicht gestartet werden")
-        cfg = store.load()
-        discovery_enabled, _, _ = _ui_discovery_settings(cfg)
-        if discovery_enabled:
-            try:
-                mqtt_settings = load_runtime_mqtt_settings()
-                if mqtt_settings.host:
-                    published = publish_all_discovery(cfg, mqtt_settings)
-                    logger.info("Home Assistant MQTT Discovery initial veröffentlicht: %s Entitäten", published)
-            except Exception:
-                logger.exception("Home Assistant MQTT Discovery Initialpublish fehlgeschlagen")
-        if bool(getattr(getattr(cfg, "ui_settings", None), "device_tracker_enabled", False)):
-            try:
-                cards, mqtt_settings = build_cards()
-                _publish_device_trackers(cards, load_runtime_mqtt_settings(), True)
-                app.state.device_tracker_tokens = {str(card.get('id') or ''): _device_tracker_token(card) for card in cards}
-            except Exception:
-                logger.exception("Device Tracker Initialpublish fehlgeschlagen")
-        app.state.device_tracker_task = asyncio.create_task(_device_tracker_sync_loop())
+        # Neither startup nor HTTP page rendering may wait for HA or MQTT.
+        app.state.background_jobs = [
+            BackgroundJob("Fahrzeuge", _start_workers, cleanup=_stop_workers),
+            BackgroundJob("EVCC Geo", evcc_geo_filter.start, cleanup=evcc_geo_filter.stop),
+            BackgroundJob("MQTT Discovery", _publish_initial_discovery),
+            BackgroundJob("Remote-Fahrzeuge", _refresh_remote_cards, interval=15.0),
+            BackgroundJob("HA-Zonen", _refresh_ha_zones, interval=30.0),
+            BackgroundJob("Device Tracker", _sync_device_trackers, interval=15.0),
+        ]
+        for job in app.state.background_jobs:
+            job.start()
+        logging.getLogger("uvicorn.error").info(
+            "Car2MQTT: Weboberfläche startet; Verbindungen werden im Hintergrund aufgebaut"
+        )
 
     @app.on_event("shutdown")
     async def shutdown_event():
-        task = getattr(app.state, "device_tracker_task", None)
-        if task:
-            task.cancel()
-        try:
-            evcc_geo_filter.stop()
-        except Exception:
-            logger.exception("EVCC Geo Filter konnte nicht sauber gestoppt werden")
+        for job in app.state.background_jobs:
+            job.stop()
 
     def build_cards() -> tuple[list[dict], dict]:
         config = store.load()
         mqtt_settings = load_runtime_mqtt_settings()
         runtime_states = {k: v.model_dump(mode="json") for k, v in state_store.get_all().items()}
         cards = [_vehicle_card(vehicle, runtime_states.get(vehicle.id), mqtt_settings.base_topic) for vehicle in config.vehicles]
-        remote_cards = _discover_remote_vehicle_snapshots(mqtt_settings, worker_manager._resolve_server_name(), config.vehicles)
+        remote_cards = deepcopy(app.state.remote_cards)
         cards.extend(remote_cards)
         for card in cards:
             card['device_tracker_enabled'] = _card_device_tracker_enabled(card, config)
@@ -920,7 +944,7 @@ def create_app() -> FastAPI:
                 "cards_json": json.dumps(cards, ensure_ascii=False),
                 "helper_homezone_json": json.dumps(helper_homezone, ensure_ascii=False),
                 "ui_settings_json": json.dumps(cfg.ui_settings.model_dump(mode="json"), ensure_ascii=False),
-                "zones_json": json.dumps(_load_homeassistant_zones(), ensure_ascii=False),
+                "zones_json": json.dumps(app.state.ha_zones, ensure_ascii=False),
                 "mqtt_clients_json": json.dumps(build_mqtt_clients(), ensure_ascii=False),
             },
         )
@@ -933,7 +957,7 @@ def create_app() -> FastAPI:
     async def get_settings():
         cfg = store.load()
         effective = _read_existing_homezone(cfg)
-        zones = _load_homeassistant_zones()
+        zones = deepcopy(app.state.ha_zones)
         detected_entity = str(effective.get('detected_entity_id') or effective.get('entity_id') or '').strip()
         if detected_entity and not any(z.get('entity_id') == detected_entity for z in zones):
             zones.append({'entity_id': detected_entity, 'name': pretty_zone_name(detected_entity)})
