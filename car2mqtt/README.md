@@ -1,3 +1,13 @@
+## v1.2.75 – Profil und vereinfachte Fahrzeugabfragen prüfen
+
+- „Verbindung prüfen“ testet nach Kontrolle und Login das Profil, die Fahrzeugliste ohne Parameter und die Fahrzeugliste mit allen drei Optionen auf false.
+- Protokolliert Status, Dauer, JSON-Struktur und bekannte Fahrzeugfelder ohne Profilwerte oder Koordinaten.
+- HTTP 429 bereits bei der Kontrolle ohne Anmeldung verhindert weitere Anfragen; Profil-404 und Timeouts lassen nachfolgende Tests zu.
+- HTTP-Diagnoselog maskiert künftig auch displayName und localId. Vorhandene Logdateien bleiben unverändert.
+- MQTT, EVCC, Mapper, onIdentify, Worker und reguläre API-Anfragen unverändert; Diagnoseversion ohne bestätigte Timeout-Behebung.
+- 173 Python-Tests, 38 Browserprüfungen und 6 Tests der Browserlogik erfolgreich.
+- Anleitung und Einordnung: ../CHANGELOG-V1.2.75.md und ../SILENCE-DIAGNOSE.txt.
+
 ## v1.2.74 – HTTP-Diagnoselog: Dialog, Textanzeige und Download korrigiert
 
 - Eindeutige IDs für Anlege- und Bearbeitungsdialog; Diagnoseschalter werden korrekt geladen und gespeichert.

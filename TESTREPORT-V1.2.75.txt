@@ -1,0 +1,59 @@
+Car2MQTT V1.2.75 – Test- und Integritätsbericht
+Datum: 12.10.2026
+Basis: car2mqtt-V1.2.74.zip
+SHA-256 Basis: 96c8d03b1e1fa6147aaf21c2ef253d8d93a47ee23cb54f7968cbc74abd7790e3
+
+Ergebnisse
+- Vollständige Python-Testsuite: 173 bestanden, 0 fehlgeschlagen.
+  Davon 22 zusätzliche Tests für Profil-/Fahrzeugabfragen und Identitätsmaskierung.
+  Laufzeit: 3,88 Sekunden; Pytest meldete 117 Warnungen, keine Testfehler.
+- Playwright-Test der real gerenderten Oberfläche: 38 Browserprüfungen bestanden.
+  Je 19 Prüfungen direkt und mit Home-Assistant-Ingress-Prefix.
+  Textdarstellung, Dateidownload, Statusmeldungen und Dialogwechsel geprüft.
+- Vorhandene Tests test_gui_polling.cjs: 6 bestanden, 0 fehlgeschlagen.
+- ZIP-Dateiliste, CRC und alle Dateiinhalte nach Erstellung geprüft.
+
+Gezielte Diagnosefälle
+- Exakte Reihenfolge: ohne Anmeldung, Login, Profil, Liste ohne Parameter,
+  Liste mit details=false, dynamic=false und pollIfNecessary=false.
+- Profil-404 und Profil-Timeout lassen Fahrzeugabfragen zu.
+- Drei aufeinanderfolgende angemeldete Timeouts ohne Wiederholung.
+- HTTP 401/403/429 an jeder angemeldeten Testposition beendet weitere Tests.
+- HTTP 429 ohne Anmeldung verhindert den Login.
+- Abbruch vor Login und nach Profil; Antworten werden geschlossen.
+- Profilwerte fehlen in Log und Ergebnissen; nur JSON-Struktur wird gemeldet.
+- Standortfeld ohne Akkustandfeld wird unterschieden.
+- Unbekannte Datenstruktur wird nicht als registrierte Fahrzeuganzahl behauptet.
+- Gespeicherte Konfiguration bleibt unverändert; keine Übernahme in MQTT/Status.
+- displayName/localId und übliche Schreibvarianten rekursiv maskiert.
+- HTTP-Trace verändert weder Anfrageargumente noch die tatsächliche Antwort.
+
+Testumgebung und Grenzen
+Windows, Python 3.13.12, Pytest 9.1.1, Playwright mit installiertem Chrome.
+Python-Tests liefen außerhalb der Windows-Sandbox für interne Loopback-Verbindungen.
+Externe HTTP-Anfragen waren im lokalen Teststarter deaktiviert.
+Browser-Test mit temporärem Profil und simulierten Anwendungsantworten.
+Kein Live-Test mit MySilence, produktivem MQTT, EVCC oder einer HA-Installation.
+Kein Nachweis eines separaten GPS-Endpunkts und keine bestätigte Timeout-Behebung.
+
+Integritätsprüfung gegenüber V1.2.74
+- 131 vorhandene Dateien bytegenau unverändert.
+- Alle bestehenden Nicht-Cache-Dateien erhalten.
+- MQTT-, Mapping-, EVCC-, Worker-, reguläre API- und Server-Dateien unverändert.
+- Alle JavaScript-Blöcke der Oberfläche bytegenau identisch; damit auch onIdentify.
+- Im HTML ausschließlich der Hinweistext zum manuellen Diagnosetest geändert.
+- silence_http_trace.py ausschließlich um zwei Maskierungsmuster erweitert.
+- Die Korrekturen aus V1.2.74 bleiben enthalten.
+- Python-/Pytest-Cachedateien nicht in das Release übernommen.
+
+Geänderte vorhandene Dateien
+SILENCE-DIAGNOSE.txt
+car2mqtt/README.md
+car2mqtt/VERSION
+car2mqtt/app/providers/acconia_diagnostics.py
+car2mqtt/app/providers/silence_http_trace.py
+car2mqtt/app/templates/index.html
+car2mqtt/config.yaml
+car2mqtt/tests/test_gwm_front_route_client_reuse.py
+car2mqtt/tests/test_gwm_runtime_csharp_compile_regression.py
+car2mqtt/tests/test_silence_diagnostics.py

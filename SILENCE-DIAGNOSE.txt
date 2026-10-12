@@ -1,60 +1,60 @@
-Car2MQTT 1.2.72 – MySilence-Diagnose
-Stand: 10.10.2026
+Car2MQTT 1.2.75 – MySilence-Diagnose
+Stand: 12.10.2026
 
-Ausgangslage
-Version 1.2.71 reagiert laut Nutzer auf dem Server jetzt zügig. Im neuen
-Fahrzeugprotokoll vom 10.10.2026 um 18:36:34 UTC sind Speichern, Worker-Neustart,
-MQTT-Synchronisierung und Discovery innerhalb derselben Sekunde abgeschlossen.
-Ein nicht angemeldeter Aufruf des MySilence-Fahrzeug-Endpunkts liefert aus
-dem Home-Assistant-Terminal HTTP 401 nach 0,221568 Sekunden. Angemeldete
-Abrufe in Car2MQTT meldeten zuvor wiederholt einen Lese-Timeout nach 30 Sekunden.
-Die Handy-App aktualisiert den Standort. Die Ursache des Timeouts ist offen.
+Ziel
+Die bisherigen angemeldeten Fahrzeugabrufe mit details=true liefen in einen
+Timeout. Dieser Test prüft den Profilzugriff und zwei vereinfachte Fahrzeugabrufe.
+Dass die Handy-App nur den Standort aktualisiert, beweist noch keine getrennten
+API-Endpunkte. Die Aktualität einzelner Datenfelder kann unterschiedlich sein.
 
 Verwendung
-1. Dieses vollständige Quellpaket wie die vorherigen Updates in das verwendete
-   Add-on-Repository übernehmen und Version 1.2.72 installieren.
-2. In Car2MQTT beim ACCIONA-Fahrzeug auf Bearbeiten gehen.
-3. Im MySilence-Bereich auf „Verbindung prüfen“ klicken.
-4. Das Live-Protokoll wird automatisch eingeschaltet. Bis zur Meldung
-   „MySilence Diagnose: Beendet“ bzw. einem Abbruch warten; etwa zwei Minuten
-   einplanen. Anschließend die Zeilen „MySilence Diagnose:“ zur Auswertung senden.
+1. Dieses vollständige Quellpaket wie die bisherigen Updates übernehmen und
+   Version 1.2.75 installieren.
+2. Das betroffene Fahrzeug vorübergehend deaktivieren, speichern und auf die
+   Bestätigung im Protokoll warten, damit keine reguläre Abfrage parallel läuft.
+3. Beim Fahrzeug auf Bearbeiten und im MySilence-Bereich auf „Verbindung prüfen“
+   klicken. Es gelten gespeicherte Zugangsdaten; Formularänderungen vorher speichern.
+4. Im automatisch eingeschalteten Live-Protokoll bis „MySilence Diagnose: Beendet“
+   oder einem Abbruch warten. Etwa drei Minuten einplanen. Anschließend die Zeilen
+   „MySilence Diagnose:“ zur Auswertung kopieren.
+5. Danach den vorherigen Aktivierungszustand des Fahrzeugs wiederherstellen.
 
-Die Diagnose verwendet gespeicherte Zugangsdaten. Noch nicht gespeicherte
-Formularänderungen werden nicht verwendet. Passwort und Token müssen nicht
-in einen Terminalbefehl oder Chat kopiert werden.
+HTTP-Rohdaten-Debug ist für diesen manuellen Test nicht erforderlich.
 
 Testablauf
-- Derselbe Fahrzeug-Endpunkt ohne Anmeldung aus dem Car2MQTT-Add-on.
-- Neue Anmeldung über die bestehende MySilence-Anmeldung (Firebase).
-- C: details=true, dynamic=false, pollIfNecessary=false.
-- B: details=true, dynamic=true, pollIfNecessary=false.
-- A: details=true, dynamic=true, pollIfNecessary=true (bisheriger Abruf).
-Die Bedeutung der Varianten wird durch die Antwort verglichen. Insbesondere
-ist noch nicht belegt, dass pollIfNecessary die Ursache des Timeouts ist.
+- Bisheriger Fahrzeug-Endpunkt ohne Anmeldung (Kontrollanfrage).
+- Neue Anmeldung über die unveränderte Firebase-Anmeldung.
+- GET /api/v1/me
+- GET /api/v1/me/scooters
+- GET /api/v1/me/scooters?details=false&dynamic=false&pollIfNecessary=false
+Diese drei angemeldeten Tests ersetzen die Varianten C/B/A aus V1.2.72–1.2.74.
 
 Auswertung
-- C/B liefern Fahrzeugdaten, A läuft in einen Timeout: Abfragevariante bzw.
-  die serverseitige Verarbeitung des Polling-Parameters weiter untersuchen.
-- Alle angemeldeten Varianten hängen, ohne Anmeldung schnelle Antwort:
-  kontobezogene API-Verarbeitung/Zugriff weiter untersuchen; kein Beweis
-  für einen allgemeinen Ausfall aller Silence-Dienste.
-- 401/403 nach Anmeldung: Anmeldung/Zugriffsberechtigung untersuchen.
-- 429: Anfragen werden begrenzt; weitere Varianten werden ausgelassen.
-Eine schnelle erfolgreiche Antwort beweist nicht, dass Fahrzeugdaten frisch sind.
+- Profil 200, Fahrzeugabfragen Timeout: Fahrzeugabfrage/Cloud-Verarbeitung weiter
+  untersuchen. Daraus lässt sich noch keine einzelne Ursache ableiten.
+- Fahrzeugabfrage 200 mit erkannten Fahrzeugobjekten: Antwortstruktur gezielt
+  weiter vergleichen, bevor der reguläre Abruf geändert wird.
+- Profil 404: Dieser Profilpfad ist nicht verfügbar; kein Beweis für Loginfehler.
+- Alle angemeldeten Tests Timeout: Vereinfachung hilft nicht; Konto, Cloud und
+  Netzwerkweg bleiben mögliche Untersuchungsbereiche.
+- 401/403 nach Login: Anmeldung/Zugriffsberechtigung untersuchen.
+- 429: Anfragen begrenzt; keine weiteren Tests. Bei 429 ohne Anmeldung auch
+  kein anschließender Login.
+- Standort-/Akkustandfeld vorhanden bedeutet nicht, dass der Wert aktuell oder
+  verwertbar ist. Null erkannte Fahrzeugobjekte kann eine unbekannte Struktur sein.
 
-Datenschutz und Umfang
-Ausgabe nur von Testbezeichnung, Antwortzeit, HTTP-Status, Fahrzeuganzahl und
-Vorhandensein von Standort-/Akkustandfeldern. Keine Antwortinhalte, Koordinaten,
-Fahrzeugkennungen, Passwörter oder Token im Diagnoseprotokoll.
-Testdaten werden nicht in Fahrzeugstatus oder MQTT übernommen. Die regulären
-API-Aufrufe, der Mapper und das Polling werden nicht verändert. Die normale
-Fahrzeugabfrage läuft gegebenenfalls während der Diagnose weiter.
-Die Diagnose ist ausschließlich manuell; keine automatische Wiederholung.
+Umfang
+Ausgegeben werden HTTP-Status, Dauer, JSON-Struktur sowie erkannte Fahrzeugobjekte
+und vorhandene bekannte Felder. Keine Profilwerte, Koordinaten, Kennungen, Token
+oder Passwörter. Keine Übernahme der Testdaten in Fahrzeugstatus oder MQTT.
+Die Diagnose stoppt den normalen Worker nicht automatisch und wiederholt sich nicht.
+Reguläre API-Aufrufe, Worker, Mapper, MQTT, EVCC und onIdentify sind unverändert.
+Ein separater GPS-Endpunkt und eine Behebung des Timeouts sind nicht nachgewiesen.
 
-Prüfung und Bereitstellung
-132 Python-Tests und 6 Tests der Browserlogik erfolgreich; inklusive simuliertem
-Timeout, Ablehnung, Datenschutz, unveränderter Konfiguration und nicht
-blockierender Oberfläche. Kein Live-Test mit dem betroffenen MySilence-Konto.
+Prüfung
+173 Python-Tests, 38 Browserprüfungen und 6 Tests der Browserlogik bestanden.
+Simulierte Antworten; kein Live-Test mit dem betroffenen Konto oder Home Assistant.
+Details: CHANGELOG-V1.2.75.md und TESTREPORT-V1.2.75.txt.
+
 Das ZIP ist ein Quellpaket, kein HA-Backup oder vorkompiliertes Add-on-Image.
-Es wurde lokal vorbereitet, nicht durch diesen Chat veröffentlicht/installiert.
-Die Performance- und Startkorrekturen aus 1.2.71 und 1.2.70 bleiben enthalten.
+Es wurde lokal vorbereitet, nicht veröffentlicht oder auf dem Server installiert.

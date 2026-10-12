@@ -17,7 +17,7 @@ TRACE_DIR = Path(os.environ.get("APP_DATA_DIR", "/config/car2mqtt")) / "silence-
 MAX_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_BYTES = 256 * 1024
 _LOCK = threading.RLock()
-SECRET_KEY = re.compile(r"password|token|secret|authorization|cookie|apikey|api_key|session|credential|refresh|email|account|imei|frameno|frame_no|vin|gps|latitude|longitude|location|coordinates|phone|address|deviceid|serial", re.I)
+SECRET_KEY = re.compile(r"password|token|secret|authorization|cookie|apikey|api_key|session|credential|refresh|email|account|imei|frameno|frame_no|vin|gps|latitude|longitude|location|coordinates|phone|address|deviceid|serial|display.?name|local.?id", re.I)
 QUERY_SECRET = re.compile(r"key|password|token|secret|auth|email|session|code", re.I)
 # Extra fallback for JSON response/request text when a response is not valid JSON.
 TEXT_SECRETS = re.compile(r'(?i)(["\\]?[^"\\]{0,60}(?:password|token|secret|authorization|cookie|apikey|api_key|imei|vin|email|latitude|longitude|frameno)[^"\\]{0,30}["\\]?\s*:\s*)("(?:\\.|[^"\\])*"|[^,}\s]+)')

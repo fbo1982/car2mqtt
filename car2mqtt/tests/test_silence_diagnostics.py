@@ -28,7 +28,9 @@ def test_variants_compare_authenticated_calls_without_exposing_data(monkeypatch)
     monkeypatch.setattr(diag.AcconiaSilenceApi, '_login', lambda self: secret)
     def get(url, **kwargs):
         calls.append((url, kwargs))
-        response = Response(401) if len(calls) == 1 else Response(200, [{
+        response = Response(401) if len(calls) == 1 else Response(200, {
+            'displayName': 'PRIVATE-NAME', 'localId': 'PRIVATE-USER-ID', 'email': 'PRIVATE-EMAIL',
+        }) if len(calls) == 2 else Response(200, [{
             'frameNo': 'PRIVATE-VIN', 'imei': 'PRIVATE-IMEI', 'batterySoc': 73,
             'lastLocation': {'latitude': 48.123456, 'longitude': 11.654321},
         }])
@@ -42,13 +44,16 @@ def test_variants_compare_authenticated_calls_without_exposing_data(monkeypatch)
         assert kwargs['headers']['authorization'] == secret
         assert kwargs['timeout'] == (5, 30)
         assert kwargs['allow_redirects'] is False
-    assert calls[1][0].endswith('details=true&dynamic=false&pollIfNecessary=false')
-    assert calls[2][0].endswith('details=true&dynamic=true&pollIfNecessary=false')
-    assert calls[3][0] == diag.AcconiaSilenceApi.SCOOTERS_URL
+    assert calls[0][0] == diag.AcconiaSilenceApi.SCOOTERS_URL
+    assert calls[1][0] == diag.PROFILE_URL
+    assert calls[2][0] == diag.BASE_URL
+    assert calls[3][0] == diag.BASE_URL + '?details=false&dynamic=false&pollIfNecessary=false'
     assert all(response.closed for response in responses)
-    assert all(step['vehicle_count'] == 1 and step['has_location'] for step in result[1:])
+    assert result[1]['json_type'] == 'Objekt'
+    assert 'vehicle_count' not in result[1]
+    assert all(step['vehicle_count'] == 1 and step['has_location'] for step in result[2:])
     report = json.dumps(result) + '\n'.join(logs)
-    for private in [secret, 'PRIVATE-VIN', 'PRIVATE-IMEI', 'PRIVATE-EMAIL', 'PRIVATE-PASSWORD', '48.123456', '11.654321']:
+    for private in [secret, 'PRIVATE-VIN', 'PRIVATE-IMEI', 'PRIVATE-EMAIL', 'PRIVATE-PASSWORD', 'PRIVATE-NAME', 'PRIVATE-USER-ID', '48.123456', '11.654321']:
         assert private not in report
 
 
@@ -73,7 +78,7 @@ def test_rejected_authenticated_request_stops_further_probes(monkeypatch, status
     monkeypatch.setattr(diag.AcconiaSilenceApi, '_login', lambda self: 'token')
     def get(url, **kwargs):
         calls.append(url)
-        return Response(status)
+        return Response(401 if len(calls) == 1 else status)
     monkeypatch.setattr(diag.requests, 'get', get)
     steps = diag.run_silence_diagnostics({}, logs.append)
     assert len(calls) == 2
