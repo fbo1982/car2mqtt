@@ -1,0 +1,47 @@
+Car2MQTT V1.2.74 – Test- und Integritätsbericht
+Datum: 12.10.2026
+Basis: car2mqtt-main.zip / V1.2.73
+SHA-256 Basis: 08817de9b1a06159d0eef536d9b7c424853fa4ff89ec1ae27738d76d2e19c547
+
+Ergebnisse
+- Vollständige Python-Testsuite: 151 bestanden, 0 fehlgeschlagen.
+  Darin 19 neue Prüfungen für Konfiguration, IDs und HTTP-Diagnoselog.
+  Laufzeit: 2,94 Sekunden; Pytest meldete 117 Warnungen, keine Testfehler.
+- Neuer Playwright-Test: 38 Browserprüfungen bestanden, 0 fehlgeschlagen.
+  Je 19 Prüfungen bei direktem Zugriff und mit Home-Assistant-Ingress-Prefix.
+  Tatsächlicher Browserdownload einschließlich Dateiname und UTF-8-Inhalt geprüft.
+  Fehlende/leere Dateien, Lese-/Netzwerkfehler, sicherer Textinhalt, Speichern,
+  Dialogwechsel und verspätete Antworten abgedeckt.
+- Vorhandene Tests test_gui_polling.cjs: 6 bestanden, 0 fehlgeschlagen.
+  Das Testmodell wurde um den seit V1.2.73 vorhandenen Diagnoseschalter ergänzt.
+- ZIP-Inhalt, Versionsdateien und unveränderte Quellbereiche geprüft.
+
+Testumgebung
+Windows, Python 3.13.12, Pytest 9.1.1, Playwright mit installiertem Chrome.
+Die Windows-Sandbox blockierte interne Loopback-Verbindungen und den Download.
+Die erfolgreichen Läufe erfolgten außerhalb der Sandbox mit temporärem
+Browserprofil und simulierten Browserantworten. Externe HTTP-Anfragen waren
+während der Python-Tests durch den lokalen Teststarter deaktiviert.
+Kein Live-Test mit MySilence, produktivem MQTT, EVCC oder einer HA-Installation.
+
+Integritätsprüfung gegen das Ausgangsarchiv
+- 126 vorhandene Dateien bytegenau unverändert.
+- Alle bestehenden Nicht-Cache-Dateien erhalten.
+- MQTT-, Mapping-, EVCC-, Worker- und API-Aufrufdateien bytegenau unverändert.
+- server.py: ausschließlich get_silence_http_trace geändert (AST-Vergleich).
+- silence_http_trace.py: ausschließlich read_trace geändert (AST-Vergleich).
+- acconia_provider.py: ausschließlich http_raw_debug in das Ergebnis übernommen.
+- onIdentify und zugehörige Vorlagenfunktion sowie EVCC-Vorlage identisch.
+- Alte Python-/Pytest-Cachedateien nicht in das Release übernommen.
+
+Geänderte vorhandene Dateien
+car2mqtt/README.md
+car2mqtt/VERSION
+car2mqtt/app/api/server.py
+car2mqtt/app/providers/acconia_provider.py
+car2mqtt/app/providers/silence_http_trace.py
+car2mqtt/app/templates/index.html
+car2mqtt/config.yaml
+car2mqtt/tests/test_gui_polling.cjs
+car2mqtt/tests/test_gwm_front_route_client_reuse.py
+car2mqtt/tests/test_gwm_runtime_csharp_compile_regression.py

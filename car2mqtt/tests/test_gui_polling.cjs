@@ -45,7 +45,7 @@ test('save buttons reject duplicate submissions and restore after completion',as
   const waiting=deferred();let posts=0;let closes=0;
   const elements={editManufacturer:{value:'acconia'},editPlate:{value:'SILENCE'},editLabel:{value:'Silence'},editEnabled:{checked:true},
     editAcconiaAccount:{value:'test@example.invalid'},editAcconiaPassword:{value:'dummy'},editAcconiaScooterId:{value:''},
-    editAcconiaPollInterval:{value:'60'},editAcconiaCapacity:{value:''},editAcconiaApiKey:{value:''},
+    editAcconiaPollInterval:{value:'60'},editAcconiaCapacity:{value:''},editAcconiaApiKey:{value:''},editAcconiaHttpRawDebug:{checked:false},
     saveEditBtn:{disabled:false},saveEditKeepOpenBtn:{disabled:false},editDialog:{close:()=>closes++}};
   const context=vm.createContext({field:id=>elements[id],editState:{vehicleId:'SILENCE'},normalizeVehicleIdFromPlate:x=>x,
     document:{querySelectorAll:()=>[]},postJson:async()=>{posts++;await waiting.promise;return {vehicle_id:'SILENCE'};},

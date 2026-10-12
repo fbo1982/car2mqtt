@@ -174,8 +174,8 @@ select, option {
 
       <div id="acconiaCreateSection" class="info-box dialog-narrow hidden">
         <div class="comm-card" style="margin:12px 0">
-          <label class="comm-toggle"><input id="editAcconiaHttpRawDebug" type="checkbox" /><span><span class="comm-title">HTTP-Rohdaten-Diagnose einschalten</span><div class="comm-help">Speichert maskierte Anfragen und Antworten vor dem JSON-Parsing. Die Einstellung wirkt nach dem Speichern/Neustart des Workers. Das Protokoll kann personenbezogene Daten enthalten.</div></span></label>
-          <div class="btn-row" style="margin-top:10px"><button type="button" id="silenceRawLogBtn" class="ghost-btn">HTTP-Diagnoselog anzeigen</button></div>
+          <label class="comm-toggle"><input id="acconiaHttpRawDebug" type="checkbox" /><span><span class="comm-title">HTTP-Rohdaten-Diagnose einschalten</span><div class="comm-help">Speichert maskierte Anfragen und Antworten vor dem JSON-Parsing. Die Einstellung wirkt nach dem Speichern/Neustart des Workers. Das Protokoll kann personenbezogene Daten enthalten.</div></span></label>
+          <div class="muted" style="margin-top:10px">Das HTTP-Diagnoselog ist nach dem Anlegen unter „Fahrzeug bearbeiten“ verfügbar.</div>
         </div>
         <div class="eyebrow">ACCIONA / Silence – MySilence</div>
         <div class="muted" style="margin-top:10px">Read-only Cloud-Anbindung. Veröffentlicht GPS-Position, Ladezustand und Restreichweite im einheitlichen Car2MQTT-Schema.</div>
@@ -319,7 +319,11 @@ select, option {
         </div>
         <div class="comm-card" style="margin:12px 0">
           <label class="comm-toggle"><input id="editAcconiaHttpRawDebug" type="checkbox" /><span><span class="comm-title">HTTP-Rohdaten-Diagnose einschalten</span><div class="comm-help">Speichert maskierte Anfragen und Antworten vor dem JSON-Parsing. Die Einstellung wirkt nach dem Speichern/Neustart des Workers. Das Protokoll kann personenbezogene Daten enthalten.</div></span></label>
-          <div class="btn-row" style="margin-top:10px"><button type="button" id="silenceRawLogBtn" class="ghost-btn">HTTP-Diagnoselog anzeigen</button></div>
+          <div class="btn-row" style="margin-top:10px"><button type="button" id="silenceRawLogBtn" class="ghost-btn">HTTP-Diagnoselog anzeigen / aktualisieren</button><button type="button" id="silenceRawLogDownloadBtn" class="ghost-btn" disabled>HTTP-Diagnoselog herunterladen</button></div>
+          <div id="silenceRawLogPanel" class="hidden" style="margin-top:12px">
+            <div id="silenceRawLogStatus" class="muted" role="status" aria-live="polite"></div>
+            <pre id="silenceRawLogViewer" class="log-viewer" aria-label="HTTP-Diagnoselog" tabindex="0" style="margin-top:10px"></pre>
+          </div>
         </div>
         <div class="eyebrow">ACCIONA / Silence – MySilence</div>
         <div class="muted" style="margin-top:10px">Die Zugangsdaten werden beim nächsten Poll geprüft. Die Anbindung ist read-only.</div>
@@ -1372,7 +1376,7 @@ function toggleEditGwmOptions(){
   field('editGwmPollIntervalWrap')?.classList.toggle('hidden', !pollingEnabled);
   field('editGwmRetryDelayWrap')?.classList.toggle('hidden', !delayedRetryEnabled);
 }
-function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity','gwmVerificationCode','acconiaAccount','acconiaPassword','acconiaScooterId','acconiaCapacity','acconiaApiKey'].forEach(id=>field(id).value=''); field('gwmSourceTopicBase').value='GWM'; field('bmwRegion').value='EU'; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('acconiaPollInterval').value='60'; field('gwmPollingEnabled').checked=true; field('gwmAutoReconnect').checked=true; field('gwmDelayedRetryEnabled').checked=true; field('gwmRetryDelayMinutes').value='55'; field('gwmFallbackOnSilence').checked=true; field('createDeviceTrackerEnabled').checked=false; if(field('createGeoShellyTriggerEnabled')) field('createGeoShellyTriggerEnabled').checked=false; toggleCreateGwmOptions(); field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; setCreateManufacturerLayout(null); }
+function resetCreate(){ createState.manufacturer=null; createState.authSessionId=null; createState.authReady=false; ['vehicleLabel','vehiclePlate','bmwClientId','bmwMqttUsername','bmwVin','gwmAccount','gwmPassword','gwmVehicleId','gwmCapacity','gwmVerificationCode','acconiaAccount','acconiaPassword','acconiaScooterId','acconiaCapacity','acconiaApiKey'].forEach(id=>field(id).value=''); field('gwmSourceTopicBase').value='GWM'; field('bmwRegion').value='EU'; field('gwmCountry').value='DE'; field('gwmLanguage').value='de'; field('gwmPollInterval').value='60'; field('acconiaPollInterval').value='60'; field('acconiaHttpRawDebug').checked=false; field('gwmPollingEnabled').checked=true; field('gwmAutoReconnect').checked=true; field('gwmDelayedRetryEnabled').checked=true; field('gwmRetryDelayMinutes').value='55'; field('gwmFallbackOnSilence').checked=true; field('createDeviceTrackerEnabled').checked=false; if(field('createGeoShellyTriggerEnabled')) field('createGeoShellyTriggerEnabled').checked=false; toggleCreateGwmOptions(); field('authState').textContent='Noch nicht gestartet.'; field('authInfo').classList.add('hidden'); showNotice('wizardError'); renderProviderList(); field('createManufacturer').value=''; setCreateManufacturerLayout(null); }
 function openWizard(){ resetCreate(); field('wizardDialog').showModal(); }
 async function fetchRead(url){
   const controller = new AbortController();
@@ -1609,7 +1613,7 @@ field('saveCreateBtn').onclick = async()=>{
       if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.');
     }
     if(createState.manufacturer === 'acconia'){
-      payload.provider_config = { account: field('acconiaAccount').value.trim(), password: field('acconiaPassword').value, scooter_id: field('acconiaScooterId').value.trim(), poll_interval: field('acconiaPollInterval').value.trim() || '60', capacity_kwh: field('acconiaCapacity').value.trim(), api_key: field('acconiaApiKey').value.trim() };
+      payload.provider_config = { account: field('acconiaAccount').value.trim(), password: field('acconiaPassword').value, scooter_id: field('acconiaScooterId').value.trim(), poll_interval: field('acconiaPollInterval').value.trim() || '60', capacity_kwh: field('acconiaCapacity').value.trim(), api_key: field('acconiaApiKey').value.trim(), http_raw_debug: field('acconiaHttpRawDebug').checked };
       if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte MySilence E-Mail und Passwort eintragen.');
     }
     await postJson('./api/vehicles', payload);
@@ -1619,6 +1623,7 @@ field('saveCreateBtn').onclick = async()=>{
 };
 
 async function editVehicle(vehicleId){
+  resetSilenceHttpTrace();
   showNotice('editError');
   fillManufacturerSelect();
   const currentCard = cards.find(card => card.id === vehicleId) || null;
@@ -1713,19 +1718,63 @@ async function startSilenceDiagnostics(){
   }finally{ button.disabled = false; }
 }
 field('silenceDiagnosticsBtn').onclick = startSilenceDiagnostics;
-field('silenceRawLogBtn').onclick = async()=>{
-  if(!editState.vehicleId) return;
+let silenceTraceRequest = 0;
+function resetSilenceHttpTrace(){
+  silenceTraceRequest++;
+  field('silenceRawLogPanel').classList.add('hidden');
+  field('silenceRawLogStatus').textContent = '';
+  field('silenceRawLogViewer').textContent = '';
+  field('silenceRawLogBtn').disabled = false;
+  field('silenceRawLogDownloadBtn').disabled = true;
+}
+async function loadSilenceHttpTrace(download = false){
+  const vehicleId = editState.vehicleId;
+  if(!vehicleId) return;
+  const requestId = ++silenceTraceRequest;
+  const isCurrent = ()=>requestId === silenceTraceRequest && editState.vehicleId === vehicleId;
+  const viewer = field('silenceRawLogViewer');
+  const status = field('silenceRawLogStatus');
+  field('silenceRawLogPanel').classList.remove('hidden');
+  viewer.textContent = '';
+  status.textContent = 'HTTP-Diagnoselog wird geladen …';
+  field('silenceRawLogBtn').disabled = true;
+  field('silenceRawLogDownloadBtn').disabled = true;
   try {
-    const response = await fetch(`./api/vehicles/${encodeURIComponent(editState.vehicleId)}/mysilence/http-trace`);
+    const response = await fetch(`./api/vehicles/${encodeURIComponent(vehicleId)}/mysilence/http-trace${download ? '?download=true' : ''}`, {cache:'no-store'});
     const text = await response.text();
-    if(!response.ok) throw new Error(text);
-    const blob = new Blob([text], {type:'text/plain;charset=utf-8'});
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a'); link.href = url; link.download = 'mysilence-http-diagnose.log';
-    document.body.appendChild(link); link.click(); link.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 15000);
-  } catch(err) { showNotice('editError', err.message); }
-};
+    if(!isCurrent()) return;
+    if(!response.ok){
+      if(response.status === 404 && response.headers.get('X-Car2MQTT-Trace-Status') === 'missing'){
+        status.textContent = text;
+        return;
+      }
+      let message = text;
+      try { message = JSON.parse(text).detail || text; } catch(_) {}
+      throw new Error(message || `HTTP ${response.status}`);
+    }
+    viewer.textContent = text;
+    status.textContent = text ? 'HTTP-Diagnoselog geladen.' : 'Die HTTP-Diagnoselogdatei ist vorhanden, enthält aber noch keine Einträge.';
+    field('silenceRawLogDownloadBtn').disabled = false;
+    if(download){
+      const blob = new Blob([text], {type:'text/plain;charset=utf-8'});
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'mysilence-http-diagnose.log';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 15000);
+    }
+  } catch(err) {
+    if(isCurrent()) status.textContent = 'HTTP-Diagnoselog konnte nicht geladen werden: ' + err.message;
+  } finally {
+    if(isCurrent()) field('silenceRawLogBtn').disabled = false;
+  }
+}
+field('silenceRawLogBtn').onclick = ()=>loadSilenceHttpTrace();
+field('silenceRawLogDownloadBtn').onclick = ()=>loadSilenceHttpTrace(true);
+field('editDialog').addEventListener('close', resetSilenceHttpTrace);
 field('refreshLogsBtn').onclick = refreshVehicleLogs;
 async function submitGwmCode(){
   if(!editState.vehicleId) return;
@@ -1804,6 +1853,7 @@ async function saveEdit(closeAfter){
   if(manufacturer === 'gwm'){ payload.provider_config = { account: field('editGwmAccount').value.trim(), password: field('editGwmPassword').value.trim(), country: field('editGwmCountry').value.trim(), language: field('editGwmLanguage').value.trim(), polling_enabled: field('editGwmPollingEnabled').checked, poll_interval: field('editGwmPollInterval').value.trim(), vehicle_id: field('editGwmVehicleId').value.trim() || derivedId, capacity_kwh: field('editGwmCapacity').value.trim(), source_topic_base: field('editGwmSourceTopicBase').value.trim(), auto_reconnect: field('editGwmAutoReconnect').checked, delayed_retry_enabled: field('editGwmDelayedRetryEnabled').checked, retry_delay_minutes: field('editGwmRetryDelayMinutes').value.trim() || '55', fallback_on_silence: field('editGwmFallbackOnSilence').checked }; if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte ORA Benutzerkonto und Passwort eintragen.'); }
   if(manufacturer === 'acconia'){ payload.provider_config = { account: field('editAcconiaAccount').value.trim(), password: field('editAcconiaPassword').value, scooter_id: field('editAcconiaScooterId').value.trim(), poll_interval: field('editAcconiaPollInterval').value.trim() || '60', capacity_kwh: field('editAcconiaCapacity').value.trim(), api_key: field('editAcconiaApiKey').value.trim(), http_raw_debug: field('editAcconiaHttpRawDebug').checked }; if(!payload.provider_config.account || !payload.provider_config.password) throw new Error('Bitte MySilence E-Mail und Passwort eintragen.'); }
   const result = await postJson(`./api/vehicles/${editState.vehicleId}`, payload, 'PUT');
+  if(result.vehicle_id && result.vehicle_id !== editState.vehicleId) resetSilenceHttpTrace();
   editState.vehicleId = result.vehicle_id || editState.vehicleId;
   if(closeAfter){ stopLiveLogs(); field('editDialog').close(); }
   else { field('editAuthState').textContent = 'Gespeichert. Die Änderung wird im Hintergrund übernommen.'; }

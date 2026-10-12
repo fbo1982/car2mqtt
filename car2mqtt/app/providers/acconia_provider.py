@@ -71,4 +71,5 @@ class AcconiaProvider(BaseProvider):
             "scooter_id": scooter_id,
             "poll_interval": poll_interval,
             "capacity_kwh": capacity_kwh,
+            "http_raw_debug": provider_config.get("http_raw_debug") is True,
         }

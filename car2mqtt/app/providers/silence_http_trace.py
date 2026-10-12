@@ -78,12 +78,15 @@ def _write(vehicle_id: str, message: str):
             raise
 
 
-def read_trace(vehicle_id: str) -> str:
+def read_trace(vehicle_id: str) -> str | None:
+    """Return the log text, or None when no current log file exists."""
     safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", str(vehicle_id))[:100]
     path = TRACE_DIR / (safe_id + ".log")
-    if not path.exists():
-        return "Noch kein HTTP-Rohdatenprotokoll vorhanden."
-    return path.read_text(encoding="utf-8", errors="replace")
+    with _LOCK:
+        try:
+            return path.read_text(encoding="utf-8", errors="replace")
+        except FileNotFoundError:
+            return None
 
 
 class SilenceHttpTrace:

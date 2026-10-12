@@ -1288,11 +1288,27 @@ def create_app() -> FastAPI:
         return log_store.read(vehicle_id)
 
     @app.get("/api/vehicles/{vehicle_id}/mysilence/http-trace", response_class=PlainTextResponse)
-    async def get_silence_http_trace(vehicle_id: str):
+    def get_silence_http_trace(vehicle_id: str, download: bool = False):
+        headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
         vehicle = store.get_vehicle(vehicle_id)
         if not vehicle or vehicle.manufacturer != "acconia":
-            raise HTTPException(status_code=404, detail="MySilence Fahrzeug nicht gefunden")
-        return read_trace(vehicle_id)
+            return PlainTextResponse("MySilence Fahrzeug nicht gefunden", status_code=404, headers=headers)
+        try:
+            text = read_trace(vehicle_id)
+        except OSError:
+            headers["X-Car2MQTT-Trace-Status"] = "error"
+            return PlainTextResponse("HTTP-Diagnoselog konnte nicht gelesen werden. Bitte später erneut versuchen.",
+                                     status_code=500, headers=headers)
+        if text is None:
+            headers["X-Car2MQTT-Trace-Status"] = "missing"
+            return PlainTextResponse(
+                "Noch keine HTTP-Diagnoselogdatei vorhanden. HTTP-Rohdaten-Diagnose einschalten, "
+                "speichern und bei aktivem Fahrzeug den nächsten Poll abwarten. Danach hier aktualisieren.",
+                status_code=404, headers=headers)
+        headers["X-Car2MQTT-Trace-Status"] = "available" if text else "empty"
+        if download:
+            headers["Content-Disposition"] = 'attachment; filename="mysilence-http-diagnose.log"'
+        return PlainTextResponse(text, headers=headers)
 
     @app.post("/api/vehicles/{vehicle_id}/mysilence/diagnostics", status_code=202)
     async def start_silence_diagnostics(vehicle_id: str):

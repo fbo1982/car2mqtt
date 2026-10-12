@@ -1,3 +1,13 @@
+## v1.2.74 – HTTP-Diagnoselog: Dialog, Textanzeige und Download korrigiert
+
+- Eindeutige IDs für Anlege- und Bearbeitungsdialog; Diagnoseschalter werden korrekt geladen und gespeichert.
+- `http_raw_debug` bleibt jetzt bei der Konfigurationsvalidierung erhalten; Standard weiterhin aus.
+- Log direkt als Text anzeigen/aktualisieren und separat herunterladen, auch über Home-Assistant-Ingress.
+- Eigene Statusmeldungen für fehlende und leere Dateien sowie Lesefehler; keine alten Logdaten nach Fahrzeugwechsel.
+- MQTT, EVCC, Mapper, `onIdentify`, reguläre API-Aufrufe und Worker unverändert.
+- 151 Python-Tests, 38 Browserprüfungen und 6 vorhandene Tests der Browserlogik erfolgreich.
+- Details und Verwendung: `../CHANGELOG-V1.2.74.md`; kein Live-Test mit dem produktiven MySilence-Konto.
+
 ## v1.2.73 – optionales MySilence HTTP-Rohdaten-Diagnoselog
 
 - Im Bearbeitungsdialog eines ACCIONA/Silence-Fahrzeugs lässt sich ein separates HTTP-Diagnoselog einschalten (standardmäßig aus).
