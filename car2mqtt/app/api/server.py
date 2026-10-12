@@ -32,6 +32,7 @@ from app.mqtt.topic_builder import mapped_topic, normalize_plate, raw_vehicle_to
 from app.providers.bmw.oauth import poll_device_flow, save_token_file, start_device_flow
 from app.providers.registry import ProviderRegistry
 from app.providers.acconia_diagnostics import run_silence_diagnostics
+from app.providers.silence_http_trace import read_trace
 from app.providers.gwm_config import (
     render_ora2mqtt_yaml,
     merge_ora_tokens,
@@ -1285,6 +1286,13 @@ def create_app() -> FastAPI:
         if not store.get_vehicle(vehicle_id):
             raise HTTPException(status_code=404, detail="Fahrzeug nicht gefunden")
         return log_store.read(vehicle_id)
+
+    @app.get("/api/vehicles/{vehicle_id}/mysilence/http-trace", response_class=PlainTextResponse)
+    async def get_silence_http_trace(vehicle_id: str):
+        vehicle = store.get_vehicle(vehicle_id)
+        if not vehicle or vehicle.manufacturer != "acconia":
+            raise HTTPException(status_code=404, detail="MySilence Fahrzeug nicht gefunden")
+        return read_trace(vehicle_id)
 
     @app.post("/api/vehicles/{vehicle_id}/mysilence/diagnostics", status_code=202)
     async def start_silence_diagnostics(vehicle_id: str):

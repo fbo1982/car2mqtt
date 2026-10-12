@@ -4,6 +4,7 @@ import threading
 from typing import Any, Callable
 
 from app.providers.acconia_api import AcconiaSilenceApi
+from app.providers.silence_http_trace import SilenceHttpTrace
 
 
 class AcconiaPollingWorker:
@@ -74,6 +75,7 @@ class AcconiaPollingWorker:
             account=str(cfg.get("account") or cfg.get("username") or ""),
             password=str(cfg.get("password", "")),
             api_key=str(cfg.get("api_key") or cfg.get("apikey") or ""),
+            trace=SilenceHttpTrace(str(self.vehicle.id)) if cfg.get("http_raw_debug") is True else None,
         )
         try:
             interval = int(cfg.get("poll_interval", 60) or 60)

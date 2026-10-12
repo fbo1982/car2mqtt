@@ -1,3 +1,11 @@
+## v1.2.73 – optionales MySilence HTTP-Rohdaten-Diagnoselog
+
+- Im Bearbeitungsdialog eines ACCIONA/Silence-Fahrzeugs lässt sich ein separates HTTP-Diagnoselog einschalten (standardmäßig aus).
+- Erfasst tatsächliche Login- und Fahrzeuganfragen, HTTP-Status, Header, Antwortdauer, SHA-256 und den JSON-Antwortinhalt vor dem Mapping. Geheime Header, Zugangsdaten und gängige Standort-/Identifikationsfelder werden maskiert; Nicht-JSON-Inhalte werden aus Datenschutzgründen nicht ausgegeben.
+- Beim Timeout wird keine nicht vorhandene Antwort behauptet. Dateien liegen in `APP_DATA_DIR/silence-http-traces/` (Standard `/config/car2mqtt/silence-http-traces/`), Berechtigung 0600, Rotation bei 2 MiB; Antwortausgabe bis 256 KiB.
+- Im Fahrzeugdialog kann das Diagnoseprotokoll heruntergeladen werden. Die Einstellung wird mit den Fahrzeugeinstellungen gespeichert; die reguläre Laufzeit übernimmt sie beim Worker-Neustart.
+- Die HTTP-Requests, Mapper, MQTT-/EVCC-Ausgabe und Fahrzeug-IDs bleiben unverändert. Diagnoseprotokolle können auch nach Maskierung persönliche Daten enthalten; nicht öffentlich teilen.
+
 # Car2MQTT
 
 ## v1.2.72 – MySilence-Verbindungsdiagnose
